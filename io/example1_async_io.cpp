@@ -1,0 +1,376 @@
+/**
+ * @file example1_async_io.cpp
+ * @brief QB-IO Asynchronous I/O Fundamentals Example
+ *
+ * This example demonstrates the fundamental concepts of asynchronous I/O in QB:
+ * - Using asynchronous timers for scheduling operations
+ * - Working with the file system asynchronously
+ * - Event-driven programming with callbacks
+ * - File operations with proper error handling
+ * - Signal handling for graceful termination
+ *
+ * The example creates a text file, performs alternating read/write operations on it,
+ * monitors it for changes, and demonstrates timer-based operations.
+ *
+ * @author QB Framework Team
+ * @copyright Apache-2.0 License
+ */
+
+#include <qb/actor.h>
+#include <qb/main.h>
+#include <qb/io/async.h>
+#include <qb/io/system/file.h>
+#include <iostream>
+#include <fstream>
+#include <chrono>
+#include <thread>
+#include <string>
+#include <ctime>
+#include <functional>
+#include <csignal>
+#include <atomic>
+
+namespace {
+    // Global constants for the example
+    constexpr const char* TEST_FILENAME = "qb_io_example.txt";
+    constexpr int MAX_OPERATIONS = 5;
+    constexpr double TIMER_INTERVAL = 1.0; // seconds
+    
+    // Global atomic flag for termination
+    std::atomic<bool> g_running{true};
+    
+    // Utility function to get timestamp string
+    std::string getCurrentTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        std::string timestamp = std::ctime(&time_t);
+        // Remove trailing newline from ctime result
+        if (!timestamp.empty() && timestamp.back() == '\n') {
+            timestamp.pop_back();
+        }
+        return timestamp;
+    }
+    
+    // Utility function to print a section header
+    void printSectionHeader(const std::string& title) {
+        std::cout << "\n=== " << title << " ===\n";
+    }
+    
+    // Signal handler for graceful termination
+    void signalHandler(int signal) {
+        printSectionHeader("Signal Received");
+        std::cout << "Caught signal " << signal << " (" 
+                  << (signal == SIGINT ? "SIGINT" : "SIGTERM") << ")" << std::endl;
+        g_running = false;
+    }
+}
+
+/**
+ * @brief Event structure for file content
+ * 
+ * This structure is used to pass file content and metadata 
+ * between different components of the application.
+ */
+struct FileContentEvent : public qb::Event {
+    std::string content;
+    std::string filename;
+    bool success;
+    
+    FileContentEvent(const std::string& fname, const std::string& data, bool ok)
+        : content(data), filename(fname), success(ok) {}
+};
+
+/**
+ * @brief File processor class that demonstrates async I/O operations
+ * 
+ * This class shows how to:
+ * - Schedule operations with timers
+ * - Perform file I/O operations asynchronously
+ * - Use the QB async framework for event handling
+ */
+class FileProcessor : public qb::io::async::with_timeout<FileProcessor> {
+private:
+    std::string _filename;
+    int _operation_count = 0;
+    const int _max_operations;
+    std::string _content;
+    
+public:
+    explicit FileProcessor(const std::string& filename, int max_ops = MAX_OPERATIONS)
+        : with_timeout(TIMER_INTERVAL), // 1 second timeout
+          _filename(filename),
+          _max_operations(max_ops) {
+        printSectionHeader("File Processor Initialized");
+        std::cout << "Processor will handle " << _max_operations << " operations on file: " 
+                  << _filename << std::endl;
+    }
+    
+    /**
+     * @brief Timer event handler - called when the timer expires
+     * 
+     * This function is automatically called when the timer expires.
+     * It alternates between reading from and writing to the file.
+     */
+    void on(qb::io::async::event::timer const&) {
+        std::cout << "FileProcessor: Timer event received at " << getCurrentTimestamp() << std::endl;
+        
+        // Check termination conditions
+        if (_operation_count >= _max_operations || !g_running) {
+            std::cout << "FileProcessor: " 
+                      << (_operation_count >= _max_operations ? 
+                         "Completed all operations" : "Termination requested")
+                      << ", stopping" << std::endl;
+            return;
+        }
+        
+        // Alternate between read and write operations
+        if (_operation_count % 2 == 0) {
+            writeToFile();
+        } else {
+            readFromFile();
+        }
+        
+        _operation_count++;
+        
+        // Schedule the next operation
+        updateTimeout();
+    }
+    
+    /**
+     * @brief Write data to the file
+     * 
+     * Demonstrates how to write to a file using the qb::io::sys::file API.
+     * This method creates or truncates the file and writes new content to it.
+     */
+    void writeToFile() {
+        printSectionHeader("Writing to File");
+        std::cout << "FileProcessor: Writing to file: " << _filename << std::endl;
+        
+        // Generate content with timestamp and operation number
+        _content = "Operation #" + std::to_string(_operation_count) + 
+                 " at " + getCurrentTimestamp() + "\n" +
+                 "This is a test file created by the QB-IO Framework.\n" +
+                 "The QB-IO library provides high-performance I/O operations.\n";
+        
+        // Open file for writing (create if not exists, truncate if exists)
+        qb::io::sys::file file;
+        if (file.open(_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
+            // Write content to file
+            ssize_t bytes_written = file.write(_content.c_str(), _content.size());
+            file.close();
+            
+            if (bytes_written == static_cast<ssize_t>(_content.size())) {
+                std::cout << "FileProcessor: Successfully wrote " << bytes_written 
+                          << " bytes to file" << std::endl;
+            } else {
+                std::cerr << "FileProcessor: Partial write - only " << bytes_written 
+                          << " of " << _content.size() << " bytes written" << std::endl;
+            }
+        } else {
+            std::cerr << "FileProcessor: Error opening file for writing: " 
+                      << strerror(errno) << std::endl;
+        }
+    }
+    
+    /**
+     * @brief Read data from the file
+     * 
+     * Demonstrates how to read from a file using the qb::io::sys::file API.
+     * This method opens the file in read-only mode and displays its contents.
+     */
+    void readFromFile() {
+        printSectionHeader("Reading from File");
+        std::cout << "FileProcessor: Reading from file: " << _filename << std::endl;
+        
+        qb::io::sys::file file;
+        if (file.open(_filename, O_RDONLY) >= 0) {
+            // Allocate buffer for file content
+            char buffer[4096] = {0};
+            
+            // Read file content
+            int bytes_read = file.read(buffer, sizeof(buffer) - 1);
+            file.close();
+            
+            if (bytes_read > 0) {
+                // Ensure null termination
+                buffer[bytes_read] = '\0';
+                std::cout << "FileProcessor: Successfully read " << bytes_read << " bytes" << std::endl;
+                std::cout << "File content:\n" << std::string(40, '-') << std::endl;
+                std::cout << buffer << std::endl;
+                std::cout << std::string(40, '-') << std::endl;
+            } else if (bytes_read == 0) {
+                std::cout << "FileProcessor: File is empty" << std::endl;
+            } else {
+                std::cerr << "FileProcessor: Error reading file: " 
+                          << strerror(errno) << std::endl;
+            }
+        } else {
+            std::cerr << "FileProcessor: Error opening file for reading: " 
+                      << strerror(errno) << std::endl;
+        }
+    }
+};
+
+/**
+ * @brief Timer demonstration class
+ * 
+ * This class shows how to use timers for scheduling periodic tasks.
+ * It creates a timer that ticks at regular intervals and demonstrates
+ * how to handle timer events in the QB async framework.
+ */
+class TimerDemonstration : public qb::io::async::with_timeout<TimerDemonstration> {
+private:
+    int _count = 0;
+    const int _max_ticks;
+    
+public:
+    explicit TimerDemonstration(int max_ticks = 10)
+        : with_timeout(0.5), // 500ms timeout
+          _max_ticks(max_ticks) {
+        printSectionHeader("Timer Demonstration Initialized");
+        std::cout << "Timer will tick " << _max_ticks << " times every 500ms" << std::endl;
+    }
+    
+    /**
+     * @brief Timer event handler
+     * 
+     * This function is automatically called when the timer expires.
+     * It demonstrates the use of periodic timers for regular tasks.
+     */
+    void on(qb::io::async::event::timer const&) {
+        _count++;
+        std::cout << "TimerDemonstration: Tick #" << _count 
+                  << " at " << getCurrentTimestamp() << std::endl;
+        
+        // Check termination conditions
+        if (_count < _max_ticks && g_running) {
+            // Continue with the next tick
+            updateTimeout();
+        } else {
+            std::cout << "TimerDemonstration: " 
+                      << (_count >= _max_ticks ? 
+                         "Completed all ticks" : "Termination requested")
+                      << ", stopping" << std::endl;
+        }
+    }
+};
+
+/**
+ * @brief File watcher class using ev::stat
+ * 
+ * This class demonstrates how to watch for file system changes.
+ * It uses the libev stat watcher to monitor changes to a file
+ * and reacts to modifications in real-time.
+ */
+class FileWatcher {
+private:
+    std::string _filename;
+    ev::stat* _watcher = nullptr;
+    
+public:
+    explicit FileWatcher(const std::string& filename)
+        : _filename(filename) {
+        printSectionHeader("File Watcher Initialized");
+        
+        // Create the stat watcher for monitoring file changes
+        _watcher = new ev::stat(qb::io::async::listener::current.loop());
+        
+        // Set callback for file change events
+        _watcher->set<FileWatcher, &FileWatcher::onFileChange>(this);
+        
+        // Set the file to watch
+        _watcher->set(_filename.c_str());
+        
+        // Start watching
+        _watcher->start();
+        
+        std::cout << "FileWatcher: Started watching file: " << _filename << std::endl;
+    }
+    
+    ~FileWatcher() {
+        // Cleanup resources
+        if (_watcher) {
+            _watcher->stop();
+            delete _watcher;
+            _watcher = nullptr;
+        }
+    }
+    
+    /**
+     * @brief Callback for file change events
+     * 
+     * This function is called whenever the watched file changes.
+     * It detects changes in file size and modification time.
+     * 
+     * @param watcher The stat watcher that triggered the event
+     * @param revents Event flags describing what changed
+     */
+    void onFileChange(ev::stat& watcher, int revents) {
+        std::cout << "\nFileWatcher: Detected change in file: " << _filename 
+                  << " at " << getCurrentTimestamp() << std::endl;
+        
+        // Check what changed
+        if (revents & ev::STAT) {
+            // File size changed
+            if (watcher.attr.st_size != watcher.prev.st_size) {
+                std::cout << "FileWatcher: File size changed from " 
+                          << watcher.prev.st_size << " to " 
+                          << watcher.attr.st_size << " bytes" << std::endl;
+            }
+            
+            // Modification time changed
+            if (watcher.attr.st_mtime != watcher.prev.st_mtime) {
+                std::cout << "FileWatcher: File modification time changed" << std::endl;
+            }
+        }
+    }
+};
+
+int main() {
+    printSectionHeader("QB-IO Asynchronous I/O Example");
+    std::cout << "This example demonstrates asynchronous file operations, timers, and file watching" << std::endl;
+    
+    // Setup signal handling for graceful termination
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+    
+    // Initialize the async I/O system
+    qb::io::async::init();
+    
+    // Create the test file path
+    std::string filename = TEST_FILENAME;
+    
+    // Create components for the demonstration
+    FileProcessor processor(filename);
+    TimerDemonstration timer_demo;
+    FileWatcher watcher(filename);
+    
+    printSectionHeader("Starting Event Loop");
+    std::cout << "Running event loop for approximately 6 seconds..." << std::endl;
+    std::cout << "Press Ctrl+C to terminate the example early" << std::endl;
+    
+    // Run the event loop until completion or termination request
+    int iterations = 0;
+    const int MAX_ITERATIONS = 30; // 30 * 200ms = 6 seconds
+    
+    while (g_running && iterations < MAX_ITERATIONS) {
+        qb::io::async::run(EVRUN_NOWAIT);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        iterations++;
+    }
+    
+    printSectionHeader("Event Loop Completed");
+    std::cout << "Event loop ran for " << (iterations * 200) / 1000.0 << " seconds" << std::endl;
+    
+    // Clean up the test file
+    if (std::remove(filename.c_str()) == 0) {
+        std::cout << "Test file '" << filename << "' was removed successfully" << std::endl;
+    } else {
+        std::cerr << "Error removing test file: " << strerror(errno) << std::endl;
+    }
+    
+    printSectionHeader("Example Completed");
+    std::cout << "Demonstrated qb::io async file operations, timers, and file watching" << std::endl;
+    
+    return 0;
+} 
