@@ -96,7 +96,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "Producer " << id() << ": Initialized\n";
+        qb::io::cout() << "Producer " << id() << ": Initialized\n";
         // Start generating work items
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::PRODUCE_ITEM);
         return true;
@@ -112,7 +112,7 @@ public:
             int complexity = complexity_dist(gen);
             auto work = WorkItemMsg(_next_id++, complexity);
             
-            std::cout << "Producer: Generated work item " << work.id 
+            qb::io::cout() << "Producer: Generated work item " << work.id
                       << " with complexity " << work.complexity << std::endl;
             
             _shared_queue->push(work);
@@ -124,7 +124,7 @@ public:
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "Producer: Shutting down" << std::endl;
+        qb::io::cout() << "Producer: Shutting down" << std::endl;
         kill();
     }
 
@@ -144,7 +144,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "Consumer " << _consumer_id << " (" << id() << "): Initialized\n";
+        qb::io::cout() << "Consumer " << _consumer_id << " (" << id() << "): Initialized\n";
         // Start processing work items
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::PROCESS_NEXT);
         return true;
@@ -155,7 +155,7 @@ public:
             WorkItemMsg work(0, 0);
             if (_shared_queue->pop(work)) {
                 // Process the work item
-                std::cout << "Consumer " << _consumer_id << ": Processing work item " << work.id 
+                qb::io::cout() << "Consumer " << _consumer_id << ": Processing work item " << work.id
                           << " with complexity " << work.complexity << std::endl;
                 
                 _items_processed++;
@@ -176,7 +176,7 @@ public:
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "Consumer " << _consumer_id << ": Shutting down after processing " 
+        qb::io::cout() << "Consumer " << _consumer_id << ": Shutting down after processing "
                   << _items_processed << " items" << std::endl;
         kill();
     }
@@ -201,7 +201,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "Supervisor " << id() << ": Initialized\n";
+        qb::io::cout() << "Supervisor " << id() << ": Initialized\n";
         // Schedule periodic queue monitoring
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::CHECK_STATS, 1000);
         return true;
@@ -229,12 +229,12 @@ public:
         
         // If this is the last response, display statistics and decide what to do next
         if (_pending_responses == 0) {
-            std::cout << "Supervisor: Queue size = " << _shared_queue->size()
+            qb::io::cout() << "Supervisor: Queue size = " << _shared_queue->size()
                       << ", Total processed = " << _total_processed << std::endl;
             
             // After 15 seconds, stop the application
             if (_running_time >= 15000 && !_is_shutting_down) {
-                std::cout << "Supervisor: Shutting down all actors..." << std::endl;
+                qb::io::cout() << "Supervisor: Shutting down all actors..." << std::endl;
                 _is_shutting_down = true;
                 
                 // Send KillEvent to all actors (including itself)
@@ -247,7 +247,7 @@ public:
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "Supervisor: Shutting down" << std::endl;
+        qb::io::cout() << "Supervisor: Shutting down" << std::endl;
         kill();
     }
 
@@ -279,12 +279,12 @@ int main() {
     // Create the supervisor
     engine.addActor<Supervisor>(0, shared_queue, consumer_ids);
     
-    std::cout << "Main: Starting QB engine\n";
+    qb::io::cout() << "Main: Starting QB engine\n";
     engine.start();
     
-    std::cout << "Main: Waiting for actors to complete\n";
+    qb::io::cout() << "Main: Waiting for actors to complete\n";
     engine.join();
     
-    std::cout << "Example completed." << std::endl;
+    qb::io::cout() << "Example completed." << std::endl;
     return 0;
 } 

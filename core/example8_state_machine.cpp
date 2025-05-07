@@ -218,7 +218,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "CoffeeMachineActor created with ID: " << id() << std::endl;
+        qb::io::cout() << "CoffeeMachineActor created with ID: " << id() << std::endl;
         
         // Initialize state
         _current_state = MachineState::IDLE;
@@ -236,7 +236,7 @@ public:
         // Setup the state transition table
         setupTransitionTable();
         
-        std::cout << "CoffeeMachineActor started in state: " 
+        qb::io::cout() << "CoffeeMachineActor started in state: "
                   << stateToString(_current_state) << std::endl;
         
         return true;
@@ -257,11 +257,11 @@ public:
     void on(SubscribeMessage& msg) {
         // Add the subscriber to the list
         _subscribers.push_back(msg.subscriber_id);
-        std::cout << "CoffeeMachineActor: Added subscriber " << msg.subscriber_id << std::endl;
+        qb::io::cout() << "CoffeeMachineActor: Added subscriber " << msg.subscriber_id << std::endl;
     }
     
     void on(KillEvent&) {
-        std::cout << "CoffeeMachineActor stopped" << std::endl;
+        qb::io::cout() << "CoffeeMachineActor stopped" << std::endl;
         kill();
     }
     
@@ -313,7 +313,7 @@ private:
                 _payment_required = _coffee_prices[_selected_coffee];
                 
                 // Stay in SELECTING state but update selection
-                std::cout << "Changed selection to: " << coffeeTypeToString(_selected_coffee)
+                qb::io::cout() << "Changed selection to: " << coffeeTypeToString(_selected_coffee)
                           << ", price: $" << _payment_required << std::endl;
             };
         
@@ -323,7 +323,7 @@ private:
                 // Add to payment
                 _payment_received += msg.amount;
                 
-                std::cout << "Added $" << msg.amount << ", total payment: $" 
+                qb::io::cout() << "Added $" << msg.amount << ", total payment: $"
                           << _payment_received << " (required: $" << _payment_required << ")" << std::endl;
                 
                 // If payment is sufficient, start brewing
@@ -343,7 +343,7 @@ private:
         _transition_table[MachineState::PAYMENT][InputEvent::CANCEL] = 
             [this](const InputEventMessage& msg) {
                 // Return money and go back to IDLE
-                std::cout << "Returning $" << _payment_received << std::endl;
+                qb::io::cout() << "Returning $" << _payment_received << std::endl;
                 _payment_received = 0.0;
                 changeState(MachineState::IDLE, "Payment cancelled");
             };
@@ -406,7 +406,7 @@ private:
                     _transition_table[machine_state][input_event] = 
                         [this, machine_state, input_event](const InputEventMessage& msg) {
                             // Default is to ignore the event and log it
-                            std::cout << "Ignored event " << eventToString(input_event) 
+                            qb::io::cout() << "Ignored event " << eventToString(input_event)
                                       << " in state " << stateToString(machine_state) << std::endl;
                         };
                 }
@@ -416,7 +416,7 @@ private:
     
     // Handle input events and perform state transitions
     void handleInputEvent(const InputEventMessage& msg) {
-        std::cout << "Received event: " << eventToString(msg.event) 
+        qb::io::cout() << "Received event: " << eventToString(msg.event)
                   << " in state: " << stateToString(_current_state) << std::endl;
         
         // Look up the appropriate handler for this state and event
@@ -428,7 +428,7 @@ private:
             it->second(msg);
         } else {
             // This should not happen since we have default handlers
-            std::cout << "Unhandled event " << eventToString(msg.event) 
+            qb::io::cout() << "Unhandled event " << eventToString(msg.event)
                       << " in state " << stateToString(_current_state) << std::endl;
         }
     }
@@ -438,7 +438,7 @@ private:
         switch (msg.action) {
             case DelayedActionMessage::Action::BREW_COMPLETE: {
                 // Brewing completed
-                std::cout << "Brewing completed" << std::endl;
+                qb::io::cout() << "Brewing completed" << std::endl;
                 InputEventMessage brew_finished(InputEvent::BREW_FINISHED);
                 handleInputEvent(brew_finished);
                 break;
@@ -446,7 +446,7 @@ private:
             
             case DelayedActionMessage::Action::DISPENSE_COMPLETE: {
                 // Dispensing completed
-                std::cout << "Dispensing completed" << std::endl;
+                qb::io::cout() << "Dispensing completed" << std::endl;
                 InputEventMessage dispense_finished(InputEvent::DISPENSE_FINISHED);
                 handleInputEvent(dispense_finished);
                 break;
@@ -459,7 +459,7 @@ private:
     
     // Handle status request
     void handleStatusRequest(const StatusRequestMessage& msg) {
-        std::cout << "Status requested by actor " << msg.getSource() << std::endl;
+        qb::io::cout() << "Status requested by actor " << msg.getSource() << std::endl;
         
         // Create status response message
         std::string status_message;
@@ -503,9 +503,9 @@ private:
     
     // Change state and notify
     void changeState(MachineState new_state, const std::string& reason) {
-        std::cout << "State transition: " << stateToString(_current_state) 
+        qb::io::cout() << "State transition: " << stateToString(_current_state)
                   << " -> " << stateToString(new_state) << std::endl;
-        std::cout << "Reason: " << reason << std::endl;
+        qb::io::cout() << "Reason: " << reason << std::endl;
         
         // Send state change notification to all subscribers
         for (const auto& subscriber_id : _subscribers) {
@@ -543,8 +543,8 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "UserInterfaceActor created with ID: " << id() << std::endl;
-        std::cout << "UserInterfaceActor started" << std::endl;
+        qb::io::cout() << "UserInterfaceActor created with ID: " << id() << std::endl;
+        qb::io::cout() << "UserInterfaceActor started" << std::endl;
         
         // Subscribe to the coffee machine for state change notifications
         push<SubscribeMessage>(_machine_id, id());
@@ -573,26 +573,26 @@ public:
     }
     
     void on(KillEvent&) {
-        std::cout << "UserInterfaceActor stopped" << std::endl;
+        qb::io::cout() << "UserInterfaceActor stopped" << std::endl;
         kill();
     }
     
 private:
     // Handle status response
     void handleStatusResponse(const StatusResponseMessage& msg) {
-        std::cout << "\n=== COFFEE MACHINE STATUS ===" << std::endl;
-        std::cout << "State: " << stateToString(msg.current_state) << std::endl;
-        std::cout << "Selected Coffee: " << coffeeTypeToString(msg.selected_coffee) << std::endl;
-        std::cout << "Payment: $" << msg.payment_received << " / $" << msg.payment_required << std::endl;
-        std::cout << "Message: " << msg.status_message << std::endl;
-        std::cout << "============================\n" << std::endl;
+        qb::io::cout() << "\n=== COFFEE MACHINE STATUS ===" << std::endl;
+        qb::io::cout() << "State: " << stateToString(msg.current_state) << std::endl;
+        qb::io::cout() << "Selected Coffee: " << coffeeTypeToString(msg.selected_coffee) << std::endl;
+        qb::io::cout() << "Payment: $" << msg.payment_received << " / $" << msg.payment_required << std::endl;
+        qb::io::cout() << "Message: " << msg.status_message << std::endl;
+        qb::io::cout() << "============================\n" << std::endl;
     }
     
     // Handle state change notification
     void handleStateChange(const StateChangeMessage& msg) {
-        std::cout << "Machine state changed: " << stateToString(msg.prev_state)
+        qb::io::cout() << "Machine state changed: " << stateToString(msg.prev_state)
                   << " -> " << stateToString(msg.new_state) << std::endl;
-        std::cout << "Reason: " << msg.reason << std::endl;
+        qb::io::cout() << "Reason: " << msg.reason << std::endl;
     }
     
     // Handle delayed actions
@@ -632,7 +632,7 @@ private:
     
     // Run a demonstration sequence
     void runDemoSequence() {
-        std::cout << "\n----- Starting Demo Sequence -----" << std::endl;
+        qb::io::cout() << "\n----- Starting Demo Sequence -----" << std::endl;
         
         // Start with step 0
         qb::io::async::callback([this]() {
@@ -649,7 +649,7 @@ private:
         switch (step) {
             case 0: {
                 // Show initial status
-                std::cout << "\nInitial machine status:" << std::endl;
+                qb::io::cout() << "\nInitial machine status:" << std::endl;
                 requestStatus();
                 
                 // Schedule next step
@@ -665,7 +665,7 @@ private:
             
             case 1: {
                 // Select coffee
-                std::cout << "\n1. Customer selects Cappuccino" << std::endl;
+                qb::io::cout() << "\n1. Customer selects Cappuccino" << std::endl;
                 sendEvent(InputEvent::BUTTON_PRESSED, CoffeeType::CAPPUCCINO);
                 
                 // Check status after selection
@@ -689,7 +689,7 @@ private:
             
             case 2: {
                 // Insert partial payment
-                std::cout << "\n2. Customer inserts $1.00" << std::endl;
+                qb::io::cout() << "\n2. Customer inserts $1.00" << std::endl;
                 sendEvent(InputEvent::COIN_INSERTED, CoffeeType::ESPRESSO, 1.00);
                 
                 // Check status after partial payment
@@ -713,7 +713,7 @@ private:
             
             case 3: {
                 // Insert remaining payment
-                std::cout << "\n3. Customer inserts $2.00 more" << std::endl;
+                qb::io::cout() << "\n3. Customer inserts $2.00 more" << std::endl;
                 sendEvent(InputEvent::COIN_INSERTED, CoffeeType::ESPRESSO, 2.00);
                 
                 // This will trigger brewing automatically
@@ -747,7 +747,7 @@ private:
             
             case 4: {
                 // Transaction should be complete now
-                std::cout << "\n4. Transaction complete" << std::endl;
+                qb::io::cout() << "\n4. Transaction complete" << std::endl;
                 requestStatus();
                 
                 // Schedule next step
@@ -763,7 +763,7 @@ private:
             
             case 5: {
                 // Try error scenario
-                std::cout << "\n5. Simulating an error condition" << std::endl;
+                qb::io::cout() << "\n5. Simulating an error condition" << std::endl;
                 sendEvent(InputEvent::ERROR_DETECTED);
                 
                 // Check status after error
@@ -787,7 +787,7 @@ private:
             
             case 6: {
                 // Reset the machine
-                std::cout << "\n6. Resetting the machine" << std::endl;
+                qb::io::cout() << "\n6. Resetting the machine" << std::endl;
                 sendEvent(InputEvent::RESET);
                 
                 // Final status check
@@ -811,10 +811,10 @@ private:
             
             case 7: {
                 // End of demo
-                std::cout << "\n----- Demo Sequence Complete -----\n" << std::endl;
+                qb::io::cout() << "\n----- Demo Sequence Complete -----\n" << std::endl;
                 
                 // Broadcast a kill event to all actors
-                std::cout << "Broadcasting KillEvent to all actors\n" << std::endl;
+                qb::io::cout() << "Broadcasting KillEvent to all actors\n" << std::endl;
                 broadcast<KillEvent>();
                 
                 break;
@@ -836,7 +836,7 @@ int main() {
     // Start the system
     engine.start();
     
-    std::cout << "Coffee Machine simulation started" << std::endl;
+    qb::io::cout() << "Coffee Machine simulation started" << std::endl;
 
     // Wait for the system to finish
     engine.join();

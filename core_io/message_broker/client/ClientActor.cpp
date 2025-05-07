@@ -33,7 +33,7 @@ ClientActor::ClientActor(qb::ActorId input_actor, qb::io::uri server_uri)
  * 3. Prepares message processing
  */
 bool ClientActor::onInit() {
-    std::cout << "ClientActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "ClientActor initialized with ID: " << id() << std::endl;
     registerEvent<BrokerInputEvent>(*this);
     connect();
     return true;
@@ -54,19 +54,19 @@ bool ClientActor::onInit() {
 void ClientActor::on(const broker::Message& msg) {
     switch(msg.type) {
         case broker::MessageType::RESPONSE:
-            std::cout << "Server: " << msg.payload << std::endl;
+            qb::io::cout() << "Server: " << msg.payload << std::endl;
             break;
             
         case broker::MessageType::MESSAGE:
-            std::cout << "Message: " << msg.payload << std::endl;
+            qb::io::cout() << "Message: " << msg.payload << std::endl;
             break;
             
         case broker::MessageType::ERROR:
-            std::cerr << "Error: " << msg.payload << std::endl;
+            qb::io::cerr() << "Error: " << msg.payload << std::endl;
             break;
             
         default:
-            std::cerr << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
+            qb::io::cerr() << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
             break;
     }
 }
@@ -82,13 +82,13 @@ void ClientActor::on(const broker::Message& msg) {
  * Uses QB's async callback system for reconnection timing.
  */
 void ClientActor::on(qb::io::async::event::disconnected const&) {
-    std::cout << "Disconnected from server" << std::endl;
+    qb::io::cout() << "Disconnected from server" << std::endl;
     _connected = false;
     
     if (_should_reconnect) {
         // Schedule async reconnection with delay
         qb::io::async::callback([this]() {
-            std::cout << "Attempting to reconnect..." << std::endl;
+            qb::io::cout() << "Attempting to reconnect..." << std::endl;
             connect();
         }, RECONNECT_DELAY);
     }
@@ -129,7 +129,7 @@ void ClientActor::connect() {
  * @param socket The connected socket from QB framework
  */
 void ClientActor::onConnected(qb::io::tcp::socket&& socket) {
-    std::cout << "Connected to server" << std::endl;
+    qb::io::cout() << "Connected to server" << std::endl;
     _connected = true;
     
     // Configure the connection
@@ -151,11 +151,11 @@ void ClientActor::onConnected(qb::io::tcp::socket&& socket) {
  * Uses QB's async callback for reconnection timing.
  */
 void ClientActor::onConnectionFailed() {
-    std::cout << "Connection failed" << std::endl;
+    qb::io::cout() << "Connection failed" << std::endl;
     if (_should_reconnect) {
         // Schedule delayed reconnection
         qb::io::async::callback([this]() {
-            std::cout << "Retrying connection..." << std::endl;
+            qb::io::cout() << "Retrying connection..." << std::endl;
             connect();
         }, RECONNECT_DELAY);
     }
@@ -173,7 +173,7 @@ void ClientActor::onConnectionFailed() {
  */
 void ClientActor::sendSubscribe(const std::string& topic) {
     if (!_connected) {
-        std::cout << "Not connected to server. Command discarded." << std::endl;
+        qb::io::cout() << "Not connected to server. Command discarded." << std::endl;
         return;
     }
     
@@ -195,7 +195,7 @@ void ClientActor::sendSubscribe(const std::string& topic) {
  */
 void ClientActor::sendUnsubscribe(const std::string& topic) {
     if (!_connected) {
-        std::cout << "Not connected to server. Command discarded." << std::endl;
+        qb::io::cout() << "Not connected to server. Command discarded." << std::endl;
         return;
     }
     
@@ -218,7 +218,7 @@ void ClientActor::sendUnsubscribe(const std::string& topic) {
  */
 void ClientActor::sendPublish(const std::string& topic, const std::string& message) {
     if (!_connected) {
-        std::cout << "Not connected to server. Command discarded." << std::endl;
+        qb::io::cout() << "Not connected to server. Command discarded." << std::endl;
         return;
     }
     
@@ -273,7 +273,7 @@ void ClientActor::processCommand(const std::string& command) {
     
     // Read command type (SUB, UNSUB, PUB)
     if (!(iss >> cmd)) {
-        std::cerr << "Invalid command format" << std::endl;
+        qb::io::cerr() << "Invalid command format" << std::endl;
         return;
     }
     
@@ -283,21 +283,21 @@ void ClientActor::processCommand(const std::string& command) {
     // Handle command based on type
     if (cmd == "SUB" || cmd == "SUBSCRIBE") {
         if (!(iss >> topic)) {
-            std::cerr << "Missing topic. Format: SUB <topic>" << std::endl;
+            qb::io::cerr() << "Missing topic. Format: SUB <topic>" << std::endl;
             return;
         }
         sendSubscribe(topic);
     }
     else if (cmd == "UNSUB" || cmd == "UNSUBSCRIBE") {
         if (!(iss >> topic)) {
-            std::cerr << "Missing topic. Format: UNSUB <topic>" << std::endl;
+            qb::io::cerr() << "Missing topic. Format: UNSUB <topic>" << std::endl;
             return;
         }
         sendUnsubscribe(topic);
     }
     else if (cmd == "PUB" || cmd == "PUBLISH") {
         if (!(iss >> topic)) {
-            std::cerr << "Missing topic. Format: PUB <topic> <message>" << std::endl;
+            qb::io::cerr() << "Missing topic. Format: PUB <topic> <message>" << std::endl;
             return;
         }
         
@@ -306,13 +306,13 @@ void ClientActor::processCommand(const std::string& command) {
         std::getline(iss >> std::ws, message);
         
         if (message.empty()) {
-            std::cerr << "Missing message. Format: PUB <topic> <message>" << std::endl;
+            qb::io::cerr() << "Missing message. Format: PUB <topic> <message>" << std::endl;
             return;
         }
         
         sendPublish(topic, message);
     }
     else {
-        std::cerr << "Unknown command. Valid commands: SUB, UNSUB, PUB" << std::endl;
+        qb::io::cerr() << "Unknown command. Valid commands: SUB, UNSUB, PUB" << std::endl;
     }
 } 

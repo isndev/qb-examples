@@ -37,7 +37,7 @@ ServerActor::ServerActor(qb::ActorId chatroom_id)
 bool ServerActor::onInit() {
     registerEvent<NewSessionEvent>(*this);
     registerEvent<SendMessageEvent>(*this);
-    std::cout << "ServerActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "ServerActor initialized with ID: " << id() << std::endl;
     return true;
 }
 
@@ -56,7 +56,7 @@ bool ServerActor::onInit() {
 void ServerActor::on(NewSessionEvent& evt) {
     // Create and register a new chat session for the incoming connection
     auto& session = registerSession(std::move(evt.socket));
-    std::cout << "New session registered: " << session.id() << std::endl;
+    qb::io::cout() << "New session registered: " << session.id() << std::endl;
 }
 
 /**

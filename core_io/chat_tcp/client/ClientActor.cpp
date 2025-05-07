@@ -34,7 +34,7 @@ ClientActor::ClientActor(std::string username, qb::ActorId input_actor, qb::io::
  * 3. Prepares message processing
  */
 bool ClientActor::onInit() {
-    std::cout << "ClientActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "ClientActor initialized with ID: " << id() << std::endl;
     registerEvent<ChatInputEvent>(*this);
     connect();
     return true;
@@ -55,20 +55,20 @@ bool ClientActor::onInit() {
 void ClientActor::on(const chat::Message& msg) {
     switch(msg.type) {
         case chat::MessageType::AUTH_RESPONSE:
-            std::cout << "Server: " << msg.payload << std::endl;
+            qb::io::cout() << "Server: " << msg.payload << std::endl;
             _authenticated = true;
             break;
             
         case chat::MessageType::CHAT_MESSAGE:
-            std::cout << msg.payload << std::endl;
+            qb::io::cout() << msg.payload << std::endl;
             break;
             
         case chat::MessageType::ERROR:
-            std::cerr << "Error: " << msg.payload << std::endl;
+            qb::io::cerr() << "Error: " << msg.payload << std::endl;
             break;
             
         default:
-            std::cerr << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
+            qb::io::cerr() << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
             break;
     }
 }
@@ -85,14 +85,14 @@ void ClientActor::on(const chat::Message& msg) {
  * Uses QB's async callback system for reconnection timing.
  */
 void ClientActor::on(qb::io::async::event::disconnected const&) {
-    std::cout << "Disconnected from server" << std::endl;
+    qb::io::cout() << "Disconnected from server" << std::endl;
     _connected = false;
     _authenticated = false;
     
     if (_should_reconnect) {
         // Schedule async reconnection with delay
         qb::io::async::callback([this]() {
-            std::cout << "Attempting to reconnect..." << std::endl;
+            qb::io::cout() << "Attempting to reconnect..." << std::endl;
             connect();
         }, RECONNECT_DELAY);
     }
@@ -134,7 +134,7 @@ void ClientActor::connect() {
  * @param socket The connected socket from QB framework
  */
 void ClientActor::onConnected(qb::io::tcp::socket&& socket) {
-    std::cout << "Connected to server" << std::endl;
+    qb::io::cout() << "Connected to server" << std::endl;
     _connected = true;
     
     // Configure the connection
@@ -159,11 +159,11 @@ void ClientActor::onConnected(qb::io::tcp::socket&& socket) {
  * Uses QB's async callback for reconnection timing.
  */
 void ClientActor::onConnectionFailed() {
-    std::cout << "Connection failed" << std::endl;
+    qb::io::cout() << "Connection failed" << std::endl;
     if (_should_reconnect) {
         // Schedule delayed reconnection
         qb::io::async::callback([this]() {
-            std::cout << "Retrying connection..." << std::endl;
+            qb::io::cout() << "Retrying connection..." << std::endl;
             connect();
         }, RECONNECT_DELAY);
     }
@@ -197,12 +197,12 @@ void ClientActor::authenticate() {
  */
 void ClientActor::sendChat(const std::string& message) {
     if (!_connected) {
-        std::cout << "Not connected to server. Message discarded." << std::endl;
+        qb::io::cout() << "Not connected to server. Message discarded." << std::endl;
         return;
     }
     
     if (!_authenticated) {
-        std::cout << "Not authenticated. Message discarded." << std::endl;
+        qb::io::cout() << "Not authenticated. Message discarded." << std::endl;
         return;
     }
     

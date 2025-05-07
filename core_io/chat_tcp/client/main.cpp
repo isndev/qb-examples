@@ -50,7 +50,7 @@
 int main(int argc, char* argv[]) {
     // Validate command-line arguments
     if (argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <host> <port> <username>" << std::endl;
+        qb::io::cerr() << "Usage: " << argv[0] << " <host> <port> <username>" << std::endl;
         return 1;
     }
 
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
         );
 
         // Start the engine and wait for completion
-        std::cout << "Connecting to chat server at " << server_uri.source() << std::endl;
+        qb::io::cout() << "Connecting to chat server at " << server_uri.source() << std::endl;
         engine.start();
         engine.join();
 
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
 
     } catch (const std::exception& e) {
         // Handle initialization and runtime errors
-        std::cerr << "Error: " << e.what() << std::endl;
+        qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
 } 

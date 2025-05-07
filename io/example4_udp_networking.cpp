@@ -14,18 +14,18 @@
 
 // Helper function to print endpoint information
 void print_endpoint_info(const qb::io::endpoint& ep, const std::string& prefix) {
-    std::cout << prefix << ep.to_string() << " (family: ";
+    qb::io::cout() << prefix << ep.to_string() << " (family: ";
     switch (ep.af()) {
         case AF_INET:
-            std::cout << "IPv4";
+            qb::io::cout() << "IPv4";
             break;
         case AF_INET6:
-            std::cout << "IPv6";
+            qb::io::cout() << "IPv6";
             break;
         default:
-            std::cout << "Unknown";
+            qb::io::cout() << "Unknown";
     }
-    std::cout << ")" << std::endl;
+    qb::io::cout() << ")" << std::endl;
 }
 
 // Server function - receives UDP datagrams
@@ -34,14 +34,14 @@ void udp_server(uint16_t port) {
     
     // Initialize the socket
     if (!server_socket.init(AF_INET)) {
-        std::cerr << "Failed to initialize server socket" << std::endl;
+        qb::io::cerr() << "Failed to initialize server socket" << std::endl;
         return;
     }
     
     // Bind to any local address on the specified port
     int result = server_socket.bind_v4(port);
     if (result != 0) {
-        std::cerr << "Failed to bind server socket: " << result << std::endl;
+        qb::io::cerr() << "Failed to bind server socket: " << result << std::endl;
         return;
     }
     
@@ -51,7 +51,7 @@ void udp_server(uint16_t port) {
     // Set socket to non-blocking mode
     server_socket.set_nonblocking(true);
     
-    std::cout << "UDP server started. Waiting for messages..." << std::endl;
+    qb::io::cout() << "UDP server started. Waiting for messages..." << std::endl;
     
     char buffer[qb::io::udp::socket::MaxDatagramSize];
     qb::io::endpoint client_endpoint;
@@ -67,26 +67,26 @@ void udp_server(uint16_t port) {
             
             // Print information about the received datagram
             print_endpoint_info(client_endpoint, "Received from: ");
-            std::cout << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
+            qb::io::cout() << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
             
             // Send a response
             std::string response = "Hello from server!";
             int bytes_sent = server_socket.write(response.c_str(), response.size(), client_endpoint);
             
             if (bytes_sent > 0) {
-                std::cout << "Sent response: " << response << " (" << bytes_sent << " bytes)" << std::endl;
+                qb::io::cout() << "Sent response: " << response << " (" << bytes_sent << " bytes)" << std::endl;
             } else {
-                std::cerr << "Failed to send response: " << bytes_sent << std::endl;
+                qb::io::cerr() << "Failed to send response: " << bytes_sent << std::endl;
             }
         } else if (bytes_read < 0 && bytes_read != -EAGAIN && bytes_read != -EWOULDBLOCK) {
-            std::cerr << "Error receiving datagram: " << bytes_read << std::endl;
+            qb::io::cerr() << "Error receiving datagram: " << bytes_read << std::endl;
         }
         
         // Sleep briefly to avoid busy-waiting
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     
-    std::cout << "Server shutting down" << std::endl;
+    qb::io::cout() << "Server shutting down" << std::endl;
     server_socket.close();
 }
 
@@ -96,14 +96,14 @@ void udp_client(const std::string& server_host, uint16_t server_port) {
     
     // Initialize the socket
     if (!client_socket.init(AF_INET)) {
-        std::cerr << "Failed to initialize client socket" << std::endl;
+        qb::io::cerr() << "Failed to initialize client socket" << std::endl;
         return;
     }
     
     // Create an endpoint for the server
     qb::io::endpoint server_endpoint(server_host.c_str(), server_port);
     if (!server_endpoint) {
-        std::cerr << "Failed to create server endpoint" << std::endl;
+        qb::io::cerr() << "Failed to create server endpoint" << std::endl;
         return;
     }
     
@@ -117,9 +117,9 @@ void udp_client(const std::string& server_host, uint16_t server_port) {
     int bytes_sent = client_socket.write(message.c_str(), message.size(), server_endpoint);
     
     if (bytes_sent > 0) {
-        std::cout << "Sent: " << message << " (" << bytes_sent << " bytes)" << std::endl;
+        qb::io::cout() << "Sent: " << message << " (" << bytes_sent << " bytes)" << std::endl;
     } else {
-        std::cerr << "Failed to send message: " << bytes_sent << std::endl;
+        qb::io::cerr() << "Failed to send message: " << bytes_sent << std::endl;
         return;
     }
     
@@ -137,10 +137,10 @@ void udp_client(const std::string& server_host, uint16_t server_port) {
             
             // Print information about the received response
             print_endpoint_info(response_endpoint, "Response from: ");
-            std::cout << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
+            qb::io::cout() << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
             break;
         } else if (bytes_read < 0 && bytes_read != -EAGAIN && bytes_read != -EWOULDBLOCK) {
-            std::cerr << "Error receiving response: " << bytes_read << std::endl;
+            qb::io::cerr() << "Error receiving response: " << bytes_read << std::endl;
             break;
         }
         

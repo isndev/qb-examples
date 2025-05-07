@@ -25,7 +25,7 @@ ChatSession::ChatSession(ServerActor& server)
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
     this->setTimeout(120);  // 120 second timeout
-    std::cout << "New chat client connected" << std::endl;
+    qb::io::cout() << "New chat client connected" << std::endl;
 }
 
 /**
@@ -36,7 +36,7 @@ ChatSession::ChatSession(ServerActor& server)
  * - Ensures proper resource cleanup
  */
 ChatSession::~ChatSession() {
-    std::cout << "Chat client disconnected" << std::endl;
+    qb::io::cout() << "Chat client disconnected" << std::endl;
 }
 
 /**
@@ -66,7 +66,7 @@ void ChatSession::on(const chat::Message& msg) {
             this->server().handleChat(this->id(), msg.payload);
             break;
         default:
-            std::cerr << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
+            qb::io::cerr() << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
             break;
     }
     this->updateTimeout(); // Update timeout to prevent disconnection
@@ -86,7 +86,7 @@ void ChatSession::on(const chat::Message& msg) {
  */
 void ChatSession::on(qb::io::async::event::disconnected const &) {
     // Notify server when client disconnects
-    std::cout << "Chat client disconnected" << std::endl;
+    qb::io::cout() << "Chat client disconnected" << std::endl;
     this->server().handleDisconnect(this->id());
 }
 
@@ -104,6 +104,6 @@ void ChatSession::on(qb::io::async::event::disconnected const &) {
  */
 void ChatSession::on(qb::io::async::event::timer const &) {
     // Handle session timeout by disconnecting the client
-    std::cout << "Chat client timed out" << std::endl;
+    qb::io::cout() << "Chat client timed out" << std::endl;
     this->disconnect();
 } 

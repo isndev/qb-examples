@@ -49,17 +49,17 @@ AcceptActor::AcceptActor(qb::io::uri listen_at, qb::ActorIdList pool)
 bool AcceptActor::onInit() {
     // Validate server pool
     if (_server_pool.empty()) {
-        std::cerr << "Cannot init AcceptActor with empty server pool" << std::endl;
+        qb::io::cerr() << "Cannot init AcceptActor with empty server pool" << std::endl;
         return false;
     }
 
     // Set up TCP listener
     if (transport().listen(_listen_at)) {
-        std::cerr << "Cannot listen on " << _listen_at.source() << std::endl;
+        qb::io::cerr() << "Cannot listen on " << _listen_at.source() << std::endl;
         return false;
     }
 
-    std::cout << "AcceptActor listening on " << _listen_at.source() << std::endl;
+    qb::io::cout() << "AcceptActor listening on " << _listen_at.source() << std::endl;
     start();  // Start accepting connections
     return true;
 }
@@ -109,6 +109,6 @@ void AcceptActor::on(accepted_socket_type&& new_io) {
  */
 void AcceptActor::on(qb::io::async::event::disconnected const&) {
     // Handle listener socket disconnection by shutting down the system
-    std::cout << "AcceptActor disconnected" << std::endl;
+    qb::io::cout() << "AcceptActor disconnected" << std::endl;
     broadcast<qb::KillEvent>();  // Broadcast shutdown signal to all actors
 } 

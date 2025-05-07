@@ -61,18 +61,18 @@ int main(int argc, char* argv[]) {
         // - Display actor IDs for debugging
         // - Show listening ports
         // - Confirm initialization
-        std::cout << "Chat server started on ports 3001 and 3002" << std::endl;
-        std::cout << "ChatRoom ID: " << chatroom_id << std::endl;
-        std::cout << "Server1 ID: " << server_ids[0] << std::endl;
-        std::cout << "Server2 ID: " << server_ids[1] << std::endl;
+        qb::io::cout() << "Chat server started on ports 3001 and 3002" << std::endl;
+        qb::io::cout() << "ChatRoom ID: " << chatroom_id << std::endl;
+        qb::io::cout() << "Server1 ID: " << server_ids[0] << std::endl;
+        qb::io::cout() << "Server2 ID: " << server_ids[1] << std::endl;
 
         // Step 5: Start the engine
         // - Asynchronous start for interactive shutdown
         // - Wait for user input to stop
         // - Demonstrate proper shutdown sequence
         engine.start(true);  // asynchronous start
-        std::cout << "Engine is running" << std::endl;
-        std::cout << "Press Enter to stop the engine" << std::endl;
+        qb::io::cout() << "Engine is running" << std::endl;
+        qb::io::cout() << "Press Enter to stop the engine" << std::endl;
         std::cin.get();
         
         // Step 6: Clean shutdown
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
         engine.join();
     }
     catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
 

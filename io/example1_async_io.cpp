@@ -53,13 +53,13 @@ namespace {
     
     // Utility function to print a section header
     void printSectionHeader(const std::string& title) {
-        std::cout << "\n=== " << title << " ===\n";
+        qb::io::cout() << "\n=== " << title << " ===\n";
     }
     
     // Signal handler for graceful termination
     void signalHandler(int signal) {
         printSectionHeader("Signal Received");
-        std::cout << "Caught signal " << signal << " (" 
+        qb::io::cout() << "Caught signal " << signal << " ("
                   << (signal == SIGINT ? "SIGINT" : "SIGTERM") << ")" << std::endl;
         g_running = false;
     }
@@ -101,7 +101,7 @@ public:
           _filename(filename),
           _max_operations(max_ops) {
         printSectionHeader("File Processor Initialized");
-        std::cout << "Processor will handle " << _max_operations << " operations on file: " 
+        qb::io::cout() << "Processor will handle " << _max_operations << " operations on file: "
                   << _filename << std::endl;
     }
     
@@ -112,11 +112,11 @@ public:
      * It alternates between reading from and writing to the file.
      */
     void on(qb::io::async::event::timer const&) {
-        std::cout << "FileProcessor: Timer event received at " << getCurrentTimestamp() << std::endl;
+        qb::io::cout() << "FileProcessor: Timer event received at " << getCurrentTimestamp() << std::endl;
         
         // Check termination conditions
         if (_operation_count >= _max_operations || !g_running) {
-            std::cout << "FileProcessor: " 
+            qb::io::cout() << "FileProcessor: "
                       << (_operation_count >= _max_operations ? 
                          "Completed all operations" : "Termination requested")
                       << ", stopping" << std::endl;
@@ -144,7 +144,7 @@ public:
      */
     void writeToFile() {
         printSectionHeader("Writing to File");
-        std::cout << "FileProcessor: Writing to file: " << _filename << std::endl;
+        qb::io::cout() << "FileProcessor: Writing to file: " << _filename << std::endl;
         
         // Generate content with timestamp and operation number
         _content = "Operation #" + std::to_string(_operation_count) + 
@@ -160,14 +160,14 @@ public:
             file.close();
             
             if (bytes_written == static_cast<ssize_t>(_content.size())) {
-                std::cout << "FileProcessor: Successfully wrote " << bytes_written 
+                qb::io::cout() << "FileProcessor: Successfully wrote " << bytes_written
                           << " bytes to file" << std::endl;
             } else {
-                std::cerr << "FileProcessor: Partial write - only " << bytes_written 
+                qb::io::cerr() << "FileProcessor: Partial write - only " << bytes_written
                           << " of " << _content.size() << " bytes written" << std::endl;
             }
         } else {
-            std::cerr << "FileProcessor: Error opening file for writing: " 
+            qb::io::cerr() << "FileProcessor: Error opening file for writing: "
                       << strerror(errno) << std::endl;
         }
     }
@@ -180,7 +180,7 @@ public:
      */
     void readFromFile() {
         printSectionHeader("Reading from File");
-        std::cout << "FileProcessor: Reading from file: " << _filename << std::endl;
+        qb::io::cout() << "FileProcessor: Reading from file: " << _filename << std::endl;
         
         qb::io::sys::file file;
         if (file.open(_filename, O_RDONLY) >= 0) {
@@ -194,18 +194,18 @@ public:
             if (bytes_read > 0) {
                 // Ensure null termination
                 buffer[bytes_read] = '\0';
-                std::cout << "FileProcessor: Successfully read " << bytes_read << " bytes" << std::endl;
-                std::cout << "File content:\n" << std::string(40, '-') << std::endl;
-                std::cout << buffer << std::endl;
-                std::cout << std::string(40, '-') << std::endl;
+                qb::io::cout() << "FileProcessor: Successfully read " << bytes_read << " bytes" << std::endl;
+                qb::io::cout() << "File content:\n" << std::string(40, '-') << std::endl;
+                qb::io::cout() << buffer << std::endl;
+                qb::io::cout() << std::string(40, '-') << std::endl;
             } else if (bytes_read == 0) {
-                std::cout << "FileProcessor: File is empty" << std::endl;
+                qb::io::cout() << "FileProcessor: File is empty" << std::endl;
             } else {
-                std::cerr << "FileProcessor: Error reading file: " 
+                qb::io::cerr() << "FileProcessor: Error reading file: "
                           << strerror(errno) << std::endl;
             }
         } else {
-            std::cerr << "FileProcessor: Error opening file for reading: " 
+            qb::io::cerr() << "FileProcessor: Error opening file for reading: "
                       << strerror(errno) << std::endl;
         }
     }
@@ -228,7 +228,7 @@ public:
         : with_timeout(0.5), // 500ms timeout
           _max_ticks(max_ticks) {
         printSectionHeader("Timer Demonstration Initialized");
-        std::cout << "Timer will tick " << _max_ticks << " times every 500ms" << std::endl;
+        qb::io::cout() << "Timer will tick " << _max_ticks << " times every 500ms" << std::endl;
     }
     
     /**
@@ -239,7 +239,7 @@ public:
      */
     void on(qb::io::async::event::timer const&) {
         _count++;
-        std::cout << "TimerDemonstration: Tick #" << _count 
+        qb::io::cout() << "TimerDemonstration: Tick #" << _count
                   << " at " << getCurrentTimestamp() << std::endl;
         
         // Check termination conditions
@@ -247,7 +247,7 @@ public:
             // Continue with the next tick
             updateTimeout();
         } else {
-            std::cout << "TimerDemonstration: " 
+            qb::io::cout() << "TimerDemonstration: "
                       << (_count >= _max_ticks ? 
                          "Completed all ticks" : "Termination requested")
                       << ", stopping" << std::endl;
@@ -284,7 +284,7 @@ public:
         // Start watching
         _watcher->start();
         
-        std::cout << "FileWatcher: Started watching file: " << _filename << std::endl;
+        qb::io::cout() << "FileWatcher: Started watching file: " << _filename << std::endl;
     }
     
     ~FileWatcher() {
@@ -306,21 +306,21 @@ public:
      * @param revents Event flags describing what changed
      */
     void onFileChange(ev::stat& watcher, int revents) {
-        std::cout << "\nFileWatcher: Detected change in file: " << _filename 
+        qb::io::cout() << "\nFileWatcher: Detected change in file: " << _filename
                   << " at " << getCurrentTimestamp() << std::endl;
         
         // Check what changed
         if (revents & ev::STAT) {
             // File size changed
             if (watcher.attr.st_size != watcher.prev.st_size) {
-                std::cout << "FileWatcher: File size changed from " 
+                qb::io::cout() << "FileWatcher: File size changed from "
                           << watcher.prev.st_size << " to " 
                           << watcher.attr.st_size << " bytes" << std::endl;
             }
             
             // Modification time changed
             if (watcher.attr.st_mtime != watcher.prev.st_mtime) {
-                std::cout << "FileWatcher: File modification time changed" << std::endl;
+                qb::io::cout() << "FileWatcher: File modification time changed" << std::endl;
             }
         }
     }
@@ -328,7 +328,7 @@ public:
 
 int main() {
     printSectionHeader("QB-IO Asynchronous I/O Example");
-    std::cout << "This example demonstrates asynchronous file operations, timers, and file watching" << std::endl;
+    qb::io::cout() << "This example demonstrates asynchronous file operations, timers, and file watching" << std::endl;
     
     // Setup signal handling for graceful termination
     std::signal(SIGINT, signalHandler);
@@ -346,8 +346,8 @@ int main() {
     FileWatcher watcher(filename);
     
     printSectionHeader("Starting Event Loop");
-    std::cout << "Running event loop for approximately 6 seconds..." << std::endl;
-    std::cout << "Press Ctrl+C to terminate the example early" << std::endl;
+    qb::io::cout() << "Running event loop for approximately 6 seconds..." << std::endl;
+    qb::io::cout() << "Press Ctrl+C to terminate the example early" << std::endl;
     
     // Run the event loop until completion or termination request
     int iterations = 0;
@@ -360,17 +360,17 @@ int main() {
     }
     
     printSectionHeader("Event Loop Completed");
-    std::cout << "Event loop ran for " << (iterations * 200) / 1000.0 << " seconds" << std::endl;
+    qb::io::cout() << "Event loop ran for " << (iterations * 200) / 1000.0 << " seconds" << std::endl;
     
     // Clean up the test file
     if (std::remove(filename.c_str()) == 0) {
-        std::cout << "Test file '" << filename << "' was removed successfully" << std::endl;
+        qb::io::cout() << "Test file '" << filename << "' was removed successfully" << std::endl;
     } else {
-        std::cerr << "Error removing test file: " << strerror(errno) << std::endl;
+        qb::io::cerr() << "Error removing test file: " << strerror(errno) << std::endl;
     }
     
     printSectionHeader("Example Completed");
-    std::cout << "Demonstrated qb::io async file operations, timers, and file watching" << std::endl;
+    qb::io::cout() << "Demonstrated qb::io async file operations, timers, and file watching" << std::endl;
     
     return 0;
 } 

@@ -27,7 +27,7 @@ bool TopicManagerActor::onInit() {
     registerEvent<UnsubscribeEvent>(*this);
     registerEvent<PublishEvent>(*this);
     registerEvent<DisconnectEvent>(*this);
-    std::cout << "TopicManagerActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "TopicManagerActor initialized with ID: " << id() << std::endl;
     return true;
 }
 
@@ -64,7 +64,7 @@ void TopicManagerActor::on(SubscribeEvent& evt) {
     _session_topics[session_id].insert(topic_str);
 
     // Send confirmation
-    std::cout << "Client " << session_id << " subscribed to topic: " << topic_str << std::endl;
+    qb::io::cout() << "Client " << session_id << " subscribed to topic: " << topic_str << std::endl;
     sendResponse(session_id, server_id, "Subscribed to topic: " + topic_str);
 }
 
@@ -115,7 +115,7 @@ void TopicManagerActor::on(UnsubscribeEvent& evt) {
     }
 
     // Send confirmation
-    std::cout << "Client " << session_id << " unsubscribed from topic: " << topic_str << std::endl;
+    qb::io::cout() << "Client " << session_id << " unsubscribed from topic: " << topic_str << std::endl;
     sendResponse(session_id, server_id, "Unsubscribed from topic: " + topic_str);
 }
 
@@ -158,7 +158,7 @@ void TopicManagerActor::on(PublishEvent& evt) {
     broker::MessageContainer shared_message(broker::MessageType::MESSAGE, formatted_message);
     
     // Broadcast to all subscribers
-    std::cout << "Broadcasting message to topic " << topic_str << " with " 
+    qb::io::cout() << "Broadcasting message to topic " << topic_str << " with "
               << topic_it->second.size() << " subscribers" << std::endl;
     
     for (const auto& subscriber_id : topic_it->second) {
@@ -212,7 +212,7 @@ void TopicManagerActor::on(DisconnectEvent& evt) {
     // Remove session info
     _sessions.erase(session_it);
     
-    std::cout << "Client " << session_id << " disconnected and removed from all topics" << std::endl;
+    qb::io::cout() << "Client " << session_id << " disconnected and removed from all topics" << std::endl;
 }
 
 /**

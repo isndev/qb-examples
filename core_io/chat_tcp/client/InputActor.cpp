@@ -17,8 +17,8 @@ bool InputActor::onInit() {
     registerCallback(*this);
     
     // Display initialization and usage information
-    std::cout << "InputActor initialized with ID: " << id() << std::endl;
-    std::cout << "Enter messages (or 'quit' to exit):" << std::endl;
+    qb::io::cout() << "InputActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "Enter messages (or 'quit' to exit):" << std::endl;
     
     return true;
 }

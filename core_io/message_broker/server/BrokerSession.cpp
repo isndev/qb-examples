@@ -25,7 +25,7 @@ BrokerSession::BrokerSession(ServerActor& server)
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
     this->setTimeout(600);  // 120 second timeout
-    std::cout << "New broker client connected" << std::endl;
+    qb::io::cout() << "New broker client connected" << std::endl;
 }
 
 /**
@@ -36,7 +36,7 @@ BrokerSession::BrokerSession(ServerActor& server)
  * - Ensures proper resource cleanup
  */
 BrokerSession::~BrokerSession() {
-    std::cout << "Broker client disconnected" << std::endl;
+    qb::io::cout() << "Broker client disconnected" << std::endl;
 }
 
 /**
@@ -101,7 +101,7 @@ void BrokerSession::on(broker::Message msg) {
             break;
         }
         default:
-            std::cerr << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
+            qb::io::cerr() << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
             break;
     }
     this->updateTimeout(); // Update timeout to prevent disconnection
@@ -121,7 +121,7 @@ void BrokerSession::on(broker::Message msg) {
  */
 void BrokerSession::on(qb::io::async::event::disconnected const &) {
     // Notify server when client disconnects
-    std::cout << "Broker client disconnected" << std::endl;
+    qb::io::cout() << "Broker client disconnected" << std::endl;
     this->server().handleDisconnect(this->id());
 }
 
@@ -139,6 +139,6 @@ void BrokerSession::on(qb::io::async::event::disconnected const &) {
  */
 void BrokerSession::on(qb::io::async::event::timer const &) {
     // Handle session timeout by disconnecting the client
-    std::cout << "Broker client timed out" << std::endl;
+    qb::io::cout() << "Broker client timed out" << std::endl;
     this->disconnect();
 } 

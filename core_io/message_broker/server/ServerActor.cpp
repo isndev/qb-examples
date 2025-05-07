@@ -37,7 +37,7 @@ ServerActor::ServerActor(qb::ActorId topic_manager_id)
 bool ServerActor::onInit() {
     registerEvent<NewSessionEvent>(*this);
     registerEvent<SendMessageEvent>(*this);
-    std::cout << "ServerActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "ServerActor initialized with ID: " << id() << std::endl;
     return true;
 }
 
@@ -56,7 +56,7 @@ bool ServerActor::onInit() {
 void ServerActor::on(NewSessionEvent& evt) {
     // Create and register a new broker session for the incoming connection
     auto& session = registerSession(std::move(evt.socket));
-    std::cout << "New broker session registered: " << session.id() << std::endl;
+    qb::io::cout() << "New broker session registered: " << session.id() << std::endl;
 }
 
 /**
@@ -76,7 +76,7 @@ void ServerActor::handleSubscribe(qb::uuid session_id, broker::Message&& msg) {
     // The SubscribeEvent constructor handles the message ownership and string_view creation
     auto& evt = push<SubscribeEvent>(_topic_manager_id, session_id, std::move(msg));
     
-    std::cout << "Forwarding subscription request for topic: " << evt.topic 
+    qb::io::cout() << "Forwarding subscription request for topic: " << evt.topic
               << " from session: " << session_id << std::endl;
 }
 
@@ -97,7 +97,7 @@ void ServerActor::handleUnsubscribe(qb::uuid session_id, broker::Message&& msg) 
     // The UnsubscribeEvent constructor handles the message ownership and string_view creation
     auto& evt = push<UnsubscribeEvent>(_topic_manager_id, session_id, std::move(msg));
     
-    std::cout << "Forwarding unsubscription request for topic: " << evt.topic 
+    qb::io::cout() << "Forwarding unsubscription request for topic: " << evt.topic
               << " from session: " << session_id << std::endl;
 }
 
@@ -119,7 +119,7 @@ void ServerActor::handlePublish(qb::uuid session_id, broker::MessageContainer&& 
     // Using the PublishEvent constructor that takes a MessageContainer
     auto& evt = push<PublishEvent>(_topic_manager_id, session_id, std::move(container), topic, content);
     
-    std::cout << "Forwarding publish request to topic: " << evt.topic 
+    qb::io::cout() << "Forwarding publish request to topic: " << evt.topic
               << " from session: " << session_id << std::endl;
 }
 
@@ -140,7 +140,7 @@ void ServerActor::handleDisconnect(qb::uuid session_id) {
     auto& evt = push<DisconnectEvent>(_topic_manager_id);
     evt.session_id = session_id;
     
-    std::cout << "Notifying topic manager about disconnected session: " << session_id << std::endl;
+    qb::io::cout() << "Notifying topic manager about disconnected session: " << session_id << std::endl;
 }
 
 /**

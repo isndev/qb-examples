@@ -26,7 +26,7 @@ bool ChatRoomActor::onInit() {
     registerEvent<AuthEvent>(*this);
     registerEvent<ChatEvent>(*this);
     registerEvent<DisconnectEvent>(*this);
-    std::cout << "ChatRoomActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "ChatRoomActor initialized with ID: " << id() << std::endl;
     return true;
 }
 

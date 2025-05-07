@@ -64,7 +64,7 @@ public:
      * @brief Initialize the actor
      */
     bool onInit() override {
-        std::cout << "ClientActor initialized on core " << id().index() << std::endl;
+        qb::io::cout() << "ClientActor initialized on core " << id().index() << std::endl;
         
         // Ensure the test directory exists
         if (!fs::exists(_test_directory)) {
@@ -83,7 +83,7 @@ public:
      * @brief Handle file events
      */
     void on(file_monitor::FileEvent& event) {
-        std::cout << "Client received " << file_monitor::eventTypeToString(event.type) 
+        qb::io::cout() << "Client received " << file_monitor::eventTypeToString(event.type)
                  << " event for: " << event.path << std::endl;
     }
     
@@ -92,12 +92,12 @@ public:
      */
     void on(file_monitor::WatchDirectoryResponse& response) {
         if (response.success) {
-            std::cout << "Successfully set up watch for: " << response.path << std::endl;
+            qb::io::cout() << "Successfully set up watch for: " << response.path << std::endl;
             
             // Start file tests
             startFileTests();
         } else {
-            std::cerr << "Failed to set up watch: " << response.error_message << std::endl;
+            qb::io::cerr() << "Failed to set up watch: " << response.error_message << std::endl;
         }
     }
     
@@ -105,7 +105,7 @@ public:
      * @brief Handle kill event
      */
     void on(qb::KillEvent&) {
-        std::cout << "ClientActor shutting down" << std::endl;
+        qb::io::cout() << "ClientActor shutting down" << std::endl;
         
         // Stop running
         _is_running = false;
@@ -121,7 +121,7 @@ private:
      * @brief Start monitoring directories
      */
     void startMonitoring() {
-        std::cout << "Starting to monitor directory: " << _test_directory << std::endl;
+        qb::io::cout() << "Starting to monitor directory: " << _test_directory << std::endl;
         
         // Request to watch the directory
         push<file_monitor::WatchDirectoryRequest>(_watcher_id, _test_directory, true, id());
@@ -133,7 +133,7 @@ private:
     void startFileTests() {
         _is_running = true;
         
-        std::cout << "Starting file test operations for " << _test_duration_seconds << " seconds" << std::endl;
+        qb::io::cout() << "Starting file test operations for " << _test_duration_seconds << " seconds" << std::endl;
         
         // Create initial test files
         for (int i = 1; i <= 5; ++i) {
@@ -146,7 +146,7 @@ private:
         // Schedule end of test
         qb::io::async::callback([this]() {
             if (_is_running) {
-                std::cout << "Test duration completed, shutting down..." << std::endl;
+                qb::io::cout() << "Test duration completed, shutting down..." << std::endl;
                 broadcast<qb::KillEvent>();
             }
         }, _test_duration_seconds);
@@ -171,10 +171,10 @@ private:
                     file.write(content.c_str(), content.size());
                     file.close();
                     
-                    std::cout << "Created test file: " << filename << std::endl;
+                    qb::io::cout() << "Created test file: " << filename << std::endl;
                 }
             } catch (const std::exception& e) {
-                std::cerr << "Error creating test file: " << e.what() << std::endl;
+                qb::io::cerr() << "Error creating test file: " << e.what() << std::endl;
             }
         });
     }
@@ -198,11 +198,11 @@ private:
                         file.write(content.c_str(), content.size());
                         file.close();
                         
-                        std::cout << "Modified test file: " << filename << std::endl;
+                        qb::io::cout() << "Modified test file: " << filename << std::endl;
                     }
                 }
             } catch (const std::exception& e) {
-                std::cerr << "Error modifying test file: " << e.what() << std::endl;
+                qb::io::cerr() << "Error modifying test file: " << e.what() << std::endl;
             }
         });
     }
@@ -218,10 +218,10 @@ private:
             try {
                 if (fs::exists(filename)) {
                     fs::remove(filename);
-                    std::cout << "Deleted test file: " << filename << std::endl;
+                    qb::io::cout() << "Deleted test file: " << filename << std::endl;
                 }
             } catch (const std::exception& e) {
-                std::cerr << "Error deleting test file: " << e.what() << std::endl;
+                qb::io::cerr() << "Error deleting test file: " << e.what() << std::endl;
             }
         });
     }
@@ -277,7 +277,7 @@ private:
 // ═══════════════════════════════════════════════════════════════════
 
 int main(int argc, char** argv) {
-    std::cout << "=== QB Core/IO Example: File Monitoring System ===\n" << std::endl;
+    qb::io::cout() << "=== QB Core/IO Example: File Monitoring System ===\n" << std::endl;
     
     // Define the test directory
     std::string test_dir = "./monitor_test_files";
@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
         try {
             duration = std::stoi(argv[2]);
         } catch (...) {
-            std::cerr << "Invalid duration parameter, using default" << std::endl;
+            qb::io::cerr() << "Invalid duration parameter, using default" << std::endl;
         }
     }
     
@@ -317,10 +317,10 @@ int main(int argc, char** argv) {
         // Wait for all actors to terminate
         engine.join();
         
-        std::cout << "System shut down correctly" << std::endl;
+        qb::io::cout() << "System shut down correctly" << std::endl;
         
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
     

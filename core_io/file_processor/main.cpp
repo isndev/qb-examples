@@ -46,7 +46,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "ClientActor initialized with ID " << id() << " on core " << id().index() << std::endl;
+        qb::io::cout() << "ClientActor initialized with ID " << id() << " on core " << id().index() << std::endl;
         
         // Ensure the test directory exists
         if (!fs::exists(_test_directory)) {
@@ -62,25 +62,25 @@ public:
     }
     
     void on(ReadFileResponse& response) {
-        std::cout << "ClientActor received a read response for "
+        qb::io::cout() << "ClientActor received a read response for "
                   << response.filepath.c_str() << " (ID: " << response.request_id << ")" << std::endl;
         
         if (response.success) {
-            std::cout << "File content (" << response.data->size() << " bytes): ";
+            qb::io::cout() << "File content (" << response.data->size() << " bytes): ";
             
             // Display the first few characters of the file
             const size_t max_display = 50;  // Limit display
             size_t display_size = std::min(response.data->size(), max_display);
             
             std::string content(response.data->begin(), response.data->begin() + display_size);
-            std::cout << content;
+            qb::io::cout() << content;
             
             if (response.data->size() > max_display) {
-                std::cout << "... [plus " << (response.data->size() - max_display) << " bytes]";
+                qb::io::cout() << "... [plus " << (response.data->size() - max_display) << " bytes]";
             }
-            std::cout << std::endl;
+            qb::io::cout() << std::endl;
         } else {
-            std::cout << "Error: " << response.error_msg.c_str() << std::endl;
+            qb::io::cout() << "Error: " << response.error_msg.c_str() << std::endl;
         }
         
         _pending_requests--;
@@ -88,16 +88,16 @@ public:
     }
     
     void on(WriteFileResponse& response) {
-        std::cout << "ClientActor received a write response for "
+        qb::io::cout() << "ClientActor received a write response for "
                   << response.filepath.c_str() << " (ID: " << response.request_id << ")" << std::endl;
         
         if (response.success) {
-            std::cout << "Write successful: " << response.bytes_written << " bytes written" << std::endl;
+            qb::io::cout() << "Write successful: " << response.bytes_written << " bytes written" << std::endl;
             
             // Request to read the file that was just written
             requestReadFile(response.filepath.c_str());
         } else {
-            std::cout << "Write error: " << response.error_msg.c_str() << std::endl;
+            qb::io::cout() << "Write error: " << response.error_msg.c_str() << std::endl;
         }
         
         _pending_requests--;
@@ -105,13 +105,13 @@ public:
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "ClientActor shutting down" << std::endl;
+        qb::io::cout() << "ClientActor shutting down" << std::endl;
         kill();
     }
     
 private:
     void startTests() {
-        std::cout << "\n=== Starting file operation tests ===\n" << std::endl;
+        qb::io::cout() << "\n=== Starting file operation tests ===\n" << std::endl;
         
         // Create some test files
         for (int i = 1; i <= 5; ++i) {
@@ -130,7 +130,7 @@ private:
     }
     
     void requestWriteFile(const std::string& filepath, const std::string& content) {
-        std::cout << "ClientActor requesting file write: " << filepath << std::endl;
+        qb::io::cout() << "ClientActor requesting file write: " << filepath << std::endl;
         
         // Create a vector with the content
         auto data = std::make_shared<std::vector<char>>(content.begin(), content.end());
@@ -143,7 +143,7 @@ private:
     }
     
     void requestReadFile(const std::string& filepath) {
-        std::cout << "ClientActor requesting file read: " << filepath << std::endl;
+        qb::io::cout() << "ClientActor requesting file read: " << filepath << std::endl;
         
         // Send the request to the manager
         uint32_t request_id = _next_request_id++;
@@ -155,7 +155,7 @@ private:
     void checkCompletion() {
         // If all requests have been processed, wait a bit then stop
         if (_pending_requests == 0) {
-            std::cout << "\n=== All tests completed ===\n" << std::endl;
+            qb::io::cout() << "\n=== All tests completed ===\n" << std::endl;
             
             // Wait a bit then stop the system - use built-in KillEvent
             qb::io::async::callback([this]() {
@@ -167,7 +167,7 @@ private:
 };
 
 int main(int argc, char** argv) {
-    std::cout << "=== QB Core/IO Example: Distributed File Processing ===\n" << std::endl;
+    qb::io::cout() << "=== QB Core/IO Example: Distributed File Processing ===\n" << std::endl;
     
     // Define the test file directory
     std::string test_dir = "./test_files";
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
             auto worker_id = engine.addActor<FileWorker>(core_id, manager_id);
             worker_ids.push_back(worker_id);
             
-            std::cout << "Worker " << i+1 << " created on core " << core_id << std::endl;
+            qb::io::cout() << "Worker " << i+1 << " created on core " << core_id << std::endl;
         }
         
         // Create the client on core 0
@@ -201,10 +201,10 @@ int main(int argc, char** argv) {
         
         // Wait for all actors to terminate - qb::Main automatically handles signals
         engine.join();
-        std::cout << "System shut down correctly" << std::endl;
+        qb::io::cout() << "System shut down correctly" << std::endl;
         
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
     

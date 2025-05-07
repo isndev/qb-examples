@@ -63,43 +63,43 @@ public:
     }
     
     bool onInit() override {
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Initialized on core " << getIndex() << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Initialized on core " << getIndex() << std::endl;
         return true;
     }
     
     // Handlers for different event types
     void on(StandardEvent& event) {
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Processing StandardEvent with value " << event.value << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Processing StandardEvent with value " << event.value << std::endl;
         // Simulate work for standard priority
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         _processed_standard++;
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Completed StandardEvent, total: " << _processed_standard << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Completed StandardEvent, total: " << _processed_standard << std::endl;
         
         checkCompletion();
     }
     
     void on(HighPriorityEvent& event) {
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Processing HighPriorityEvent with value " << event.value << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Processing HighPriorityEvent with value " << event.value << std::endl;
         // High priority tasks are processed faster
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         _processed_high++;
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Completed HighPriorityEvent, total: " << _processed_high << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Completed HighPriorityEvent, total: " << _processed_high << std::endl;
         
         checkCompletion();
     }
     
     void on(LowPriorityEvent& event) {
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Processing LowPriorityEvent with value " << event.value << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Processing LowPriorityEvent with value " << event.value << std::endl;
         // Low priority tasks take longer
         std::this_thread::sleep_for(std::chrono::milliseconds(80));
         _processed_low++;
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Completed LowPriorityEvent, total: " << _processed_low << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Completed LowPriorityEvent, total: " << _processed_low << std::endl;
         
         checkCompletion();
     }
     
     void on(SystemNotificationEvent& event) {
-        std::cout << _timestamp() << "WorkerActor " << id() << ": Received notification: " << event.message << std::endl;
+        qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Received notification: " << event.message << std::endl;
         _notifications_received++;
     }
     
@@ -107,8 +107,8 @@ private:
     void checkCompletion() {
         // Check if we've processed enough events of each type
         if (_processed_standard + _processed_high + _processed_low >= _max_events * 3) {
-            std::cout << _timestamp() << "WorkerActor " << id() << ": Processed enough events, terminating" << std::endl;
-            std::cout << _timestamp() << "WorkerActor " << id() << ": Standard: " << _processed_standard 
+            qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Processed enough events, terminating" << std::endl;
+            qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Standard: " << _processed_standard
                       << ", High: " << _processed_high 
                       << ", Low: " << _processed_low 
                       << ", Notifications: " << _notifications_received << std::endl;
@@ -130,7 +130,7 @@ public:
         : _workers(workers), _num_workers(workers.size()) {}
     
     bool onInit() override {
-        std::cout << "DispatcherActor " << id() << ": Initialized on core " << getIndex() 
+        qb::io::cout() << "DispatcherActor " << id() << ": Initialized on core " << getIndex()
                   << ", will dispatch to " << _num_workers << " workers" << std::endl;
         
         // Register a callback to start dispatching
@@ -148,15 +148,15 @@ public:
             // Send different event types based on the current count
             switch (event_type) {
                 case 0:
-                    std::cout << "DispatcherActor: Sending StandardEvent to worker " << _workers[worker_index] << std::endl;
+                    qb::io::cout() << "DispatcherActor: Sending StandardEvent to worker " << _workers[worker_index] << std::endl;
                     push<StandardEvent>(_workers[worker_index], value);
                     break;
                 case 1:
-                    std::cout << "DispatcherActor: Sending HighPriorityEvent to worker " << _workers[worker_index] << std::endl;
+                    qb::io::cout() << "DispatcherActor: Sending HighPriorityEvent to worker " << _workers[worker_index] << std::endl;
                     push<HighPriorityEvent>(_workers[worker_index], value);
                     break;
                 case 2:
-                    std::cout << "DispatcherActor: Sending LowPriorityEvent to worker " << _workers[worker_index] << std::endl;
+                    qb::io::cout() << "DispatcherActor: Sending LowPriorityEvent to worker " << _workers[worker_index] << std::endl;
                     push<LowPriorityEvent>(_workers[worker_index], value);
                     break;
             }
@@ -166,14 +166,14 @@ public:
             // Every 10 events, send a broadcast notification
             if (_dispatched_events % 10 == 0) {
                 std::string msg = "Progress update: " + std::to_string(_dispatched_events) + " events dispatched";
-                std::cout << "DispatcherActor: Broadcasting system notification" << std::endl;
+                qb::io::cout() << "DispatcherActor: Broadcasting system notification" << std::endl;
                 push<SystemNotificationEvent>(qb::BroadcastId(0), msg);
             }
             
             // Schedule the next dispatch with a small delay
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         } else {
-            std::cout << "DispatcherActor: All events dispatched, terminating" << std::endl;
+            qb::io::cout() << "DispatcherActor: All events dispatched, terminating" << std::endl;
             // Send final notification
             std::string msg = "All work completed, processed " + std::to_string(_dispatched_events) + " events";
             push<SystemNotificationEvent>(qb::BroadcastId(0), msg);
@@ -188,7 +188,7 @@ int main() {
     // Use at least 2 cores, but no more than what's available
     const unsigned int cores_to_use = std::max(2u, std::min(4u, num_cores));
     
-    std::cout << "Main: Using " << cores_to_use << " cores" << std::endl;
+    qb::io::cout() << "Main: Using " << cores_to_use << " cores" << std::endl;
     
     // Create the main engine
     qb::Main engine;
@@ -202,12 +202,12 @@ int main() {
     // Create dispatcher actor on core 0
     engine.addActor<DispatcherActor>(0, workers);
     
-    std::cout << "Main: Starting QB engine" << std::endl;
+    qb::io::cout() << "Main: Starting QB engine" << std::endl;
     engine.start();
     
-    std::cout << "Main: Waiting for actors to complete" << std::endl;
+    qb::io::cout() << "Main: Waiting for actors to complete" << std::endl;
     engine.join();
     
-    std::cout << "Main: All actors have terminated, exiting" << std::endl;
+    qb::io::cout() << "Main: All actors have terminated, exiting" << std::endl;
     return 0;
 } 

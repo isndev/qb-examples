@@ -290,30 +290,30 @@ public:
 
 // Helper function to display file information
 void printFileInfo(const MemoryFS::FileInfo& info) {
-    std::cout << "File: " << info.path() << std::endl;
-    std::cout << "  Size: " << info.size() << " bytes" << std::endl;
-    std::cout << "  Type: " << (info.is_directory() ? "Directory" : "File") << std::endl;
-    std::cout << "  Created: " << info.ctime() << std::endl;
-    std::cout << "  Modified: " << info.mtime() << std::endl;
+    qb::io::cout() << "File: " << info.path() << std::endl;
+    qb::io::cout() << "  Size: " << info.size() << " bytes" << std::endl;
+    qb::io::cout() << "  Type: " << (info.is_directory() ? "Directory" : "File") << std::endl;
+    qb::io::cout() << "  Created: " << info.ctime() << std::endl;
+    qb::io::cout() << "  Modified: " << info.mtime() << std::endl;
 }
 
 // Helper function to print the contents of a directory
 void printDirectoryContents(MemoryFS& filesystem, const std::string& path) {
-    std::cout << "\nDirectory contents for: " << path << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    qb::io::cout() << "\nDirectory contents for: " << path << std::endl;
+    qb::io::cout() << "----------------------------------------" << std::endl;
     
     auto entries = filesystem.list(path);
     for (const auto& entry : entries) {
         std::string entry_type = entry.is_directory() ? "[DIR]" : "[FILE]";
-        std::cout << entry_type << " " << entry.path() << " (" << entry.size() << " bytes)" << std::endl;
+        qb::io::cout() << entry_type << " " << entry.path() << " (" << entry.size() << " bytes)" << std::endl;
     }
     
-    std::cout << "----------------------------------------" << std::endl;
+    qb::io::cout() << "----------------------------------------" << std::endl;
 }
 
 int main() {
-    std::cout << "Memory Filesystem Example" << std::endl;
-    std::cout << "=============================" << std::endl;
+    qb::io::cout() << "Memory Filesystem Example" << std::endl;
+    qb::io::cout() << "=============================" << std::endl;
     
     // Create filesystem instance
     MemoryFS filesystem;
@@ -324,7 +324,7 @@ int main() {
     filesystem.mkdir("/data");
     filesystem.mkdir("/data/config");
     
-    std::cout << "Created directory structure" << std::endl;
+    qb::io::cout() << "Created directory structure" << std::endl;
     
     // Create and write some files
     const std::string readme_content = 
@@ -352,7 +352,7 @@ int main() {
     // Write binary file
     filesystem.write("/images/sample.bin", binary_data.data(), binary_data.size());
     
-    std::cout << "Created files in the filesystem" << std::endl;
+    qb::io::cout() << "Created files in the filesystem" << std::endl;
     
     // Display the root directory contents
     printDirectoryContents(filesystem, "/");
@@ -361,8 +361,8 @@ int main() {
     printDirectoryContents(filesystem, "/data/config");
     
     // Read and display file contents
-    std::cout << "\nReading file: /docs/README.md" << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    qb::io::cout() << "\nReading file: /docs/README.md" << std::endl;
+    qb::io::cout() << "----------------------------------------" << std::endl;
     
     // Get file size and create buffer
     auto readme_info = filesystem.stat("/docs/README.md");
@@ -371,38 +371,38 @@ int main() {
     // Read file into buffer
     size_t bytes_read = filesystem.read("/docs/README.md", readme_buffer.data(), readme_info.size());
     
-    std::cout << "Read " << bytes_read << " bytes:" << std::endl;
-    std::cout << readme_buffer.data() << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    qb::io::cout() << "Read " << bytes_read << " bytes:" << std::endl;
+    qb::io::cout() << readme_buffer.data() << std::endl;
+    qb::io::cout() << "----------------------------------------" << std::endl;
     
     // Get and display file information
-    std::cout << "\nFile information:" << std::endl;
+    qb::io::cout() << "\nFile information:" << std::endl;
     printFileInfo(filesystem.stat("/docs/README.md"));
     printFileInfo(filesystem.stat("/data/config"));
     printFileInfo(filesystem.stat("/images/sample.bin"));
     
     // Demonstrate file operations
-    std::cout << "\nFile operations:" << std::endl;
+    qb::io::cout() << "\nFile operations:" << std::endl;
     
     // Copy a file
     filesystem.copy("/docs/README.md", "/docs/README.copy.md");
-    std::cout << "Copied /docs/README.md to /docs/README.copy.md" << std::endl;
+    qb::io::cout() << "Copied /docs/README.md to /docs/README.copy.md" << std::endl;
     
     // Move/rename a file
     filesystem.move("/docs/README.copy.md", "/data/README.md");
-    std::cout << "Moved /docs/README.copy.md to /data/README.md" << std::endl;
+    qb::io::cout() << "Moved /docs/README.copy.md to /data/README.md" << std::endl;
     
     // Remove a file
     filesystem.remove("/data/README.md");
-    std::cout << "Removed /data/README.md" << std::endl;
+    qb::io::cout() << "Removed /data/README.md" << std::endl;
     
     // Display final directory structure
-    std::cout << "\nFinal directory structure:" << std::endl;
+    qb::io::cout() << "\nFinal directory structure:" << std::endl;
     printDirectoryContents(filesystem, "/");
     printDirectoryContents(filesystem, "/docs");
     printDirectoryContents(filesystem, "/data");
     
-    std::cout << "\nMemory filesystem example completed" << std::endl;
+    qb::io::cout() << "\nMemory filesystem example completed" << std::endl;
     
     return 0;
 } 

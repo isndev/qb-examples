@@ -47,7 +47,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "ReceiverActor " << id() << ": Initialized and waiting for messages\n";
+        qb::io::cout() << "ReceiverActor " << id() << ": Initialized and waiting for messages\n";
         return true;
     }
     
@@ -55,9 +55,9 @@ public:
     void on(MessageEvent& event) {
         _pending_count++;
         
-        std::cout << "ReceiverActor " << id() << ": Received message #" << event.sequence_number 
+        qb::io::cout() << "ReceiverActor " << id() << ": Received message #" << event.sequence_number
                   << " with content: \"" << event.content << "\"\n";
-        std::cout << "ReceiverActor " << id() << ": Processing message...\n";
+        qb::io::cout() << "ReceiverActor " << id() << ": Processing message...\n";
         
         // Simulate some processing time
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -71,14 +71,14 @@ public:
         
         // If we've processed enough messages and no pending messages, terminate the actor
         if (_processed_count >= _max_messages && _pending_count == 0) {
-            std::cout << "ReceiverActor " << id() << ": Processed " << _processed_count 
+            qb::io::cout() << "ReceiverActor " << id() << ": Processed " << _processed_count
                       << " messages, terminating\n";
             kill();
         }
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "ReceiverActor " << id() << ": Received kill event\n";
+        qb::io::cout() << "ReceiverActor " << id() << ": Received kill event\n";
         kill();
     }
 };
@@ -101,7 +101,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "SenderActor " << _name << " " << id() << ": Initialized\n";
+        qb::io::cout() << "SenderActor " << _name << " " << id() << ": Initialized\n";
         // Register a callback to start sending messages - will be called for each core loop
         registerCallback(*this);
         return true;
@@ -112,7 +112,7 @@ public:
             _sent_count++;
             std::string message = "Message from " + _name + " #" + std::to_string(_sent_count);
             
-            std::cout << "SenderActor " << _name << " " << id() << ": Sending " << message << "\n";
+            qb::io::cout() << "SenderActor " << _name << " " << id() << ": Sending " << message << "\n";
             push<MessageEvent>(_receiver_id, message, _sent_count);
             
             // Add a small delay before the next loop iteration to avoid sending messages too quickly
@@ -122,20 +122,20 @@ public:
     
     // Handler for the response event
     void on(ResponseEvent& event) {
-        std::cout << "SenderActor " << _name << " " << id() << ": Received response for message #" 
+        qb::io::cout() << "SenderActor " << _name << " " << id() << ": Received response for message #"
                   << event.sequence_number << ": \"" << event.content << "\"\n";
         
         _responses_received++;
         
         // If we've received all the responses, terminate the actor
         if (_responses_received >= _max_messages) {
-            std::cout << "SenderActor " << _name << " " << id() << ": Received all responses, terminating\n";
+            qb::io::cout() << "SenderActor " << _name << " " << id() << ": Received all responses, terminating\n";
             kill();
         }
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "SenderActor " << _name << " " << id() << ": Received kill event\n";
+        qb::io::cout() << "SenderActor " << _name << " " << id() << ": Received kill event\n";
         kill();
     }
 };
@@ -151,12 +151,12 @@ int main() {
     engine.addActor<SenderActor>(0, std::string("Alice"), receiver_id);
     engine.addActor<SenderActor>(0, std::string("Bob"), receiver_id);
     
-    std::cout << "Main: Starting QB engine\n";
+    qb::io::cout() << "Main: Starting QB engine\n";
     engine.start();
     
-    std::cout << "Main: Waiting for actors to complete\n";
+    qb::io::cout() << "Main: Waiting for actors to complete\n";
     engine.join();
     
-    std::cout << "Main: All actors have terminated, exiting\n";
+    qb::io::cout() << "Main: All actors have terminated, exiting\n";
     return 0;
 } 

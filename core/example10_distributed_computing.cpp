@@ -322,7 +322,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "TaskGeneratorActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "TaskGeneratorActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -335,7 +335,7 @@ public:
     }
     
     void on(ShutdownMessage&) {
-        std::cout << "TaskGeneratorActor shutting down" << std::endl;
+        qb::io::cout() << "TaskGeneratorActor shutting down" << std::endl;
         _is_active = false;
         kill();
     }
@@ -429,7 +429,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "TaskSchedulerActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "TaskSchedulerActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -442,7 +442,7 @@ public:
     }
     
     void on(UpdateWorkersMessage& msg) {
-        std::cout << "TaskScheduler received " << msg.worker_ids.size() << " worker IDs" << std::endl;
+        qb::io::cout() << "TaskScheduler received " << msg.worker_ids.size() << " worker IDs" << std::endl;
         _worker_ids = msg.worker_ids;
         // Try to schedule tasks now that we have workers
         scheduleTasks();
@@ -493,7 +493,7 @@ public:
     }
     
     void on(ShutdownMessage&) {
-        std::cout << "TaskSchedulerActor shutting down" << std::endl;
+        qb::io::cout() << "TaskSchedulerActor shutting down" << std::endl;
         _is_active = false;
         
         // Cancel all pending tasks
@@ -538,7 +538,7 @@ private:
                 // Send assignment
                 push<TaskAssignmentMessage>(worker_id, task);
                 
-                std::cout << "Assigned " << task->toString() << " to Worker " << worker_id << std::endl;
+                qb::io::cout() << "Assigned " << task->toString() << " to Worker " << worker_id << std::endl;
             }
         }
     }
@@ -555,7 +555,7 @@ private:
         const uint64_t HEARTBEAT_TIMEOUT = 5000000; // 5 seconds
         
         if (now - metrics.last_heartbeat > HEARTBEAT_TIMEOUT) {
-            std::cout << "Warning: Worker " << worker_id << " seems unresponsive!" << std::endl;
+            qb::io::cout() << "Warning: Worker " << worker_id << " seems unresponsive!" << std::endl;
             return false;
         }
         
@@ -593,7 +593,7 @@ private:
         double avg_utilization = total_utilization / _worker_metrics.size();
         
         // Log load balancing info
-        std::cout << "Load balancing assessment - Avg utilization: " 
+        qb::io::cout() << "Load balancing assessment - Avg utilization: "
                  << std::fixed << std::setprecision(1) << (avg_utilization * 100) 
                  << "%, Queued tasks: " << _task_queue.size() 
                  << ", Active tasks: " << _active_tasks.size() << std::endl;
@@ -628,7 +628,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "WorkerNodeActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "WorkerNodeActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -690,7 +690,7 @@ public:
     }
     
     void on(ShutdownMessage&) {
-        std::cout << "WorkerNodeActor " << id() << " shutting down" << std::endl;
+        qb::io::cout() << "WorkerNodeActor " << id() << " shutting down" << std::endl;
         _is_active = false;
         
         // Cancel current task if any
@@ -754,7 +754,7 @@ private:
         // Send status update to scheduler
         push<TaskStatusUpdateMessage>(_scheduler_id, _current_task);
         
-        std::cout << "Worker " << id() << " completed task " << _current_task->task_id.c_str()
+        qb::io::cout() << "Worker " << id() << " completed task " << _current_task->task_id.c_str()
                  << " with status: " << statusToString(_current_task->status) << std::endl;
         
         // Update global counters
@@ -827,7 +827,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "ResultCollectorActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "ResultCollectorActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -840,15 +840,15 @@ public:
         _results[msg.result.task_id] = msg.result;
         
         // Log result details
-        std::cout << "Collected: " << msg.result.toString() << std::endl;
+        qb::io::cout() << "Collected: " << msg.result.toString() << std::endl;
     }
     
     void on(ShutdownMessage&) {
-        std::cout << "ResultCollectorActor shutting down" << std::endl;
+        qb::io::cout() << "ResultCollectorActor shutting down" << std::endl;
         
         // Print summary statistics
-        std::cout << "\n===== RESULT SUMMARY =====" << std::endl;
-        std::cout << "Total results collected: " << _results.size() << std::endl;
+        qb::io::cout() << "\n===== RESULT SUMMARY =====" << std::endl;
+        qb::io::cout() << "Total results collected: " << _results.size() << std::endl;
         
         // Count successful and failed results
         size_t successful = 0;
@@ -865,11 +865,11 @@ public:
         double success_rate = _results.empty() ? 0.0 : (successful * 100.0 / _results.size());
         double avg_time = successful > 0 ? (total_time / 1000000.0 / successful) : 0.0;
         
-        std::cout << "Successful results: " << successful << " (" 
+        qb::io::cout() << "Successful results: " << successful << " ("
                  << std::fixed << std::setprecision(1) << success_rate << "%)" << std::endl;
-        std::cout << "Average processing time: " 
+        qb::io::cout() << "Average processing time: "
                  << std::fixed << std::setprecision(3) << avg_time << " seconds" << std::endl;
-        std::cout << "===========================" << std::endl;
+        qb::io::cout() << "===========================" << std::endl;
         
         _is_active = false;
         kill();
@@ -902,7 +902,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "SystemMonitorActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "SystemMonitorActor initialized with ID: " << id() << std::endl;
         
         // Start the system
         push<InitializeMessage>(id());
@@ -914,12 +914,12 @@ public:
         _is_active = true;
         _start_time = getCurrentTimestamp();
         
-        std::cout << "\n===== DISTRIBUTED COMPUTING SYSTEM STARTING =====" << std::endl;
-        std::cout << "Workers: " << _worker_ids.size() << std::endl;
-        std::cout << "Task Types: " << NUM_TASK_TYPES << std::endl;
-        std::cout << "Target Throughput: " << TASKS_PER_SECOND << " tasks/sec" << std::endl;
-        std::cout << "Simulation Duration: " << SIMULATION_DURATION_SECONDS << " seconds" << std::endl;
-        std::cout << "=================================================" << std::endl;
+        qb::io::cout() << "\n===== DISTRIBUTED COMPUTING SYSTEM STARTING =====" << std::endl;
+        qb::io::cout() << "Workers: " << _worker_ids.size() << std::endl;
+        qb::io::cout() << "Task Types: " << NUM_TASK_TYPES << std::endl;
+        qb::io::cout() << "Target Throughput: " << TASKS_PER_SECOND << " tasks/sec" << std::endl;
+        qb::io::cout() << "Simulation Duration: " << SIMULATION_DURATION_SECONDS << " seconds" << std::endl;
+        qb::io::cout() << "=================================================" << std::endl;
         
         // Initialize components
         push<InitializeMessage>(_task_generator_id);
@@ -946,21 +946,21 @@ public:
     
     void on(SystemStatsMessage& msg) {
         // Log the statistics
-        std::cout << "\n===== SYSTEM STATISTICS =====" << std::endl;
-        std::cout << "Total Tasks: " << msg.total_tasks << std::endl;
-        std::cout << "Completed Tasks: " << msg.completed_tasks 
+        qb::io::cout() << "\n===== SYSTEM STATISTICS =====" << std::endl;
+        qb::io::cout() << "Total Tasks: " << msg.total_tasks << std::endl;
+        qb::io::cout() << "Completed Tasks: " << msg.completed_tasks
                  << " (" << std::fixed << std::setprecision(1) 
                  << (msg.total_tasks > 0 ? (msg.completed_tasks * 100.0 / msg.total_tasks) : 0.0) 
                  << "%)" << std::endl;
-        std::cout << "Failed Tasks: " << msg.failed_tasks 
+        qb::io::cout() << "Failed Tasks: " << msg.failed_tasks
                  << " (" << std::fixed << std::setprecision(1) 
                  << (msg.total_tasks > 0 ? (msg.failed_tasks * 100.0 / msg.total_tasks) : 0.0)
                  << "%)" << std::endl;
-        std::cout << "Elapsed Time: " << std::fixed << std::setprecision(2) 
+        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2)
                  << msg.elapsed_seconds << " seconds" << std::endl;
-        std::cout << "Throughput: " << std::fixed << std::setprecision(2) 
+        qb::io::cout() << "Throughput: " << std::fixed << std::setprecision(2)
                  << msg.tasks_per_second << " tasks/sec" << std::endl;
-        std::cout << "===========================" << std::endl;
+        qb::io::cout() << "===========================" << std::endl;
     }
     
     void on(ShutdownMessage&) {
@@ -1000,7 +1000,7 @@ private:
     }
     
     void shutdownSystem() {
-        std::cout << "\nDistributed computing system shutting down..." << std::endl;
+        qb::io::cout() << "\nDistributed computing system shutting down..." << std::endl;
         
         // Calculate final statistics
         uint64_t current_time = getCurrentTimestamp();
@@ -1040,7 +1040,7 @@ private:
  */
 int main() {
     try {
-        std::cout << "Initializing distributed computing system..." << std::endl;
+        qb::io::cout() << "Initializing distributed computing system..." << std::endl;
         
         // Create the main engine with multiple cores
         qb::Main engine;
@@ -1078,10 +1078,10 @@ int main() {
         // Wait for completion
         engine.join();
         
-        std::cout << "Distributed computing simulation completed successfully" << std::endl;
+        qb::io::cout() << "Distributed computing simulation completed successfully" << std::endl;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
+        qb::io::cerr() << "Exception: " << e.what() << std::endl;
         return 1;
     }
     

@@ -75,12 +75,12 @@ DirectoryWatcher::DirectoryWatcher() {
 }
 
 bool DirectoryWatcher::onInit() {
-    std::cout << "DirectoryWatcher initialized on core " << id().index() << std::endl;
+    qb::io::cout() << "DirectoryWatcher initialized on core " << id().index() << std::endl;
     return true;
 }
 
 void DirectoryWatcher::on(WatchDirectoryRequest& request) {
-    std::cout << "DirectoryWatcher received request to watch: " << request.path << std::endl;
+    qb::io::cout() << "DirectoryWatcher received request to watch: " << request.path << std::endl;
     
     // Normalize the path
     std::string normalized_path = fs::absolute(request.path).string();
@@ -130,7 +130,7 @@ void DirectoryWatcher::on(WatchDirectoryRequest& request) {
 }
 
 void DirectoryWatcher::on(UnwatchDirectoryRequest& request) {
-    std::cout << "DirectoryWatcher received request to unwatch: " << request.path << std::endl;
+    qb::io::cout() << "DirectoryWatcher received request to unwatch: " << request.path << std::endl;
     
     // Normalize the path
     std::string normalized_path = fs::absolute(request.path).string();
@@ -166,7 +166,7 @@ void DirectoryWatcher::on(UnwatchDirectoryRequest& request) {
 }
 
 void DirectoryWatcher::on(qb::KillEvent&) {
-    std::cout << "DirectoryWatcher shutting down" << std::endl;
+    qb::io::cout() << "DirectoryWatcher shutting down" << std::endl;
     
     // Remove all watches
     for (auto& pair : _watched_directories) {
@@ -251,7 +251,7 @@ bool DirectoryWatcher::setupDirectoryWatch(const std::string& path,
         
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Error setting up directory watch: " << e.what() << std::endl;
+        qb::io::cerr() << "Error setting up directory watch: " << e.what() << std::endl;
         return false;
     }
 }
@@ -273,7 +273,7 @@ void DirectoryWatcher::publishFileEvent(const std::string& file_path, FileEventT
     
     if (watch) {
         // Log the event
-        std::cout << "File event: " << eventTypeToString(event_type) 
+        qb::io::cout() << "File event: " << eventTypeToString(event_type)
                   << " - " << file_path << std::endl;
         
         // Publish to all subscribers
@@ -299,7 +299,7 @@ int DirectoryWatcher::countWatchedFiles(std::shared_ptr<WatchInfo> watch) {
             count += countWatchedFiles(pair.second);
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error counting files: " << e.what() << std::endl;
+        qb::io::cerr() << "Error counting files: " << e.what() << std::endl;
     }
     
     return count;

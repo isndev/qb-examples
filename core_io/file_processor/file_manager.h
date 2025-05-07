@@ -50,7 +50,7 @@ public:
      * @brief Actor initialization method
      */
     bool onInit() override {
-        std::cout << "FileManager initialized with ID " << id() << " on core " << id().index() << std::endl;
+        qb::io::cout() << "FileManager initialized with ID " << id() << " on core " << id().index() << std::endl;
         return true;
     }
     
@@ -68,7 +68,7 @@ public:
             request.request_id = ++_request_counter;
         }
         
-        std::cout << "FileManager received a read request for " 
+        qb::io::cout() << "FileManager received a read request for "
                   << request.filepath.c_str() << " (ID: " << request.request_id << ")" << std::endl;
         
         // If a worker is available, assign the task
@@ -76,11 +76,11 @@ public:
             qb::ActorId worker_id = *_available_workers.begin();
             _available_workers.erase(worker_id);
             
-            std::cout << "FileManager assigns the read task to worker " << worker_id << std::endl;
+            qb::io::cout() << "FileManager assigns the read task to worker " << worker_id << std::endl;
             push<ReadFileRequest>(worker_id, request.filepath.c_str(), request.requestor, request.request_id);
         } else {
             // Otherwise, queue the request
-            std::cout << "FileManager queues the read request" << std::endl;
+            qb::io::cout() << "FileManager queues the read request" << std::endl;
             _read_requests.push(request);
         }
     }
@@ -99,7 +99,7 @@ public:
             request.request_id = ++_request_counter;
         }
         
-        std::cout << "FileManager received a write request for " 
+        qb::io::cout() << "FileManager received a write request for "
                   << request.filepath.c_str() << " (ID: " << request.request_id << ")" << std::endl;
         
         // If a worker is available, assign the task
@@ -107,7 +107,7 @@ public:
             qb::ActorId worker_id = *_available_workers.begin();
             _available_workers.erase(worker_id);
             
-            std::cout << "FileManager assigns the write task to worker " << worker_id << std::endl;
+            qb::io::cout() << "FileManager assigns the write task to worker " << worker_id << std::endl;
             push<WriteFileRequest>(
                 worker_id, 
                 request.filepath.c_str(), 
@@ -117,7 +117,7 @@ public:
             );
         } else {
             // Otherwise, queue the request
-            std::cout << "FileManager queues the write request" << std::endl;
+            qb::io::cout() << "FileManager queues the write request" << std::endl;
             _write_requests.push(request);
         }
     }
@@ -126,7 +126,7 @@ public:
      * @brief Handles notification from an available worker
      */
     void on(WorkerAvailable& msg) {
-        std::cout << "FileManager received an availability notification from worker " 
+        qb::io::cout() << "FileManager received an availability notification from worker "
                   << msg.worker_id << std::endl;
         
         // Try to assign a task to the available worker
@@ -135,7 +135,7 @@ public:
             ReadFileRequest request = _read_requests.front();
             _read_requests.pop();
             
-            std::cout << "FileManager assigns a queued read task to worker " 
+            qb::io::cout() << "FileManager assigns a queued read task to worker "
                       << msg.worker_id << std::endl;
                       
             push<ReadFileRequest>(
@@ -149,7 +149,7 @@ public:
             WriteFileRequest request = _write_requests.front();
             _write_requests.pop();
             
-            std::cout << "FileManager assigns a queued write task to worker " 
+            qb::io::cout() << "FileManager assigns a queued write task to worker "
                       << msg.worker_id << std::endl;
                       
             push<WriteFileRequest>(
@@ -169,7 +169,7 @@ public:
      * @brief Forwards a read response
      */
     void on(ReadFileResponse& response) {
-        std::cout << "FileManager received a read response for " 
+        qb::io::cout() << "FileManager received a read response for "
                   << response.filepath.c_str() << " (ID: " << response.request_id << ")" << std::endl;
         
         // Forward the response to the requesting actor
@@ -187,7 +187,7 @@ public:
      * @brief Forwards a write response
      */
     void on(WriteFileResponse& response) {
-        std::cout << "FileManager received a write response for " 
+        qb::io::cout() << "FileManager received a write response for "
                   << response.filepath.c_str() << " (ID: " << response.request_id << ")" << std::endl;
         
         // Forward the response to the requesting actor
@@ -205,7 +205,7 @@ public:
      * @brief Stops the FileManager
      */
     void on(qb::KillEvent&) {
-        std::cout << "FileManager shutting down" << std::endl;
+        qb::io::cout() << "FileManager shutting down" << std::endl;
         kill();
     }
 };

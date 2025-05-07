@@ -189,7 +189,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "BrokerActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "BrokerActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -197,7 +197,7 @@ public:
         // Add the subscriber to the topic
         _topic_subscribers[msg.topic].insert(msg.source_id);
         
-        std::cout << "[Broker] New subscription: " 
+        qb::io::cout() << "[Broker] New subscription: "
                   << "Actor " << msg.source_id 
                   << " subscribed to topic " << topicToString(msg.topic) << std::endl;
     }
@@ -208,7 +208,7 @@ public:
         if (it != _topic_subscribers.end()) {
             it->second.erase(msg.source_id);
             
-            std::cout << "[Broker] Subscription removed: " 
+            qb::io::cout() << "[Broker] Subscription removed: "
                       << "Actor " << msg.source_id
                       << " unsubscribed from topic " << topicToString(msg.topic) << std::endl;
         }
@@ -218,14 +218,14 @@ public:
         // Increment message count for this topic
         _messages_per_topic[msg.topic]++;
         
-        std::cout << "[Broker] Message published to topic " << topicToString(msg.topic) 
+        qb::io::cout() << "[Broker] Message published to topic " << topicToString(msg.topic)
                   << " by " << msg.publisher 
                   << " with content: \"" << msg.content << "\"" << std::endl;
         
         // Forward the message to all subscribers of this topic
         auto it = _topic_subscribers.find(msg.topic);
         if (it != _topic_subscribers.end()) {
-            std::cout << "[Broker] Forwarding message to " << it->second.size() << " subscribers" << std::endl;
+            qb::io::cout() << "[Broker] Forwarding message to " << it->second.size() << " subscribers" << std::endl;
             for (const auto& subscriber_id : it->second) {
                 // Send the message to the subscriber
                 push<MessageReceivedMessage>(
@@ -240,34 +240,34 @@ public:
                 _messages_per_subscriber[subscriber_id]++;
             }
         } else {
-            std::cout << "[Broker] No subscribers for topic " << topicToString(msg.topic) << std::endl;
+            qb::io::cout() << "[Broker] No subscribers for topic " << topicToString(msg.topic) << std::endl;
         }
     }
     
     void on(PrintStatisticsMessage& msg) {
-        std::cout << "\n--- BROKER STATISTICS ---" << std::endl;
+        qb::io::cout() << "\n--- BROKER STATISTICS ---" << std::endl;
         
         // Print messages per topic
-        std::cout << "Messages per topic:" << std::endl;
+        qb::io::cout() << "Messages per topic:" << std::endl;
         for (const auto& [topic, count] : _messages_per_topic) {
-            std::cout << "  " << topicToString(topic) << ": " << count << " messages" << std::endl;
+            qb::io::cout() << "  " << topicToString(topic) << ": " << count << " messages" << std::endl;
         }
         
         // Print messages per subscriber
-        std::cout << "Messages per subscriber:" << std::endl;
+        qb::io::cout() << "Messages per subscriber:" << std::endl;
         for (const auto& [subscriber_id, count] : _messages_per_subscriber) {
-            std::cout << "  Actor " << subscriber_id << ": " 
+            qb::io::cout() << "  Actor " << subscriber_id << ": "
                       << count << " messages received" << std::endl;
         }
         
         // Print current subscription count
-        std::cout << "Current subscribers per topic:" << std::endl;
+        qb::io::cout() << "Current subscribers per topic:" << std::endl;
         for (const auto& [topic, subscribers] : _topic_subscribers) {
-            std::cout << "  " << topicToString(topic) << ": " 
+            qb::io::cout() << "  " << topicToString(topic) << ": "
                       << subscribers.size() << " subscribers" << std::endl;
         }
         
-        std::cout << "------------------------" << std::endl;
+        qb::io::cout() << "------------------------" << std::endl;
     }
 };
 
@@ -369,18 +369,18 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "MessagePublisher '" << _name << "' initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "MessagePublisher '" << _name << "' initialized with ID: " << id() << std::endl;
         return true;
     }
     
     void on(StepMessage& msg) {
-        std::cout << "[MessagePublisher] Processing StepMessage " << msg.step << std::endl;
+        qb::io::cout() << "[MessagePublisher] Processing StepMessage " << msg.step << std::endl;
         switch (msg.step) {
             case 1: {
                 // Publish a weather update
                 std::string content = _topic_content[Topic::WEATHER].getNextMessage();
                 uint64_t timestamp = getCurrentTimestamp();
-                std::cout << "[MessagePublisher] Publishing weather update: " << content << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing weather update: " << content << std::endl;
                 
                 push<PublishMessage>(
                     _broker_id,
@@ -396,7 +396,7 @@ public:
                 // Publish news
                 std::string content = _topic_content[Topic::NEWS].getNextMessage();
                 uint64_t timestamp = getCurrentTimestamp();
-                std::cout << "[MessagePublisher] Publishing news: " << content << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing news: " << content << std::endl;
                 
                 push<PublishMessage>(
                     _broker_id,
@@ -412,7 +412,7 @@ public:
                 // Publish sports update
                 std::string content = _topic_content[Topic::SPORTS].getNextMessage();
                 uint64_t timestamp = getCurrentTimestamp();
-                std::cout << "[MessagePublisher] Publishing sports update: " << content << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing sports update: " << content << std::endl;
                 
                 push<PublishMessage>(
                     _broker_id,
@@ -428,7 +428,7 @@ public:
                 // Publish stock prices
                 std::string content = _topic_content[Topic::STOCK_PRICES].getNextMessage();
                 uint64_t timestamp = getCurrentTimestamp();
-                std::cout << "[MessagePublisher] Publishing stock prices: " << content << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing stock prices: " << content << std::endl;
                 
                 push<PublishMessage>(
                     _broker_id,
@@ -444,7 +444,7 @@ public:
                 // Publish system status
                 std::string content = _topic_content[Topic::SYSTEM_STATUS].getNextMessage();
                 uint64_t timestamp = getCurrentTimestamp();
-                std::cout << "[MessagePublisher] Publishing system status: " << content << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing system status: " << content << std::endl;
                 
                 push<PublishMessage>(
                     _broker_id,
@@ -461,15 +461,15 @@ public:
                 uint64_t timestamp = getCurrentTimestamp();
                 
                 std::string weather = _topic_content[Topic::WEATHER].getNextMessage();
-                std::cout << "[MessagePublisher] Publishing weather update: " << weather << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing weather update: " << weather << std::endl;
                 push<PublishMessage>(_broker_id, Topic::WEATHER, weather, _name, timestamp);
                 
                 std::string news = _topic_content[Topic::NEWS].getNextMessage();
-                std::cout << "[MessagePublisher] Publishing news: " << news << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing news: " << news << std::endl;
                 push<PublishMessage>(_broker_id, Topic::NEWS, news, _name, timestamp + 1);
                 
                 std::string stocks = _topic_content[Topic::STOCK_PRICES].getNextMessage();
-                std::cout << "[MessagePublisher] Publishing stock prices: " << stocks << std::endl;
+                qb::io::cout() << "[MessagePublisher] Publishing stock prices: " << stocks << std::endl;
                 push<PublishMessage>(_broker_id, Topic::STOCK_PRICES, stocks, _name, timestamp + 2);
                 break;
             }
@@ -527,7 +527,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "SubscriberActor '" << _name << "' initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "SubscriberActor '" << _name << "' initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -541,28 +541,28 @@ public:
         _messages_per_topic[msg.topic]++;
         
         // Display received message
-        std::cout << "[" << _name << "] Received message from topic " 
+        qb::io::cout() << "[" << _name << "] Received message from topic "
                   << topicToString(msg.topic) << ": \"" << msg.content 
                   << "\" (from " << msg.publisher << ")" << std::endl;
     }
     
     void on(PrintHistoryMessage& msg) {
-        std::cout << "\n=== " << _name << "'s Message History ===\n";
+        qb::io::cout() << "\n=== " << _name << "'s Message History ===\n";
         
         if (_message_history.empty()) {
-            std::cout << "No messages received." << std::endl;
+            qb::io::cout() << "No messages received." << std::endl;
             return;
         }
         
         // Print statistics
-        std::cout << "Total messages received: " << _message_history.size() << std::endl;
-        std::cout << "Messages by topic:" << std::endl;
+        qb::io::cout() << "Total messages received: " << _message_history.size() << std::endl;
+        qb::io::cout() << "Messages by topic:" << std::endl;
         for (const auto& [topic, count] : _messages_per_topic) {
-            std::cout << "  " << topicToString(topic) << ": " << count << " messages" << std::endl;
+            qb::io::cout() << "  " << topicToString(topic) << ": " << count << " messages" << std::endl;
         }
         
         // Print last 5 messages (or fewer if history is shorter)
-        std::cout << "\nMost recent messages:" << std::endl;
+        qb::io::cout() << "\nMost recent messages:" << std::endl;
         int count = 0;
         int start_idx = static_cast<int>(_message_history.size()) - 1;
         int end_idx = std::max(0, start_idx - 4);
@@ -571,13 +571,13 @@ public:
             const auto& record = _message_history[i];
             uint64_t latency = record.received_timestamp - record.published_timestamp;
             
-            std::cout << count + 1 << ". [" << topicToString(record.topic) << "] " 
+            qb::io::cout() << count + 1 << ". [" << topicToString(record.topic) << "] "
                       << record.content << " (from " << record.publisher 
                       << ", latency: " << latency << "ms)" << std::endl;
             count++;
         }
         
-        std::cout << "=================================\n" << std::endl;
+        qb::io::cout() << "=================================\n" << std::endl;
     }
 };
 
@@ -614,9 +614,9 @@ private:
     int _current_step = 0;
     
     void printSeparator(const std::string& title) {
-        std::cout << "\n\n==================================\n";
-        std::cout << "  " << title;
-        std::cout << "\n==================================\n" << std::endl;
+        qb::io::cout() << "\n\n==================================\n";
+        qb::io::cout() << "  " << title;
+        qb::io::cout() << "\n==================================\n" << std::endl;
     }
     
 public:
@@ -630,7 +630,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "DemoController initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "DemoController initialized with ID: " << id() << std::endl;
         // Register callback to start demo after initialization
         registerCallback(*this);
         return true;
@@ -642,7 +642,7 @@ public:
     
     void runDemo() {
         printSeparator("PUB/SUB SYSTEM DEMO");
-        std::cout << "Starting demo sequence..." << std::endl;
+        qb::io::cout() << "Starting demo sequence..." << std::endl;
         
         // Start the demo sequence with a delayed message to self
         push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS);
@@ -684,35 +684,35 @@ public:
         switch (step) {
             case 0:
                 // Weather subscriber subscribes to weather updates
-                std::cout << "Subscribing WeatherWatcher to WEATHER topic..." << std::endl;
+                qb::io::cout() << "Subscribing WeatherWatcher to WEATHER topic..." << std::endl;
                 push<SubscribeMessage>(_broker_id, Topic::WEATHER, _subscriber_ids[1]);
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS, 1);
                 break;
                 
             case 1:
                 // News subscriber subscribes to news
-                std::cout << "Subscribing NewsReader to NEWS topic..." << std::endl;
+                qb::io::cout() << "Subscribing NewsReader to NEWS topic..." << std::endl;
                 push<SubscribeMessage>(_broker_id, Topic::NEWS, _subscriber_ids[0]);
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS, 2);
                 break;
                 
             case 2:
                 // News subscriber subscribes to stock prices
-                std::cout << "Subscribing NewsReader to STOCK_PRICES topic..." << std::endl;
+                qb::io::cout() << "Subscribing NewsReader to STOCK_PRICES topic..." << std::endl;
                 push<SubscribeMessage>(_broker_id, Topic::STOCK_PRICES, _subscriber_ids[0]);
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS, 3);
                 break;
                 
             case 3:
                 // Stock tracker subscribes to stock prices
-                std::cout << "Subscribing StockTracker to STOCK_PRICES topic..." << std::endl;
+                qb::io::cout() << "Subscribing StockTracker to STOCK_PRICES topic..." << std::endl;
                 push<SubscribeMessage>(_broker_id, Topic::STOCK_PRICES, _subscriber_ids[2]);
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS, 4);
                 break;
                 
             case 4:
                 // Stock tracker subscribes to system status
-                std::cout << "Subscribing StockTracker to SYSTEM_STATUS topic..." << std::endl;
+                qb::io::cout() << "Subscribing StockTracker to SYSTEM_STATUS topic..." << std::endl;
                 push<SubscribeMessage>(_broker_id, Topic::SYSTEM_STATUS, _subscriber_ids[2]);
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PUBLISH_MESSAGES, 0);
                 break;
@@ -722,7 +722,7 @@ public:
     void publishMessages(int step) {
         if (step == 0) {
             printSeparator("STEP 2: PUBLISHING MESSAGES");
-            std::cout << "\n-- Publishing direct messages --" << std::endl;
+            qb::io::cout() << "\n-- Publishing direct messages --" << std::endl;
         }
         
         switch (step) {
@@ -761,7 +761,7 @@ public:
                 );
                 
                 // Wait for messages to be processed before proceeding
-                std::cout << "\nWaiting for messages to be processed..." << std::endl;
+                qb::io::cout() << "\nWaiting for messages to be processed..." << std::endl;
                 push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PRINT_HISTORY, 0);
                 break;
         }
@@ -792,12 +792,12 @@ public:
             printSeparator("STEP 5: UNSUBSCRIBING");
             
             // Unsubscribe weather watcher from weather updates
-            std::cout << "Unsubscribing WeatherWatcher from WEATHER topic..." << std::endl;
+            qb::io::cout() << "Unsubscribing WeatherWatcher from WEATHER topic..." << std::endl;
             push<UnsubscribeMessage>(_broker_id, Topic::WEATHER, _subscriber_ids[1]);
             push<DelayedActionMessage>(id(), DelayedActionMessage::Action::UNSUBSCRIBE, 1);
         } else if (step == 1) {
             // Publish one more weather update (that won't be received)
-            std::cout << "\nPublishing one more weather update (should not be received by WeatherWatcher)..." << std::endl;
+            qb::io::cout() << "\nPublishing one more weather update (should not be received by WeatherWatcher)..." << std::endl;
             push<PublishMessage>(
                 _broker_id,
                 Topic::WEATHER,
@@ -813,17 +813,17 @@ public:
             push<DelayedActionMessage>(id(), DelayedActionMessage::Action::UNSUBSCRIBE, 3);
         } else if (step == 3) {
             // Print final history for the weather watcher to show no new message was received
-            std::cout << "\nChecking WeatherWatcher's final message history:" << std::endl;
+            qb::io::cout() << "\nChecking WeatherWatcher's final message history:" << std::endl;
             push<PrintHistoryMessage>(_subscriber_ids[1]);
             push<DelayedActionMessage>(id(), DelayedActionMessage::Action::FINISH_DEMO);
         }
     }
     
     void finishDemo() {
-        std::cout << "\nDemo completed!" << std::endl;
+        qb::io::cout() << "\nDemo completed!" << std::endl;
         
         // Schedule shutdown of all actors
-        std::cout << "Shutting down all actors..." << std::endl;
+        qb::io::cout() << "Shutting down all actors..." << std::endl;
         
         // First terminate subscribers
         for (const auto& sub_id : _subscriber_ids) {
@@ -852,7 +852,7 @@ public:
  * - A demo controller that orchestrates the example
  */
 int main() {
-    std::cout << "Starting Pub/Sub System Example..." << std::endl;
+    qb::io::cout() << "Starting Pub/Sub System Example..." << std::endl;
     
     // Create the main engine
     qb::Main engine;
@@ -875,14 +875,14 @@ int main() {
     // Step 4: Create the demo controller with all the actor IDs
     engine.addActor<DemoController>(0, broker_id, publisher_id, subscriber_ids);
     
-    std::cout << "Starting QB engine\n";
+    qb::io::cout() << "Starting QB engine\n";
     engine.start();
     
     // The demo controller will run the demo automatically via onCallback
     
     // Join all actors - wait for completion
     engine.join();
-    std::cout << "Engine shutdown, exiting\n";
+    qb::io::cout() << "Engine shutdown, exiting\n";
     
     return 0;
 } 

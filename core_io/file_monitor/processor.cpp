@@ -23,12 +23,12 @@ FileProcessor::FileProcessor(const std::string& base_path)
 }
 
 bool FileProcessor::onInit() {
-    std::cout << "FileProcessor initialized on core " << id().index() << std::endl;
+    qb::io::cout() << "FileProcessor initialized on core " << id().index() << std::endl;
     return true;
 }
 
 void FileProcessor::on(FileEvent& event) {
-    std::cout << "FileProcessor received " << eventTypeToString(event.type) 
+    qb::io::cout() << "FileProcessor received " << eventTypeToString(event.type)
               << " event for: " << event.path << std::endl;
     
     // Process based on event type
@@ -56,21 +56,21 @@ void FileProcessor::on(FileEvent& event) {
 
 void FileProcessor::on(SetProcessingConfigRequest& request) {
     _process_hidden_files = request.process_hidden_files;
-    std::cout << "FileProcessor: Updated configuration - processing hidden files: " 
+    qb::io::cout() << "FileProcessor: Updated configuration - processing hidden files: "
               << (_process_hidden_files ? "enabled" : "disabled") << std::endl;
 }
 
 void FileProcessor::on(GetProcessingStatsRequest& request) {
-    std::cout << "FileProcessor: Stats request received" << std::endl;
-    std::cout << "  Files processed: " << _stats.files_processed << std::endl;
-    std::cout << "  Files created: " << _stats.files_created << std::endl;
-    std::cout << "  Files modified: " << _stats.files_modified << std::endl;
-    std::cout << "  Files deleted: " << _stats.files_deleted << std::endl;
-    std::cout << "  Errors: " << _stats.errors_encountered << std::endl;
+    qb::io::cout() << "FileProcessor: Stats request received" << std::endl;
+    qb::io::cout() << "  Files processed: " << _stats.files_processed << std::endl;
+    qb::io::cout() << "  Files created: " << _stats.files_created << std::endl;
+    qb::io::cout() << "  Files modified: " << _stats.files_modified << std::endl;
+    qb::io::cout() << "  Files deleted: " << _stats.files_deleted << std::endl;
+    qb::io::cout() << "  Errors: " << _stats.errors_encountered << std::endl;
 }
 
 void FileProcessor::on(qb::KillEvent&) {
-    std::cout << "FileProcessor shutting down" << std::endl;
+    qb::io::cout() << "FileProcessor shutting down" << std::endl;
     kill();
 }
 
@@ -83,10 +83,10 @@ void FileProcessor::processFileCreated(const std::string& path) {
         FileMetadata metadata = extractMetadata(path);
         _tracked_files[path] = metadata;
         
-        std::cout << "Processed new file: " << path 
+        qb::io::cout() << "Processed new file: " << path
                   << " (" << metadata.size << " bytes)" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "Error processing created file: " << e.what() << std::endl;
+        qb::io::cerr() << "Error processing created file: " << e.what() << std::endl;
         _stats.errors_encountered++;
     }
 }
@@ -105,21 +105,21 @@ void FileProcessor::processFileModified(const std::string& path) {
             
             // Check if content actually changed
             if (new_metadata.content_hash != old_metadata.content_hash) {
-                std::cout << "File content changed: " << path << std::endl;
-                std::cout << "  Old size: " << old_metadata.size 
+                qb::io::cout() << "File content changed: " << path << std::endl;
+                qb::io::cout() << "  Old size: " << old_metadata.size
                           << ", New size: " << new_metadata.size << std::endl;
                 
                 // Update tracked files
                 _tracked_files[path] = new_metadata;
             } else {
-                std::cout << "File modified but content hash unchanged: " << path << std::endl;
+                qb::io::cout() << "File modified but content hash unchanged: " << path << std::endl;
             }
         } else {
             // New file for us, treat as creation
             processFileCreated(path);
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error processing modified file: " << e.what() << std::endl;
+        qb::io::cerr() << "Error processing modified file: " << e.what() << std::endl;
         _stats.errors_encountered++;
     }
 }
@@ -128,7 +128,7 @@ void FileProcessor::processFileDeleted(const std::string& path) {
     // Remove from tracked files
     auto it = _tracked_files.find(path);
     if (it != _tracked_files.end()) {
-        std::cout << "Removed deleted file from tracking: " << path << std::endl;
+        qb::io::cout() << "Removed deleted file from tracking: " << path << std::endl;
         _tracked_files.erase(it);
     }
 }

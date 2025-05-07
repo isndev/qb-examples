@@ -159,7 +159,7 @@ public:
             std::memcpy(&_header, buffer.cbegin(), HEADER_SIZE);
             
             // Debug print received header
-            std::cout << "DEBUG: Received header - Magic: 0x" << std::hex << _header.magic 
+            qb::io::cout() << "DEBUG: Received header - Magic: 0x" << std::hex << _header.magic
                       << " Version: 0x" << static_cast<int>(_header.version)
                       << " Type: 0x" << static_cast<int>(_header.type)
                       << " ID: " << std::dec << _header.id
@@ -167,7 +167,7 @@ public:
             
             // Validate magic and version
             if (_header.magic != qb_protocol::MAGIC || _header.version != qb_protocol::VERSION) {
-                std::cerr << "Invalid header magic or version - Received Magic: 0x" << std::hex << _header.magic 
+                qb::io::cerr() << "Invalid header magic or version - Received Magic: 0x" << std::hex << _header.magic
                           << " Version: 0x" << static_cast<int>(_header.version) << std::dec << std::endl;
                 reset();
                 return 0;
@@ -178,7 +178,7 @@ public:
             
             // Verify payload length to prevent buffer overflow
             if (_header.length > 1024 * 1024) { // 1MB safety limit
-                std::cerr << "Payload size too large: " << _header.length << " bytes" << std::endl;
+                qb::io::cerr() << "Payload size too large: " << _header.length << " bytes" << std::endl;
                 reset();
                 return 0;
             }
@@ -205,7 +205,7 @@ public:
         
         // Final safety check
         if (buffer.size() < HEADER_SIZE + _header.length) {
-            std::cerr << "Buffer too small in onMessage: " << buffer.size() 
+            qb::io::cerr() << "Buffer too small in onMessage: " << buffer.size()
                      << " vs expected " << (HEADER_SIZE + _header.length) << std::endl;
             reset();
             return;
@@ -213,7 +213,7 @@ public:
         
         // Copy payload from buffer
         if (_header.length > 0) {
-            std::cout << "DEBUG: Processing message with payload size " << _header.length << std::endl;
+            qb::io::cout() << "DEBUG: Processing message with payload size " << _header.length << std::endl;
             if (_payload.size() != _header.length) {
                 // Ensure payload buffer is sized correctly
                 _payload.resize(_header.length);
@@ -230,7 +230,7 @@ public:
             msg.payload.assign(_payload.data(), _header.length);
         }
         
-        std::cout << "DEBUG: Creating message object - Type: " << static_cast<int>(msg.type) 
+        qb::io::cout() << "DEBUG: Creating message object - Type: " << static_cast<int>(msg.type)
                   << " ID: " << msg.id << " Payload: '" << msg.payload << "'" << std::endl;
         
         // NOTE: Do not free the buffer here! The framework will automatically free 
@@ -242,7 +242,7 @@ public:
         // Notify the handler
         this->_io.on(std::move(msg));
         
-        std::cout << "DEBUG: Message handler called successfully" << std::endl;
+        qb::io::cout() << "DEBUG: Message handler called successfully" << std::endl;
     }
     
     // Reset protocol state
@@ -271,18 +271,18 @@ public:
         : client(server) {
         // Register protocol handler for incoming messages
         this->template switch_protocol<Protocol>(*this);
-        std::cout << "New client connected to server" << std::endl;
+        qb::io::cout() << "New client connected to server" << std::endl;
         client_connected = true;
     }
     
     ~EchoServerClient() {
-        std::cout << "Client disconnected from server" << std::endl;
+        qb::io::cout() << "Client disconnected from server" << std::endl;
         client_connected = false;
     }
     
     // Handle incoming message
     void on(Protocol::message&& msg) {
-        std::cout << "Server received message, type: " 
+        qb::io::cout() << "Server received message, type: "
                  << static_cast<int>(msg.type)
                  << ", ID: " << msg.id 
                  << ", payload: " << msg.payload << std::endl;
@@ -291,7 +291,7 @@ public:
             case qb_protocol::MessageType::HELLO: {
                 Protocol::message ack{qb_protocol::MessageType::ACK, msg.id, ""};
                 *this << ack;
-                std::cout << "DEBUG: After sending ACK for HELLO message" << std::endl;
+                qb::io::cout() << "DEBUG: After sending ACK for HELLO message" << std::endl;
                 break;
             }
             case qb_protocol::MessageType::ECHO_REQUEST: {
@@ -300,14 +300,14 @@ public:
                 break;
             }
             default:
-                std::cerr << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
+                qb::io::cerr() << "Unknown message type: " << static_cast<int>(msg.type) << std::endl;
                 break;
         }
     }
     
     // Handle disconnection event
     void on(qb::io::async::event::disconnected&) {
-        std::cout << "Server client handler disconnected" << std::endl;
+        qb::io::cout() << "Server client handler disconnected" << std::endl;
     }
 };
 
@@ -318,17 +318,17 @@ private:
 
 public:
     EchoServer() {
-        std::cout << "EchoServer initialized" << std::endl;
+        qb::io::cout() << "EchoServer initialized" << std::endl;
     }
     
     // Handle new connection
     void on(IOSession& session) {
-        std::cout << "New connection from client " << ++_connections << std::endl;
+        qb::io::cout() << "New connection from client " << ++_connections << std::endl;
     }
     
     // Destructor
     ~EchoServer() {
-        std::cout << "Server shutting down, handled " 
+        qb::io::cout() << "Server shutting down, handled "
                  << _connections << " connection(s)" << std::endl;
     }
 };
@@ -357,7 +357,7 @@ public:
     
     // Constructor
     EchoClient() {
-        std::cout << "EchoClient initialized" << std::endl;
+        qb::io::cout() << "EchoClient initialized" << std::endl;
     }
     
     // Destructor - ensure thread is stopped
@@ -379,14 +379,14 @@ public:
     
     // Handle incoming message
     void on(Protocol::message&& msg) {
-        std::cout << "Client received message, type: " 
+        qb::io::cout() << "Client received message, type: "
                  << static_cast<int>(msg.type)
                  << ", ID: " << msg.id 
                  << ", payload: " << msg.payload << std::endl;
         
         // First message from server means we're connected
         if (!_connected && msg.type == qb_protocol::MessageType::ACK) {
-            std::cout << "Connection established with server" << std::endl;
+            qb::io::cout() << "Connection established with server" << std::endl;
             _connected = true;
         }
         
@@ -410,7 +410,7 @@ public:
         
         for (auto it = _callbacks.begin(); it != _callbacks.end();) {
             if (it->second.active && now > it->second.expiry) {
-                std::cerr << "Timeout for message ID: " << it->first << std::endl;
+                qb::io::cerr() << "Timeout for message ID: " << it->first << std::endl;
                 // Create a timeout message to pass to the callback
                 qb::custom_message timeout_msg;
                 timeout_msg.type = qb_protocol::MessageType::ERROR;
@@ -432,7 +432,7 @@ public:
     
     // Handle disconnection event
     void on(qb::io::async::event::disconnected&) {
-        std::cout << "Client disconnected from server" << std::endl;
+        qb::io::cout() << "Client disconnected from server" << std::endl;
         _connected = false;
         _running = false;
     }
@@ -450,7 +450,7 @@ public:
         uint32_t msg_id = _next_id++;
         Protocol::message hello{qb_protocol::MessageType::HELLO, msg_id, "Client connecting"};
         
-        std::cout << "DEBUG: Sending HELLO message, ID: " << msg_id << std::endl;
+        qb::io::cout() << "DEBUG: Sending HELLO message, ID: " << msg_id << std::endl;
         
         // Register callback for ACK response
         if (on_connected) {
@@ -470,7 +470,7 @@ public:
         
         // Send the request
         *this << hello;
-        std::cout << "Client sent HELLO, ID: " << msg_id << std::endl;
+        qb::io::cout() << "Client sent HELLO, ID: " << msg_id << std::endl;
     }
     
     // Send an echo request asynchronously
@@ -478,7 +478,7 @@ public:
                          std::function<void(bool success, const std::string& response)> callback,
                          int timeout_ms = 5000) {
         if (!_connected) {
-            std::cerr << "Cannot send echo request: not connected" << std::endl;
+            qb::io::cerr() << "Cannot send echo request: not connected" << std::endl;
             if (callback) callback(false, "");
             return;
         }
@@ -486,7 +486,7 @@ public:
         uint32_t msg_id = _next_id++;
         Protocol::message request{qb_protocol::MessageType::ECHO_REQUEST, msg_id, data};
         
-        std::cout << "DEBUG: Sending ECHO_REQUEST message, ID: " << msg_id 
+        qb::io::cout() << "DEBUG: Sending ECHO_REQUEST message, ID: " << msg_id
                   << ", Payload: '" << data << "'" << std::endl;
         
         // Register callback for response with timeout
@@ -495,11 +495,11 @@ public:
             _callbacks[msg_id] = {
                 [callback](const qb::custom_message& msg) {
                     if (msg.type == qb_protocol::MessageType::ECHO_REPLY) {
-                        std::cout << "DEBUG: Received successful response" << std::endl;
+                        qb::io::cout() << "DEBUG: Received successful response" << std::endl;
                         if (callback) callback(true, msg.payload);
                     } else {
                         // Timeout or error
-                        std::cerr << "Echo request failed or timed out" << std::endl;
+                        qb::io::cerr() << "Echo request failed or timed out" << std::endl;
                         if (callback) callback(false, "");
                     }
                 },
@@ -510,7 +510,7 @@ public:
         
         // Send the request
         *this << request;
-        std::cout << "Client sent ECHO_REQUEST, ID: " << msg_id << std::endl;
+        qb::io::cout() << "Client sent ECHO_REQUEST, ID: " << msg_id << std::endl;
     }
     
     // Start interactive mode in a separate thread
@@ -518,10 +518,10 @@ public:
         _input_thread = std::thread([this]() {
             // Main client loop for user input
             std::string line;
-            std::cout << "Connected to server. Type message to echo (or 'quit' to exit)" << std::endl;
+            qb::io::cout() << "Connected to server. Type message to echo (or 'quit' to exit)" << std::endl;
             
             while (_running && _connected) {
-                std::cout << "> ";
+                qb::io::cout() << "> ";
                 std::getline(std::cin, line);
                 
                 if (!_running || !_connected) break;
@@ -534,15 +534,15 @@ public:
                 if (!line.empty()) {
                     sendEchoRequest(line, [](bool success, const std::string& response) {
                         if (success) {
-                            std::cout << "Server response: " << response << std::endl;
+                            qb::io::cout() << "Server response: " << response << std::endl;
                         } else {
-                            std::cerr << "Echo request failed" << std::endl;
+                            qb::io::cerr() << "Echo request failed" << std::endl;
                         }
                     });
                 }
             }
             
-            std::cout << "Input thread exiting" << std::endl;
+            qb::io::cout() << "Input thread exiting" << std::endl;
             _running = false;
         });
     }
@@ -553,14 +553,14 @@ public:
 // ═══════════════════════════════════════════════════════════════════
 
 void displayHelp() {
-    std::cout << "Usage:\n"
+    qb::io::cout() << "Usage:\n"
               << "  server <port>        - Run as server\n"
               << "  client <host> <port> - Run as client\n";
 }
 
 // Run server in a thread
 void runServer(uint16_t port) {
-    std::cout << "Starting echo server on port " << port << std::endl;
+    qb::io::cout() << "Starting echo server on port " << port << std::endl;
     
     // Initialize async environment
     qb::io::async::init();
@@ -571,16 +571,16 @@ void runServer(uint16_t port) {
     // Bind to port and check result
     auto status = server.transport().listen_v4(port);
     if (status != 0) {
-        std::cerr << "Failed to listen on port " << port << " (error: " << status << ")" << std::endl;
+        qb::io::cerr() << "Failed to listen on port " << port << " (error: " << status << ")" << std::endl;
         return;
     }
     
-    std::cout << "Server bound to port " << port << " successfully" << std::endl;
+    qb::io::cout() << "Server bound to port " << port << " successfully" << std::endl;
     
     // Start the server
     server.start();
     server_ready = true;
-    std::cout << "Server running. Press Enter to stop." << std::endl;
+    qb::io::cout() << "Server running. Press Enter to stop." << std::endl;
     
     // Process events until Enter is pressed
     std::thread input_thread([]() {
@@ -595,13 +595,13 @@ void runServer(uint16_t port) {
     }
     
     // Cleanup
-    std::cout << "Stopping server..." << std::endl;
+    qb::io::cout() << "Stopping server..." << std::endl;
     input_thread.join();
 }
 
 // Run client with interactive input
 void runClient(const std::string& host, uint16_t port) {
-    std::cout << "Starting echo client connecting to " << host << ":" << port << std::endl;
+    qb::io::cout() << "Starting echo client connecting to " << host << ":" << port << std::endl;
     
     // Initialize async environment
     qb::io::async::init();
@@ -612,22 +612,22 @@ void runClient(const std::string& host, uint16_t port) {
     // Connect to server
     auto status = client.transport().connect_v4(host.c_str(), port);
     if (status != 0) {
-        std::cerr << "Failed to connect to server (error: " << status << ")" << std::endl;
+        qb::io::cerr() << "Failed to connect to server (error: " << status << ")" << std::endl;
         return;
     }
     
     // Initialize client protocol and start
     client.start_connection();
-    std::cout << "Connected to server" << std::endl;
+    qb::io::cout() << "Connected to server" << std::endl;
     
     // Send initial hello message to establish connection
     client.sendHello([&client](bool success) {
         if (success) {
-            std::cout << "Connection protocol completed successfully" << std::endl;
+            qb::io::cout() << "Connection protocol completed successfully" << std::endl;
             // Start interactive mode in separate thread
             client.startInteractiveMode();
         } else {
-            std::cerr << "Failed to complete connection protocol" << std::endl;
+            qb::io::cerr() << "Failed to complete connection protocol" << std::endl;
         }
     });
     
@@ -643,7 +643,7 @@ void runClient(const std::string& host, uint16_t port) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
-    std::cout << "Client shutting down" << std::endl;
+    qb::io::cout() << "Client shutting down" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -668,7 +668,7 @@ int main(int argc, char* argv[]) {
     else if (mode == "client") {
         // Run as client
         if (argc < 4) {
-            std::cerr << "Missing host and/or port for client mode" << std::endl;
+            qb::io::cerr() << "Missing host and/or port for client mode" << std::endl;
             displayHelp();
             return 1;
         }
@@ -678,7 +678,7 @@ int main(int argc, char* argv[]) {
         runClient(host, port);
     }
     else {
-        std::cerr << "Invalid mode: " << mode << std::endl;
+        qb::io::cerr() << "Invalid mode: " << mode << std::endl;
         displayHelp();
         return 1;
     }

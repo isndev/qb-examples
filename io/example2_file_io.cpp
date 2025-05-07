@@ -115,16 +115,16 @@ namespace {
     
     // Helper function to print section headers
     void printSection(const std::string& title) {
-        std::cout << "\n=== " << title << " ===\n";
+        qb::io::cout() << "\n=== " << title << " ===\n";
     }
     
     // Helper function to print operation results
     void printResult(const std::string& operation, bool success, const std::string& details = "") {
-        std::cout << operation << ": " << (success ? "Success" : "Failed");
+        qb::io::cout() << operation << ": " << (success ? "Success" : "Failed");
         if (!details.empty()) {
-            std::cout << " - " << details;
+            qb::io::cout() << " - " << details;
         }
-        std::cout << std::endl;
+        qb::io::cout() << std::endl;
     }
     
     // Utility function to get current timestamp
@@ -140,12 +140,12 @@ namespace {
     bool createDirectory(const std::string& path) {
         try {
             if (std::filesystem::exists(path)) {
-                std::cout << "Directory already exists: " << path << std::endl;
+                qb::io::cout() << "Directory already exists: " << path << std::endl;
                 return true;
             }
             return std::filesystem::create_directory(path);
         } catch (const std::filesystem::filesystem_error& e) {
-            std::cerr << "Error creating directory: " << e.what() << std::endl;
+            qb::io::cerr() << "Error creating directory: " << e.what() << std::endl;
             return false;
         }
     }
@@ -171,7 +171,7 @@ public:
     explicit FileOperationsManager(const std::string& test_dir) : _test_dir(test_dir) {
         // Ensure test directory exists
         if (!createDirectory(_test_dir)) {
-            std::cerr << "Failed to create test directory: " << _test_dir << std::endl;
+            qb::io::cerr() << "Failed to create test directory: " << _test_dir << std::endl;
         }
     }
     
@@ -185,7 +185,7 @@ public:
      */
     void runDemonstration() {
         printSection("Starting File Operations Demo");
-        std::cout << "Test directory: " << _test_dir << std::endl;
+        qb::io::cout() << "Test directory: " << _test_dir << std::endl;
         
         // Write a binary file with random data
         demonstrateWritingBinaryFile();
@@ -220,14 +220,14 @@ private:
         std::uniform_int_distribution<uint8_t> dist(0, 255);
         
         // Fill the data buffer with random bytes
-        std::cout << "Generating " << FILE_SIZE << " bytes of random data..." << std::endl;
+        qb::io::cout() << "Generating " << FILE_SIZE << " bytes of random data..." << std::endl;
         for (auto& byte : data) {
             byte = dist(rng);
         }
         
         // Create the file path
         std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
-        std::cout << "Writing data to: " << file_path << std::endl;
+        qb::io::cout() << "Writing data to: " << file_path << std::endl;
         
         // Use QB-IO file API to write the file
         qb::io::sys::file file;
@@ -243,15 +243,15 @@ private:
             
             if (written == static_cast<ssize_t>(data.size())) {
                 double throughput = (data.size() / 1024.0) / (duration.count() / 1000000.0);
-                std::cout << "Successfully wrote " << written << " bytes in " 
+                qb::io::cout() << "Successfully wrote " << written << " bytes in "
                           << duration.count() / 1000.0 << " ms" << std::endl;
-                std::cout << "Write throughput: " << throughput << " KB/s" << std::endl;
+                qb::io::cout() << "Write throughput: " << throughput << " KB/s" << std::endl;
             } else {
-                std::cerr << "Failed to write all data. Only wrote " << written 
+                qb::io::cerr() << "Failed to write all data. Only wrote " << written
                           << " of " << data.size() << " bytes" << std::endl;
             }
         } else {
-            std::cerr << "Error opening file for writing: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error opening file for writing: " << strerror(errno) << std::endl;
         }
     }
     
@@ -265,12 +265,12 @@ private:
         
         // Create the file path
         std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
-        std::cout << "Reading data from: " << file_path << std::endl;
+        qb::io::cout() << "Reading data from: " << file_path << std::endl;
         
         // Use standard file operations for getting file size
         struct stat file_stat;
         if (stat(file_path.c_str(), &file_stat) != 0) {
-            std::cerr << "Error getting file stats: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error getting file stats: " << strerror(errno) << std::endl;
                 return;
             }
         size_t file_size = file_stat.st_size;
@@ -292,23 +292,23 @@ private:
             
             if (bytes_read == static_cast<ssize_t>(file_size)) {
                 double throughput = (file_size / 1024.0) / (duration.count() / 1000000.0);
-                std::cout << "Successfully read " << bytes_read << " bytes in " 
+                qb::io::cout() << "Successfully read " << bytes_read << " bytes in "
                           << duration.count() / 1000.0 << " ms" << std::endl;
-                std::cout << "Read throughput: " << throughput << " KB/s" << std::endl;
+                qb::io::cout() << "Read throughput: " << throughput << " KB/s" << std::endl;
                 
                 // Display a sample of the data
-                std::cout << "First 16 bytes: ";
+                qb::io::cout() << "First 16 bytes: ";
                 for (size_t i = 0; i < std::min<size_t>(16, buffer.size()); ++i) {
-                    std::cout << std::hex << std::setw(2) << std::setfill('0') 
+                    qb::io::cout() << std::hex << std::setw(2) << std::setfill('0')
                               << static_cast<int>(static_cast<unsigned char>(buffer[i])) << " ";
                 }
-                std::cout << std::dec << std::endl;
+                qb::io::cout() << std::dec << std::endl;
             } else {
-                std::cerr << "Failed to read file. Read " << bytes_read 
+                qb::io::cerr() << "Failed to read file. Read " << bytes_read
                           << " of " << file_size << " bytes" << std::endl;
             }
         } else {
-            std::cerr << "Error opening file for reading: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error opening file for reading: " << strerror(errno) << std::endl;
         }
     }
     
@@ -322,19 +322,19 @@ private:
         
         // Create the file path
         std::string file_path = getTestFilePath(_test_dir, TEST_MMAP_FILE);
-        std::cout << "Creating memory-mapped file: " << file_path << std::endl;
+        qb::io::cout() << "Creating memory-mapped file: " << file_path << std::endl;
         
         // For memory mapping, we need to use standard POSIX file operations
         int fd = open(file_path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
-            std::cerr << "Error opening file for memory mapping: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error opening file for memory mapping: " << strerror(errno) << std::endl;
             return;
         }
         
         // Set the file size for mapping
         size_t map_size = 1024 * 1024; // 1MB
         if (ftruncate(fd, map_size) != 0) {
-            std::cerr << "Error setting file size: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error setting file size: " << strerror(errno) << std::endl;
             close(fd);
             return;
         }
@@ -344,13 +344,13 @@ private:
                                MAP_SHARED, fd, 0);
         
         if (mapped_region == MAP_FAILED) {
-            std::cerr << "Memory mapping failed: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Memory mapping failed: " << strerror(errno) << std::endl;
             close(fd);
             return;
         }
         
         // Now we can work with the file as if it were memory
-        std::cout << "File mapped to memory at address: " << mapped_region << std::endl;
+        qb::io::cout() << "File mapped to memory at address: " << mapped_region << std::endl;
         
         // Write data to the mapped region
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -363,28 +363,28 @@ private:
         
         // Ensure data is flushed to disk
         if (msync(mapped_region, map_size, MS_SYNC) != 0) {
-            std::cerr << "Error syncing mapped memory: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error syncing mapped memory: " << strerror(errno) << std::endl;
         }
         
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         
         double throughput = (map_size / 1024.0) / (duration.count() / 1000000.0);
-        std::cout << "Memory-mapped write completed in " << duration.count() / 1000.0 
+        qb::io::cout() << "Memory-mapped write completed in " << duration.count() / 1000.0
                   << " ms" << std::endl;
-        std::cout << "Memory-mapped write throughput: " << throughput << " KB/s" << std::endl;
+        qb::io::cout() << "Memory-mapped write throughput: " << throughput << " KB/s" << std::endl;
         
         // Read back a sample of the data
-        std::cout << "First 16 bytes from memory-mapped file: ";
+        qb::io::cout() << "First 16 bytes from memory-mapped file: ";
         for (size_t i = 0; i < 16; ++i) {
-            std::cout << std::hex << std::setw(2) << std::setfill('0') 
+            qb::io::cout() << std::hex << std::setw(2) << std::setfill('0')
                       << static_cast<int>(data[i]) << " ";
         }
-        std::cout << std::dec << std::endl;
+        qb::io::cout() << std::dec << std::endl;
         
         // Unmap the file
         if (munmap(mapped_region, map_size) != 0) {
-            std::cerr << "Error unmapping file: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error unmapping file: " << strerror(errno) << std::endl;
         }
         
         // Close the file descriptor
@@ -400,12 +400,12 @@ private:
         std::string source_path = getTestFilePath(_test_dir, TEST_FILE);
         std::string dest_path = getTestFilePath(_test_dir, TEST_COPY_FILE);
         
-        std::cout << "Copying " << source_path << " to " << dest_path << std::endl;
+        qb::io::cout() << "Copying " << source_path << " to " << dest_path << std::endl;
         
         // Get source file size using standard file operations
         struct stat file_stat;
         if (stat(source_path.c_str(), &file_stat) != 0) {
-            std::cerr << "Error getting source file stats: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error getting source file stats: " << strerror(errno) << std::endl;
             return;
         }
         size_t file_size = file_stat.st_size;
@@ -416,12 +416,12 @@ private:
         auto start_time = std::chrono::high_resolution_clock::now();
         
         if (source_file.open(source_path.c_str(), O_RDONLY) < 0) {
-            std::cerr << "Error opening source file: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error opening source file: " << strerror(errno) << std::endl;
             return;
         }
         
         if (dest_file.open(dest_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) < 0) {
-            std::cerr << "Error opening destination file: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error opening destination file: " << strerror(errno) << std::endl;
             source_file.close();
             return;
         }
@@ -434,7 +434,7 @@ private:
         while ((bytes_read = source_file.read(buffer.data(), buffer.size())) > 0) {
             bytes_written = dest_file.write(buffer.data(), bytes_read);
             if (bytes_written != bytes_read) {
-                std::cerr << "Error writing to destination file: " << strerror(errno) << std::endl;
+                qb::io::cerr() << "Error writing to destination file: " << strerror(errno) << std::endl;
                 source_file.close();
                 dest_file.close();
                 return;
@@ -450,11 +450,11 @@ private:
         
         if (total_bytes_copied == file_size) {
             double throughput = (file_size / 1024.0) / (duration.count() / 1000000.0);
-            std::cout << "Successfully copied " << total_bytes_copied << " bytes in " 
+            qb::io::cout() << "Successfully copied " << total_bytes_copied << " bytes in "
                       << duration.count() / 1000.0 << " ms" << std::endl;
-            std::cout << "Copy throughput: " << throughput << " KB/s" << std::endl;
+            qb::io::cout() << "Copy throughput: " << throughput << " KB/s" << std::endl;
         } else {
-            std::cerr << "Failed to copy entire file. Copied " << total_bytes_copied 
+            qb::io::cerr() << "Failed to copy entire file. Copied " << total_bytes_copied
                       << " of " << file_size << " bytes" << std::endl;
         }
     }
@@ -466,23 +466,23 @@ private:
         printSection("File Information");
         
         std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
-        std::cout << "Getting information for: " << file_path << std::endl;
+        qb::io::cout() << "Getting information for: " << file_path << std::endl;
         
         // Use standard file operations to get file info
         struct stat file_stat;
         if (stat(file_path.c_str(), &file_stat) == 0) {
-            std::cout << "File size: " << file_stat.st_size << " bytes" << std::endl;
-            std::cout << "File permissions: " << std::oct << (file_stat.st_mode & 0777) 
+            qb::io::cout() << "File size: " << file_stat.st_size << " bytes" << std::endl;
+            qb::io::cout() << "File permissions: " << std::oct << (file_stat.st_mode & 0777)
                       << std::dec << std::endl;
             
             auto mtime = std::chrono::system_clock::from_time_t(file_stat.st_mtime);
             auto mtime_c = std::chrono::system_clock::to_time_t(mtime);
-            std::cout << "Last modified: " << std::ctime(&mtime_c);
+            qb::io::cout() << "Last modified: " << std::ctime(&mtime_c);
             
-            std::cout << "Is regular file: " << (S_ISREG(file_stat.st_mode) ? "Yes" : "No") << std::endl;
-            std::cout << "Is directory: " << (S_ISDIR(file_stat.st_mode) ? "Yes" : "No") << std::endl;
+            qb::io::cout() << "Is regular file: " << (S_ISREG(file_stat.st_mode) ? "Yes" : "No") << std::endl;
+            qb::io::cout() << "Is directory: " << (S_ISDIR(file_stat.st_mode) ? "Yes" : "No") << std::endl;
         } else {
-            std::cerr << "Error getting file info: " << strerror(errno) << std::endl;
+            qb::io::cerr() << "Error getting file info: " << strerror(errno) << std::endl;
         }
     }
     
@@ -504,9 +504,9 @@ private:
             if (std::filesystem::exists(file)) {
                 try {
                     std::filesystem::remove(file);
-                    std::cout << "Removed: " << file << std::endl;
+                    qb::io::cout() << "Removed: " << file << std::endl;
                 } catch (const std::filesystem::filesystem_error& e) {
-                    std::cerr << "Error removing file " << file << ": " << e.what() << std::endl;
+                    qb::io::cerr() << "Error removing file " << file << ": " << e.what() << std::endl;
                 }
             }
         }
@@ -515,24 +515,24 @@ private:
         try {
             if (std::filesystem::exists(_test_dir)) {
                 std::filesystem::remove(_test_dir);
-                std::cout << "Removed directory: " << _test_dir << std::endl;
+                qb::io::cout() << "Removed directory: " << _test_dir << std::endl;
             }
         } catch (const std::filesystem::filesystem_error& e) {
-            std::cerr << "Error removing directory " << _test_dir << ": " << e.what() << std::endl;
+            qb::io::cerr() << "Error removing directory " << _test_dir << ": " << e.what() << std::endl;
         }
     }
 };
 
 int main() {
     printSection("QB-IO File I/O Operations Example");
-    std::cout << "Starting at: " << getCurrentTimestamp() << std::endl;
+    qb::io::cout() << "Starting at: " << getCurrentTimestamp() << std::endl;
     
     // Create and run the file operations manager
     FileOperationsManager file_ops(TEST_DIR);
     file_ops.runDemonstration();
     
     printSection("Example Completed");
-    std::cout << "Finished at: " << getCurrentTimestamp() << std::endl;
+    qb::io::cout() << "Finished at: " << getCurrentTimestamp() << std::endl;
     
     return 0;
 } 

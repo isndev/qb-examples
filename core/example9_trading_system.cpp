@@ -618,7 +618,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "ClientActor " << _client_id << " initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "ClientActor " << _client_id << " initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -629,14 +629,14 @@ public:
     
     void on(ExecutionMessage& msg) {
         // Handle execution report
-        std::cout << "Client " << _client_id << " received execution: " 
+        qb::io::cout() << "Client " << _client_id << " received execution: "
                 << msg.trade_id << " for " << msg.execution_quantity 
                 << " at $" << msg.execution_price << std::endl;
     }
     
     void on(OrderStatusMessage& msg) {
         // Handle order status update
-        std::cout << "Client " << _client_id << " order status: " 
+        qb::io::cout() << "Client " << _client_id << " order status: "
                 << msg.order->order_id << " is now " 
                 << statusToString(msg.order->status) << std::endl;
     }
@@ -711,7 +711,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "OrderEntryActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "OrderEntryActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -799,7 +799,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "MatchingEngineActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "MatchingEngineActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -955,7 +955,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "MarketDataActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "MarketDataActor initialized with ID: " << id() << std::endl;
         return true;
     }
     
@@ -964,7 +964,7 @@ public:
         _latest_market_data[msg.symbol] = msg;
         
         // Log the market data
-        std::cout << "Market Data: " << msg.symbol 
+        qb::io::cout() << "Market Data: " << msg.symbol
                  << " Bid: " << std::fixed << std::setprecision(2) << msg.bid_price 
                  << " x " << msg.bid_size
                  << " Ask: " << msg.ask_price 
@@ -980,7 +980,7 @@ public:
     
     void on(TradeMessage& msg) {
         // Log the trade
-        std::cout << "Trade: " << msg.trade.toString() << std::endl;
+        qb::io::cout() << "Trade: " << msg.trade.toString() << std::endl;
     }
     
     void on(qb::KillEvent&) {
@@ -1019,7 +1019,7 @@ public:
     }
     
     bool onInit() override {
-        std::cout << "SupervisorActor initialized with ID: " << id() << std::endl;
+        qb::io::cout() << "SupervisorActor initialized with ID: " << id() << std::endl;
 
         push<InitializeMessage>(id());
         return true;
@@ -1029,7 +1029,7 @@ public:
         _is_active = true;
         _start_time = getCurrentTimestamp();
         
-        std::cout << "Trading system starting..." << std::endl;
+        qb::io::cout() << "Trading system starting..." << std::endl;
         
         // Initialize the matching engine
         push<InitializeMessage>(_matching_engine_id);
@@ -1052,12 +1052,12 @@ public:
     
     void on(StatisticsMessage& msg) {
         // Log the statistics
-        std::cout << "\n======= TRADING SYSTEM STATISTICS =======" << std::endl;
-        std::cout << "Total Orders: " << msg.total_orders << std::endl;
-        std::cout << "Total Trades: " << msg.total_trades << std::endl;
-        std::cout << "Order Messages: " << msg.order_messages << std::endl;
-        std::cout << "Market Data Messages: " << msg.market_data_messages << std::endl;
-        std::cout << "Elapsed Time: " << std::fixed << std::setprecision(2) 
+        qb::io::cout() << "\n======= TRADING SYSTEM STATISTICS =======" << std::endl;
+        qb::io::cout() << "Total Orders: " << msg.total_orders << std::endl;
+        qb::io::cout() << "Total Trades: " << msg.total_trades << std::endl;
+        qb::io::cout() << "Order Messages: " << msg.order_messages << std::endl;
+        qb::io::cout() << "Market Data Messages: " << msg.market_data_messages << std::endl;
+        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2)
                  << msg.elapsed_seconds << " seconds" << std::endl;
         
         // Calculate performance metrics
@@ -1065,11 +1065,11 @@ public:
         double trades_per_sec = msg.total_trades / msg.elapsed_seconds;
         double messages_per_sec = (msg.order_messages + msg.market_data_messages) / msg.elapsed_seconds;
         
-        std::cout << "Performance: " << std::fixed << std::setprecision(2) 
+        qb::io::cout() << "Performance: " << std::fixed << std::setprecision(2)
                  << orders_per_sec << " orders/sec, " 
                  << trades_per_sec << " trades/sec, " 
                  << messages_per_sec << " messages/sec" << std::endl;
-        std::cout << "==========================================" << std::endl;
+        qb::io::cout() << "==========================================" << std::endl;
     }
     
     void on(qb::KillEvent&) {
@@ -1105,7 +1105,7 @@ private:
     }
     
     void shutdownSystem() {
-        std::cout << "\nTrading system shutting down..." << std::endl;
+        qb::io::cout() << "\nTrading system shutting down..." << std::endl;
         
         // Calculate final statistics
         uint64_t current_time = getCurrentTimestamp();
@@ -1140,7 +1140,7 @@ private:
  * Main function to set up and run the trading system
  */
 int main() {
-    std::cout << "Initializing multi-core trading system..." << std::endl;
+    qb::io::cout() << "Initializing multi-core trading system..." << std::endl;
     
     // Create the main engine with multiple cores
     qb::Main engine;
@@ -1187,6 +1187,6 @@ int main() {
     // Wait for the system to complete
     engine.join();
     
-    std::cout << "Trading system simulation completed" << std::endl;
+    qb::io::cout() << "Trading system simulation completed" << std::endl;
     return 0;
 } 

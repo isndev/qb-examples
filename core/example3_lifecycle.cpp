@@ -46,13 +46,13 @@ public:
         registerEvent<ShutdownRequestEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
         
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Initialized, waiting for start signal\n";
         return true;
     }
     
     void on(StartWorkEvent const&) {
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Received start command, beginning work\n";
         
         // Register the callback to start periodic processing
@@ -61,7 +61,7 @@ public:
     }
     
     void on(StatusRequestEvent const& event) {
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Status requested, processed " << _processed_count << " items\n";
         
         // Reply to the requester with our status
@@ -69,7 +69,7 @@ public:
     }
     
     void on(ShutdownRequestEvent const&) {
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Shutdown requested, stopping work\n";
         
         // Unregister the callback to stop periodic processing
@@ -79,7 +79,7 @@ public:
         }
         
         // Allow some time for cleanup
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Performing cleanup before shutdown\n";
         
         // In a real system, you would perform cleanup here
@@ -89,7 +89,7 @@ public:
     }
     
     void on(qb::KillEvent const&) {
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Kill event received, terminating\n";
         
         // Ensure callback is unregistered
@@ -106,7 +106,7 @@ public:
         // This is called periodically while the callback is registered
         _processed_count++;
         
-        std::cout << "[" << getCurrentTimeString() << "] Worker " << id() 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Processing item #" << _processed_count << "\n";
         
         // Simulate some work
@@ -131,12 +131,12 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerCallback(*this);
         
-        std::cout << "[" << getCurrentTimeString() << "] Supervisor: Initialized, managing " 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Initialized, managing "
                   << _worker_ids.size() << " workers\n";
         
         // Start all workers
         for (const auto& worker_id : _worker_ids) {
-            std::cout << "[" << getCurrentTimeString() << "] Supervisor: Starting worker " 
+            qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Starting worker "
                       << worker_id << "\n";
             push<StartWorkEvent>(worker_id);
         }
@@ -145,12 +145,12 @@ public:
     }
     
     void on(StatusResponseEvent const& event) {
-        std::cout << "[" << getCurrentTimeString() << "] Supervisor: Received status from worker: " 
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Received status from worker: "
                   << event.getSource() << ", processed count: " << event.processed_count << "\n";
     }
     
     void on(qb::KillEvent const&) {
-        std::cout << "[" << getCurrentTimeString() << "] Supervisor: Kill event received, shutting down all workers\n";
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Kill event received, shutting down all workers\n";
         
         // Send shutdown request to all workers
         for (const auto& worker_id : _worker_ids) {
@@ -164,7 +164,7 @@ public:
     
     void onCallback() override {
         // Periodically check worker status
-        std::cout << "[" << getCurrentTimeString() << "] Supervisor: Checking status of all workers\n";
+        qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Checking status of all workers\n";
         
         for (const auto& worker_id : _worker_ids) {
             push<StatusRequestEvent>(worker_id);
@@ -174,7 +174,7 @@ public:
         
         // After a certain number of checks, initiate shutdown
         if (_status_check_count >= _max_checks) {
-            std::cout << "[" << getCurrentTimeString() << "] Supervisor: Reached max status checks, initiating shutdown\n";
+            qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Reached max status checks, initiating shutdown\n";
             
             // Send shutdown request to all workers
             for (const auto& worker_id : _worker_ids) {
@@ -201,12 +201,12 @@ int main() {
     // Create supervisor on core 0
     engine.addActor<SupervisorActor>(0, worker_ids);
     
-    std::cout << "[" << getCurrentTimeString() << "] Main: Starting QB engine\n";
+    qb::io::cout() << "[" << getCurrentTimeString() << "] Main: Starting QB engine\n";
     engine.start();
     
-    std::cout << "[" << getCurrentTimeString() << "] Main: Waiting for actors to complete\n";
+    qb::io::cout() << "[" << getCurrentTimeString() << "] Main: Waiting for actors to complete\n";
     engine.join();
     
-    std::cout << "[" << getCurrentTimeString() << "] Main: All actors have terminated, exiting\n";
+    qb::io::cout() << "[" << getCurrentTimeString() << "] Main: All actors have terminated, exiting\n";
     return 0;
 } 

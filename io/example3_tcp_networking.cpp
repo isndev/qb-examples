@@ -53,17 +53,17 @@ namespace {
     
     // Utility function to print section headers
     void printSection(const std::string& title) {
-        std::cout << "\n=== " << title << " ===\n";
+        qb::io::cout() << "\n=== " << title << " ===\n";
     }
     
     // Utility function to print info with component name
     void printInfo(const std::string& component, const std::string& message) {
-        std::cout << component << ": " << message << std::endl;
+        qb::io::cout() << component << ": " << message << std::endl;
     }
     
     // Utility function to print error with component name
     void printError(const std::string& component, const std::string& message) {
-        std::cerr << component << " ERROR: " << message << std::endl;
+        qb::io::cerr() << component << " ERROR: " << message << std::endl;
     }
 }
 
@@ -336,7 +336,7 @@ void runClient() {
  */
 int main() {
     printSection("QB-IO TCP Networking Example");
-    std::cout << "Starting at: " << getCurrentTimestamp() << std::endl;
+    qb::io::cout() << "Starting at: " << getCurrentTimestamp() << std::endl;
     
     // Start the server in a separate thread
     std::thread server_thread(runServer);
@@ -373,8 +373,8 @@ int main() {
     server_thread.join();
     
     printSection("Example Completed");
-    std::cout << "Total messages processed: " << g_message_count << std::endl;
-    std::cout << "Finished at: " << getCurrentTimestamp() << std::endl;
+    qb::io::cout() << "Total messages processed: " << g_message_count << std::endl;
+    qb::io::cout() << "Finished at: " << getCurrentTimestamp() << std::endl;
     
     return 0;
 } 

@@ -65,12 +65,12 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "TimerManager " << id() << ": Initialized\n";
+        qb::io::cout() << "TimerManager " << id() << ": Initialized\n";
         return true;
     }
     
     void on(StartTimerMsg& msg) {
-        std::cout << "Starting timer '" << msg.timer_name 
+        qb::io::cout() << "Starting timer '" << msg.timer_name
                   << "' with interval " << msg.interval.count() 
                   << "ms, repeat " << msg.repeat_count << " times\n";
         
@@ -96,13 +96,13 @@ public:
     void on(CancelTimerMsg& msg) {
         auto it = _timers.find(msg.timer_name);
         if (it != _timers.end()) {
-            std::cout << "Cancelling timer '" << msg.timer_name << "'\n";
+            qb::io::cout() << "Cancelling timer '" << msg.timer_name << "'\n";
             _timers.erase(it);
         }
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "TimerManager: Shutting down\n";
+        qb::io::cout() << "TimerManager: Shutting down\n";
         
         // Clear all timers
         _timers.clear();
@@ -133,12 +133,12 @@ private:
             
             // Fire the timer event
             push<TimerFiredMsg>(id(), info.name, info.current_count);
-            std::cout << "Timer '" << info.name 
+            qb::io::cout() << "Timer '" << info.name
                       << "' fired, count: " << info.current_count << std::endl;
             
             // Check if we should stop the timer
             if (info.repeat_count > 0 && info.current_count >= info.repeat_count) {
-                std::cout << "Timer '" << info.name << "' completed all " 
+                qb::io::cout() << "Timer '" << info.name << "' completed all "
                           << info.repeat_count << " repetitions\n";
                 _timers.erase(it);
             } else if (_timers.find(timer_name) != _timers.end()) {
@@ -169,7 +169,7 @@ public:
     }
 
     bool onInit() override {
-        std::cout << "Application starting...\n";
+        qb::io::cout() << "Application starting...\n";
         
         // Start a fast timer that repeats 5 times
         push<StartTimerMsg>(_timer_manager_id, 500ms, 5, "fast_timer");
@@ -187,13 +187,13 @@ public:
     // Forward timer events to console for better visualization
     void on(TimerFiredMsg& msg) {
         // We're forwarding these from TimerManager to better track the flow
-        std::cout << "Application received timer event: " << msg.timer_name 
+        qb::io::cout() << "Application received timer event: " << msg.timer_name
                   << " fired (count: " << msg.count << ")" << std::endl;
     }
     
     void on(DelayedActionMsg& msg) {
         if (msg.action == DelayedActionMsg::Action::APP_STEP_1) {
-            std::cout << "Application stopping slow_timer...\n";
+            qb::io::cout() << "Application stopping slow_timer...\n";
             push<CancelTimerMsg>(_timer_manager_id, "slow_timer");
             
             // Schedule the next application step with a longer delay
@@ -201,13 +201,13 @@ public:
             push<DelayedActionMsg>(id(), DelayedActionMsg::Action::APP_STEP_2, 3000);
         }
         else if (msg.action == DelayedActionMsg::Action::APP_STEP_2) {
-            std::cout << "Application waiting for timers to complete...\n";
+            qb::io::cout() << "Application waiting for timers to complete...\n";
             
             // Schedule the final shutdown with a delay
             push<DelayedActionMsg>(id(), DelayedActionMsg::Action::APP_STEP_3, 3000);
         }
         else if (msg.action == DelayedActionMsg::Action::APP_STEP_3) {
-            std::cout << "Application shutting down all actors...\n";
+            qb::io::cout() << "Application shutting down all actors...\n";
             
             // Broadcast kill event to all actors
             broadcast<qb::KillEvent>();
@@ -215,7 +215,7 @@ public:
     }
     
     void on(qb::KillEvent&) {
-        std::cout << "Application: Shutting down\n";
+        qb::io::cout() << "Application: Shutting down\n";
         kill();
     }
 
@@ -232,12 +232,12 @@ int main() {
     auto timer_manager_id = engine.addActor<TimerManager>(0);
     engine.addActor<Application>(0, timer_manager_id);
     
-    std::cout << "Main: Starting QB engine\n";
+    qb::io::cout() << "Main: Starting QB engine\n";
     engine.start();
     
-    std::cout << "Main: Waiting for actors to complete\n";
+    qb::io::cout() << "Main: Waiting for actors to complete\n";
     engine.join();
     
-    std::cout << "Example completed.\n";
+    qb::io::cout() << "Example completed.\n";
     return 0;
 } 

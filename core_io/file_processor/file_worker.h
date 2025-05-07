@@ -44,7 +44,7 @@ public:
      * @brief Actor initialization method
      */
     bool onInit() override {
-        std::cout << "FileWorker " << id() << " initialized on core " << id().index() << std::endl;
+        qb::io::cout() << "FileWorker " << id() << " initialized on core " << id().index() << std::endl;
         
         // Signal that this worker is available
         notifyAvailable();
@@ -57,7 +57,7 @@ public:
      */
     void on(ReadFileRequest& request) {
         _is_busy = true;
-        std::cout << "FileWorker " << id() << " processing read request: " 
+        qb::io::cout() << "FileWorker " << id() << " processing read request: "
                   << request.filepath.c_str() << std::endl;
         
         // Create a buffer to store the file content
@@ -122,7 +122,7 @@ public:
      */
     void on(WriteFileRequest& request) {
         _is_busy = true;
-        std::cout << "FileWorker " << id() << " processing write request: " 
+        qb::io::cout() << "FileWorker " << id() << " processing write request: "
                   << request.filepath.c_str() << std::endl;
         
         // Perform the write operation asynchronously
@@ -179,7 +179,7 @@ public:
      * @brief Stops this actor
      */
     void on(qb::KillEvent&) {
-        std::cout << "FileWorker " << id() << " shutting down" << std::endl;
+        qb::io::cout() << "FileWorker " << id() << " shutting down" << std::endl;
         kill();
     }
     

@@ -17,8 +17,8 @@ bool InputActor::onInit() {
     registerCallback(*this);
     
     // Display initialization and usage information
-    std::cout << "InputActor initialized with ID: " << id() << std::endl;
-    std::cout << "Welcome to the QB Message Broker client" << std::endl;
+    qb::io::cout() << "InputActor initialized with ID: " << id() << std::endl;
+    qb::io::cout() << "Welcome to the QB Message Broker client" << std::endl;
     displayHelp();
     
     return true;
@@ -51,15 +51,15 @@ void InputActor::onCallback() {
 }
 
 void InputActor::displayHelp() {
-    std::cout << "\nAvailable commands:" << std::endl;
-    std::cout << "  SUB <topic>            - Subscribe to a topic" << std::endl;
-    std::cout << "  UNSUB <topic>          - Unsubscribe from a topic" << std::endl;
-    std::cout << "  PUB <topic> <message>  - Publish a message to a topic" << std::endl;
-    std::cout << "  help                   - Display this help message" << std::endl;
-    std::cout << "  quit                   - Exit the client" << std::endl;
-    std::cout << "\nExamples:" << std::endl;
-    std::cout << "  SUB news               - Subscribe to the 'news' topic" << std::endl;
-    std::cout << "  PUB news Hello World   - Publish 'Hello World' to the 'news' topic" << std::endl;
-    std::cout << "  UNSUB news             - Unsubscribe from the 'news' topic" << std::endl;
-    std::cout << "\nEnter commands below:" << std::endl;
+    qb::io::cout() << "\nAvailable commands:" << std::endl;
+    qb::io::cout() << "  SUB <topic>            - Subscribe to a topic" << std::endl;
+    qb::io::cout() << "  UNSUB <topic>          - Unsubscribe from a topic" << std::endl;
+    qb::io::cout() << "  PUB <topic> <message>  - Publish a message to a topic" << std::endl;
+    qb::io::cout() << "  help                   - Display this help message" << std::endl;
+    qb::io::cout() << "  quit                   - Exit the client" << std::endl;
+    qb::io::cout() << "\nExamples:" << std::endl;
+    qb::io::cout() << "  SUB news               - Subscribe to the 'news' topic" << std::endl;
+    qb::io::cout() << "  PUB news Hello World   - Publish 'Hello World' to the 'news' topic" << std::endl;
+    qb::io::cout() << "  UNSUB news             - Unsubscribe from the 'news' topic" << std::endl;
+    qb::io::cout() << "\nEnter commands below:" << std::endl;
 } 
