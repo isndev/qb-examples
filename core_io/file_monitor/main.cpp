@@ -1,15 +1,51 @@
 /**
- * @file main.cpp
- * @brief File monitoring system using qb-io asynchronous operations
- * 
- * This program demonstrates the use of qb::Actor actors combined with qb::io 
- * asynchronous I/O to create a real-time file monitoring system.
- * 
- * Features:
- * - Monitors directories for file changes in real-time
- * - Uses qb::io::async::directory_watcher for file watching
- * - Processes file changes through a distributed actor system
- * - Demonstrates proper qb-io async patterns
+ * @file examples/core_io/file_monitor/main.cpp
+ * @example File Monitoring System - Application Entry Point
+ * @brief Main entry point for the File Monitoring System example, showcasing QB actor
+ *        and QB-IO `directory_watcher` integration.
+ *
+ * @details
+ * This application sets up a system to monitor file changes in a specified directory.
+ * It consists of three actors:
+ * 1.  `file_monitor::DirectoryWatcher` (Actor):
+ *     -   Placed on core 0.
+ *     -   Uses `qb::io::async::directory_watcher` internally to detect file system events
+ *         (create, modify, delete) in the directories it's asked to watch.
+ *     -   Receives `WatchDirectoryRequest` from the `ClientActor`.
+ *     -   Sends `FileEvent` notifications to subscribers (in this case, the `ClientActor` itself
+ *         and implicitly the `FileProcessor` if it were designed to subscribe, though here
+ *         `DirectoryWatcher` directly sends events to `FileProcessor` based on its `onInit` setup in some designs, or `FileProcessor` might subscribe).
+ *         *Correction based on example code: `DirectoryWatcher` sends `FileEvent` to all its registered subscribers for that path. `FileProcessor` is not explicitly shown subscribing in `main.cpp`, but `ClientActor` requests a watch and receives `FileEvent`s. The `FileProcessor` also receives `FileEvent`s - likely the example intends for the `DirectoryWatcher` to broadcast or for the processor to subscribe, but the most direct path shown is `ClientActor` sending `WatchDirectoryRequest` to `DirectoryWatcher` which then sends `FileEvent`s back to its subscribers. In this specific `main.cpp`, the `FileProcessor` is created but not directly linked for `FileEvent`s from `DirectoryWatcher` via a subscription setup in `main`. It seems the `FileProcessor` is expected to be a general recipient of `FileEvent`s if they are broadcast or if it registers itself as a subscriber, which is not explicitly shown here. The current header in `processor.cpp` implies it handles `FileEvent`. This `main.cpp` doesn't directly wire them up beyond creating instances.* Let's assume `DirectoryWatcher` will broadcast or `ClientActor` might forward. Re-evaluating: The `DirectoryMonitor` (helper for `DirectoryWatcher`) takes a callback which `DirectoryWatcher::publishFileEvent` uses to `push<FileEvent>` to all its subscribers for a given path. The `ClientActor` subscribes by sending `WatchDirectoryRequest`. The `FileProcessor` would also need to send such a request or be added as a default subscriber if it were to receive these events directly.
+ *      Let's assume the `DirectoryWatcher` is designed to send `FileEvent`s to interested parties like `ClientActor` and `FileProcessor` if they were to register for specific paths.
+ *
+ * 2.  `file_monitor::FileProcessor` (Actor):
+ *     -   Placed on core 1.
+ *     -   Receives `FileEvent`s (presumably from `DirectoryWatcher`).
+ *     -   Processes these events by logging them, extracting metadata, and potentially
+ *         performing other actions (e.g., hashing file contents).
+ *
+ * 3.  `ClientActor` (Actor):
+ *     -   Placed on core 0.
+ *     -   Sends a `WatchDirectoryRequest` to the `DirectoryWatcher` to monitor a test directory.
+ *     -   Receives `WatchDirectoryResponse` to confirm the watch setup.
+ *     -   Periodically creates, modifies, and deletes files in the test directory to generate file events,
+ *         using `qb::io::async::callback` for scheduling these test operations.
+ *     -   Receives `FileEvent`s from `DirectoryWatcher` for the directory it's watching and logs them.
+ *     -   After a specified duration, it initiates a system shutdown by broadcasting `qb::KillEvent`.
+ *
+ * The `qb::Main` engine manages these actors across different cores. The example demonstrates
+ * asynchronous event-driven processing of file system changes.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: Engine for actor system.
+ * - `qb::Actor`: Base for all actors.
+ * - `engine.addActor<T>(core_id, ...)`: Multi-core actor deployment.
+ * - `qb::Event`: For custom events like `FileEvent`, `WatchDirectoryRequest`.
+ * - Inter-Actor Communication: `push<Event>(...)`.
+ * - Asynchronous Operations: `qb::io::async::callback` for timed actions in `ClientActor`.
+ * - `qb::io::async::directory_watcher` (used by `DirectoryWatcher` actor) for file system monitoring.
+ * - `qb::io::system::file` for synchronous file operations within async contexts (e.g., in `ClientActor`'s test operations).
+ * - Coordinated shutdown using `broadcast<qb::KillEvent>()`.
  */
 
 #include <qb/main.h>

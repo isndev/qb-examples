@@ -1,12 +1,32 @@
 /**
- * @file ClientActor.cpp
- * @brief Implementation of the broker client's network actor
- * 
- * This file implements the core client functionality including:
- * - Connection management and recovery
- * - Message processing and routing
- * - State management and transitions
- * - Error handling and user feedback
+ * @file examples/core_io/message_broker/client/ClientActor.cpp
+ * @example Message Broker Client - Client Network Actor Implementation
+ * @brief Implements the `ClientActor` for the message broker client, handling
+ *        network interactions and command processing.
+ *
+ * @details
+ * This file provides the `ClientActor` implementation.
+ * - `onInit()`: Registers for `BrokerInputEvent` and initiates server connection.
+ * - `on(const broker::Message&)`: Processes messages from the server (responses, published messages,
+ *   errors) parsed by `BrokerProtocol`, and displays them.
+ * - `on(qb::io::async::event::disconnected const&)`: Handles disconnections, scheduling reconnection.
+ * - `connect()`, `onConnected()`, `onConnectionFailed()`: Manage the TCP connection lifecycle
+ *   using `qb::io::async::tcp::connect`.
+ * - `sendSubscribe()`, `sendUnsubscribe()`, `sendPublish()`: Methods to construct and send
+ *   protocol messages to the server for the respective operations.
+ * - `disconnect()`: Initiates a clean client-side disconnection.
+ * - `on(const BrokerInputEvent&)`: Receives raw command strings from `InputActor` and calls
+ *   `processCommand()`.
+ * - `processCommand()`: Parses the command string (e.g., "SUB topic", "PUB topic message")
+ *   and invokes the appropriate send method (e.g., `sendSubscribe()`).
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods for event handling and state.
+ * - `qb::io::use<ClientActor>::tcp::client<>` for TCP operations.
+ * - `qb::io::async::tcp::connect` for non-blocking connection.
+ * - `qb::io::async::callback` for scheduling reconnections.
+ * - `qb::io::cout`, `qb::io::cerr` for output.
+ * - Sending messages via custom protocol: `*this << broker_message_object;`.
  */
 
 #include "ClientActor.h"

@@ -1,13 +1,42 @@
 /**
- * @file ServerActor.h
- * @brief Server actor that manages chat sessions and bridges them with ChatRoomActor
- * 
- * This file demonstrates:
- * 1. How to combine QB Actor system with I/O handling
- * 2. How to manage multiple client sessions
- * 3. How to bridge communication between different actor types
- * 4. Proper event handling and routing in a QB application
+ * @file examples/core_io/chat_tcp/server/ServerActor.h
+ * @example TCP Chat Server - Session Managing Actor
+ * @brief Defines the `ServerActor` which manages multiple `ChatSession` instances
+ * and acts as a bridge between client sessions and the central `ChatRoomActor`.
+ *
+ * @details
+ * The `ServerActor` plays a crucial role in handling client connections after they
+ * are accepted by the `AcceptActor`. Its key functions include:
+ * - Inheriting from `qb::Actor` for core actor functionality.
+ * - Inheriting from `qb::io::use<ServerActor>::tcp::io_handler<ChatSession>` to become
+ *   an I/O handler capable of creating and managing `ChatSession` objects for
+ *   each client TCP connection it receives.
+ * - Receiving `NewSessionEvent` from an `AcceptActor`, which contains a new client socket.
+ *   Upon receiving this, it calls `registerSession(std::move(evt.socket))` (a method
+ *   from the `io_handler` base) to create and manage a new `ChatSession`.
+ * - Acting as a delegate for `ChatSession`s: `ChatSession` instances call methods on their
+ *   parent `ServerActor` (e.g., `handleAuth`, `handleChat`, `handleDisconnect`) to forward
+ *   client requests or notifications.
+ * - Forwarding client requests (authentication, chat messages) to the `ChatRoomActor`
+ *   by creating and `push`ing appropriate events (`AuthEvent`, `ChatEvent`).
+ * - Receiving `SendMessageEvent`s from the `ChatRoomActor` (targeted for a specific client
+ *   session managed by this `ServerActor`) and delivering the message to the correct
+ *   `ChatSession` instance.
+ *
+ * This actor demonstrates how to combine QB actor logic with QB-IO's I/O handling
+ * capabilities to manage multiple network sessions concurrently and efficiently.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For event-driven logic and communication.
+ * - `qb::io::use<ServerActor>::tcp::io_handler<ChatSession>`: Mixin for managing TCP sessions
+ *   of type `ChatSession`. Key methods used: `registerSession()`, `sessions()`.
+ * - Event Handling: `onInit()`, `on(NewSessionEvent&)`, `on(SendMessageEvent&)`.
+ * - Inter-Actor Communication: Receiving events from `AcceptActor` and `ChatRoomActor`,
+ *   and sending events to `ChatRoomActor`.
+ * - Delegation: `ChatSession`s delegating protocol-level actions to this actor.
+ * - Multi-Actor Coordination: Working as an intermediary between connection acceptance, session handling, and application logic.
  */
+
 #pragma once
 
 #include <qb/actor.h>

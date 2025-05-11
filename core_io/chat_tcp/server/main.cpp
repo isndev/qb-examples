@@ -1,27 +1,39 @@
 /**
- * @file main.cpp
- * @brief Entry point demonstrating QB system architecture and initialization
- * 
- * This file demonstrates:
- * 1. How to set up a multi-core QB application
- * 2. How to create and configure different types of actors
- * 3. How to manage actor dependencies and relationships
- * 4. How to handle system startup and shutdown
- * 
- * System Architecture:
- * - Core 0: AcceptActors (Connection acceptance)
- *   - Two instances for load distribution
- *   - Each listening on different ports
- * 
- * - Core 1: ServerActors (Session management)
- *   - Two instances for scalability
- *   - Handle client sessions
- *   - Route messages to ChatRoom
- * 
- * - Core 3: ChatRoomActor (Central state)
- *   - Single instance for consistency
- *   - Manages global chat state
- *   - Handles message broadcasting
+ * @file examples/core_io/chat_tcp/server/main.cpp
+ * @example TCP Chat Server - Application Entry Point
+ * @brief Main entry point for the TCP chat server application.
+ *
+ * @details
+ * This file sets up and launches the server-side actor system for the TCP chat application.
+ * It demonstrates a multi-core deployment strategy for different server components:
+ * 1.  Initializes the `qb::Main` engine.
+ * 2.  Creates the `ChatRoomActor` on a dedicated core (core 3). This actor manages the
+ *     central chat logic and state.
+ * 3.  Creates a pool of `ServerActor`s on another dedicated core (core 1). These actors
+ *     are responsible for handling individual client connections and I/O, delegating
+ *     application logic to the `ChatRoomActor`.
+ * 4.  Creates multiple `AcceptActor`s on a third core (core 0). Each `AcceptActor` listens
+ *     on a different port (e.g., 3001 and 3002) and distributes incoming connections
+ *     to the pool of `ServerActor`s in a round-robin fashion.
+ * 5.  Starts the QB engine asynchronously (`engine.start(true)`).
+ * 6.  Waits for user input (Enter key) to gracefully shut down the server by calling
+ *     `engine.stop()` and then `engine.join()`.
+ *
+ * This architecture aims for scalability and separation of concerns:
+ * - Connection acceptance is handled by `AcceptActor`s.
+ * - I/O and session management for individual clients are handled by `ServerActor`s.
+ * - Core chat application logic and state are centralized in `ChatRoomActor`.
+ * Distributing these across different cores can improve performance under load.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: The main engine for the actor system.
+ * - `engine.addActor<ActorType>(core_id, args...)`: Creating actors and assigning them to specific CPU cores.
+ * - `engine.core(core_id).builder()`: Fluent API for adding multiple actors to the same core.
+ * - `qb::ActorIdList`: Used to pass the list of `ServerActor` IDs to `AcceptActor`s.
+ * - Multi-Core Actor Deployment: Strategically placing actors on different cores.
+ * - Asynchronous Engine Start: `engine.start(true)`.
+ * - Graceful Shutdown: `engine.stop()` followed by `engine.join()`.
+ * - `qb::io::uri`: For specifying listen addresses for `AcceptActor`s.
  */
 
 #include <qb/main.h>

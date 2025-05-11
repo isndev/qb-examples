@@ -1,6 +1,35 @@
 /**
- * @file processor.cpp
- * @brief Implementation of file event processing classes
+ * @file examples/core_io/file_monitor/processor.cpp
+ * @example File Monitoring System - File Processor Implementation
+ * @brief Implements the `FileProcessor` actor for the file monitoring system.
+ *
+ * @details
+ * This file provides the implementation for the `FileProcessor` actor.
+ * - Constructor: Initializes with a base path (though not heavily used in current logic)
+ *   and registers event handlers.
+ * - `onInit()`: Logs initialization.
+ * - `on(FileEvent& event)`: The main handler for file change notifications.
+ *   It switches on `event.type` to call specific processing methods
+ *   (`processFileCreated`, `processFileModified`, `processFileDeleted`) and updates statistics.
+ * - `on(SetProcessingConfigRequest&)`: Updates the `_process_hidden_files` flag.
+ * - `on(GetProcessingStatsRequest&)`: Logs the current processing statistics to the console.
+ * - `on(qb::KillEvent&)`: Logs shutdown and terminates the actor.
+ * - `processFileCreated()`: If the file should be processed, extracts its metadata
+ *   (using `extractMetadata()`) and stores it in the `_tracked_files` map.
+ * - `processFileModified()`: If the file should be processed, it retrieves old metadata (if tracked),
+ *   extracts new metadata, and compares content hashes to determine if a significant change occurred.
+ *   Updates tracked metadata if changed or if it's a newly seen file.
+ * - `processFileDeleted()`: Removes the file from the `_tracked_files` map.
+ * - `shouldProcessFile()`: Contains logic to skip directories or hidden files based on configuration.
+ * - `extractMetadata()`: Uses `std::filesystem` and `qb::io::system::file` to get path, size,
+ *   last modification time, and a simple content hash of a file.
+ * - `updateStats()`: Increments counters in the `_stats` object based on event type.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` event handling and state management.
+ * - Use of `qb::io::system::file` for synchronous file reading (to get content for hashing).
+ * - `qb::io::cout`, `qb::io::cerr` for logging.
+ * - Standard C++ features like `std::filesystem` for path manipulation and file attribute checking.
  */
 
 #include "processor.h"

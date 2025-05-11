@@ -1,27 +1,32 @@
 /**
- * @file main.cpp
- * @brief Entry point demonstrating QB system architecture and initialization
- * 
- * This file demonstrates:
- * 1. How to set up a multi-core QB application
- * 2. How to create and configure different types of actors
- * 3. How to manage actor dependencies and relationships
- * 4. How to handle system startup and shutdown
- * 
- * System Architecture:
- * - Core 0: AcceptActor (Connection acceptance)
- *   - Single instance for connection acceptance
- *   - Listening on port 12345
- * 
- * - Core 1: ServerActors (Session management)
- *   - Two instances for scalability
- *   - Handle client sessions
- *   - Route messages to TopicManager
- * 
- * - Core 2: TopicManagerActor (Central state)
- *   - Single instance for consistency
- *   - Manages topic subscriptions
- *   - Handles message routing
+ * @file examples/core_io/message_broker/server/main.cpp
+ * @example Message Broker Server - Application Entry Point
+ * @brief Main entry point for the message broker server application.
+ *
+ * @details
+ * This file sets up and launches the server-side actor system for the message broker.
+ * It demonstrates a multi-core deployment strategy:
+ * 1.  Initializes the `qb::Main` engine.
+ * 2.  Creates the `TopicManagerActor` on a dedicated core (core 2), which handles the
+ *     central logic of topic management and message routing.
+ * 3.  Creates a pool of `ServerActor`s on another core (core 1). These actors manage
+ *     client I/O sessions and interface with the `TopicManagerActor`.
+ * 4.  Creates an `AcceptActor` on a third core (core 0). This actor listens for
+ *     incoming client connections on a specific port (12345) and distributes them
+ *     to the `ServerActor` pool.
+ * 5.  Starts the QB engine asynchronously and waits for user input (Enter key) to initiate
+ *     a graceful shutdown (`engine.stop()`, `engine.join()`).
+ *
+ * This architecture separates concerns: connection acceptance, session/IO handling,
+ * and core application logic are handled by different sets of actors on different cores.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: Actor system engine.
+ * - `engine.addActor<ActorType>(core_id, args...)`: Multi-core actor deployment.
+ * - `engine.core(core_id).builder()`: Fluent API for actor creation on a core.
+ * - `qb::ActorIdList`: For passing `ServerActor` IDs to `AcceptActor`.
+ * - Asynchronous Engine Start & Graceful Shutdown.
+ * - `qb::io::uri`: For specifying listen address.
  */
 
 #include <qb/main.h>

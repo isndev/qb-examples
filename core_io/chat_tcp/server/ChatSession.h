@@ -1,13 +1,43 @@
 /**
- * @file ChatSession.h
- * @brief Session management for individual chat clients
- * 
- * This file demonstrates:
- * 1. How to implement client session handling in QB
- * 2. How to use QB's I/O framework for TCP communication
- * 3. How to handle protocol messages and timeouts
- * 4. How to integrate multiple QB I/O features
+ * @file examples/core_io/chat_tcp/server/ChatSession.h
+ * @example TCP Chat Server - Client Session Handler
+ * @brief Defines the `ChatSession` class, responsible for managing an individual
+ * client connection on the server side.
+ *
+ * @details
+ * `ChatSession` represents a single connected client within a `ServerActor`.
+ * It handles the I/O and protocol parsing for that specific client.
+ * Key responsibilities and features:
+ * - Inherits from `qb::io::use<ChatSession>::tcp::client<ServerActor>` to act as the server-side
+ *   endpoint for a client's TCP connection, associating it with its managing `ServerActor`.
+ * - Inherits from `qb::io::use<ChatSession>::timeout` to implement session inactivity timeouts.
+ * - Uses the custom `ChatProtocol` (defined in `shared/Protocol.h`) for message framing
+ *   and parsing by specifying `using Protocol = chat::ChatProtocol<ChatSession>;`
+ *   and calling `this->template switch_protocol<Protocol>(*this);`.
+ * - `on(const chat::Message& msg)`: Handles fully parsed messages from the client.
+ *   It forwards authentication requests and chat messages to the managing `ServerActor`.
+ * - `on(qb::io::async::event::disconnected const &)`: Handles client disconnection events,
+ *   notifying the `ServerActor`.
+ * - `on(qb::io::async::event::timer const &)`: Handles session timeout events by disconnecting the client.
+ * - `updateTimeout()`: Resets the inactivity timer upon receiving client activity.
+ *
+ * This class demonstrates how QB-IO's composable `use` templates can be combined to build
+ * sophisticated network session handlers with features like custom protocols and timeouts.
+ *
+ * QB Features Demonstrated:
+ * - `qb::io::use<ChatSession>::tcp::client<ServerActor>`: Server-side representation of a client connection,
+ *   linked to a `ServerActor` (its `IOServer`).
+ * - `qb::io::use<ChatSession>::timeout`: Mixin for session inactivity timeout.
+ *   - `setTimeout(seconds)`: Configures the timeout duration.
+ *   - `updateTimeout()`: Resets the timer.
+ *   - `on(qb::io::async::event::timer const &)`: Timeout event handler.
+ * - Custom Protocol Integration: Using `ChatProtocol` derived from `qb::io::async::AProtocol`.
+ *   - `switch_protocol<Protocol>(*this)`: Activates the protocol for the session.
+ *   - `on(const chat::Message& msg)`: Receives messages parsed by the protocol.
+ * - QB Event Handling: `on(qb::io::async::event::disconnected const&)`.
+ * - Interaction with Parent Actor: Accessing `this->server()` (the `ServerActor`) to delegate tasks.
  */
+
 #pragma once
 
 #include <qb/io/async.h>

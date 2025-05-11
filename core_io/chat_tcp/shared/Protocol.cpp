@@ -1,14 +1,29 @@
 /**
- * @file Protocol.cpp
- * @brief Implements QB-integrated message serialization for the chat protocol
- * 
- * This file contains the QB framework integration code that enables:
- * - Efficient binary serialization of chat messages
- * - Zero-copy buffer management
- * - Type-safe message handling
- * 
- * The implementation uses QB's pipe system for optimal performance and
- * memory management during network I/O operations.
+ * @file examples/core_io/chat_tcp/shared/Protocol.cpp
+ * @example TCP Chat Server/Client - Shared Protocol Serialization
+ * @brief Implements the serialization logic for the custom `chat::Message` type
+ *        into QB-IO's pipe buffers.
+ *
+ * @details
+ * This file contains the template specialization of `qb::allocator::pipe<char>::put<chat::Message>()`.
+ * This specialization is crucial for QB-IO to understand how to convert a `chat::Message`
+ * object into a byte stream according to the defined chat protocol format when an actor
+ * uses the `*this << message_object;` syntax for sending.
+ *
+ * Serialization Process:
+ * 1.  A `chat::MessageHeader` is constructed with the correct magic number, version,
+ *     message type (from `msg.type`), and payload length (from `msg.payload.size()`).
+ * 2.  The 8-byte header is written to the QB pipe buffer using `this->put(header_ptr, header_size)`.
+ * 3.  If the `msg.payload` is not empty, its contents are written to the pipe buffer immediately
+ *     after the header using `this->put(payload_data_ptr, payload_size)`.
+ *
+ * This allows for efficient, typed message sending within the QB-IO framework using the
+ * custom chat protocol.
+ *
+ * QB Features Demonstrated:
+ * - `qb::allocator::pipe<char>::put<T>()`: Specialization for custom type serialization.
+ * - Writing structured data (header) and raw byte data (payload) into a QB pipe.
+ * - Integration with a custom-defined protocol (`chat::Message`, `chat::MessageHeader`).
  */
 
 #include "Protocol.h"

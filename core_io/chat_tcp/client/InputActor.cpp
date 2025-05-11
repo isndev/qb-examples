@@ -1,9 +1,24 @@
 /**
- * @file InputActor.cpp
- * @brief Implementation of the user input handling actor
- * 
- * This file contains the implementation of the InputActor class,
- * handling user interaction and command processing for the chat client.
+ * @file examples/core_io/chat_tcp/client/InputActor.cpp
+ * @example TCP Chat Client - User Input Actor Implementation
+ * @brief Implements the `InputActor` for handling non-blocking console input.
+ *
+ * @details
+ * This file contains the implementation of `InputActor`.
+ * - `onInit()`: Registers the `qb::ICallback` and displays initial user prompts.
+ * - `onCallback()`: This method is called periodically by the QB engine. It attempts
+ *   to read a line from `std::cin`. If input is available (e.g., user pressed Enter),
+ *   it processes the input. The `std::getline` itself can be blocking if input isn't ready,
+ *   so for a truly non-blocking GUI or more complex console input, platform-specific
+ *   non-blocking I/O or a separate input thread that messages the actor would be more robust.
+ *   However, for simple console examples, `ICallback` with `std::getline` is often used for simplicity.
+ *   - If the input is "quit", it signals the `ClientActor` and itself to terminate using `qb::KillEvent`.
+ *   - Otherwise, non-empty input is sent as a `ChatInputEvent` to the `ClientActor`.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::ICallback` usage for periodic actions.
+ * - Sending events (`ChatInputEvent`, `qb::KillEvent`) to other actors and self.
+ * - `qb::io::cout()` for console output.
  */
 
 #include "InputActor.h"

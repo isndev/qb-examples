@@ -1,13 +1,31 @@
 /**
- * @file ClientActor.h
- * @brief Chat client actor managing network communication
- * 
- * This actor serves as the core of the chat client, providing:
- * - Robust connection management with automatic reconnection
- * - Protocol-compliant message handling
- * - State management and error recovery
- * - Integration with QB's actor framework
+ * @file examples/core_io/chat_tcp/client/ClientActor.h
+ * @example TCP Chat Client - Client Network Actor
+ * @brief Chat client actor managing network communication with the server.
+ *
+ * @details
+ * This actor is the core network-facing component of the chat client. It handles:
+ * - Establishing and maintaining a TCP connection to the chat server (`qb::io::async::tcp::connect`).
+ * - Sending authentication requests and chat messages using the custom `ChatProtocol`.
+ * - Receiving and processing messages (auth responses, chat messages, errors) from the server.
+ * - Managing connection state (connected, authenticated) and attempting reconnection on failure.
+ * - Interacting with the `InputActor` by receiving `ChatInputEvent`s to send messages.
+ *
+ * It inherits from `qb::Actor` for event-based logic and `qb::io::use<ClientActor>::tcp::client<>`
+ * to gain TCP client capabilities and integrate with QB-IO's asynchronous event loop.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: Base class for concurrent entities.
+ * - `qb::io::use<ClientActor>::tcp::client<>`: TCP client mixin for network I/O.
+ * - `qb::io::async::tcp::connect`: Asynchronous connection establishment.
+ * - `qb::io::uri`: Representing the server address.
+ * - Custom Protocol Handling: Integration with `ChatProtocol` (derived from `qb::io::async::AProtocol`).
+ * - Event Handling: `onInit()`, `on(const ChatInputEvent&)`, `on(const chat::Message&)`, `on(qb::io::async::event::disconnected const&)`. Message sending via `*this << chat_message;`.
+ * - Asynchronous Callbacks: `qb::io::async::callback` for delayed reconnection attempts.
+ * - State Management: Internal atomics for `_connected`, `_authenticated`, `_should_reconnect`.
+ * - Actor Communication: Receiving `ChatInputEvent` from `InputActor`.
  */
+
 #pragma once
 
 #include <qb/actor.h>

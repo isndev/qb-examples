@@ -1,40 +1,67 @@
 /**
- * @file example10_distributed_computing.cpp
- * @brief Advanced distributed computing system using QB actors for high-performance parallel processing
- * 
- * This example demonstrates a sophisticated distributed computing framework with:
- * - TaskGenerator for creating computational workloads
- * - TaskScheduler for distributing tasks with intelligent load balancing
- * - Multiple WorkerNodes for parallel processing across cores
- * - ResultCollector for aggregating and validating results
- * - SystemMonitor for tracking performance metrics and system health
- * 
- * The system demonstrates advanced concepts like:
- * - Dynamic load balancing
- * - Worker health monitoring
- * - Task prioritization
- * - Result validation
- * - Real-time performance metrics
+ * @file examples/core/example10_distributed_computing.cpp
+ * @example Advanced Distributed Computing System Simulation
+ *
+ * @brief This example simulates a complex distributed computing system. It demonstrates
+ * advanced actor patterns for task generation, scheduling with load balancing,
+ * distributed task execution by workers, result collection, and system-wide monitoring.
+ *
+ * @details
+ * The system comprises several specialized actors, typically distributed across multiple cores:
+ * 1.  `TaskGeneratorActor`:
+ *     -   Periodically creates computational `Task` objects with varying types, priorities, and complexities.
+ *     -   Sends these tasks as `TaskMessage` events to the `TaskSchedulerActor`.
+ *     -   Uses `qb::ICallback` for periodic task generation.
+ * 2.  `TaskSchedulerActor`:
+ *     -   Manages a queue of pending tasks, prioritizing them.
+ *     -   Receives `WorkerStatusMessage` and `WorkerHeartbeatMessage` from `WorkerNodeActor`s
+ *         to monitor their load and availability.
+ *     -   Implements a load balancing strategy to assign tasks (`TaskAssignmentMessage`)
+ *         to the most suitable (e.g., least busy) `WorkerNodeActor`.
+ *     -   Tracks active tasks and handles `TaskStatusUpdateMessage`s.
+ *     -   Receives `ResultMessage`s to know when workers become free.
+ * 3.  `WorkerNodeActor` (multiple instances):
+ *     -   Represents a computational node capable of executing tasks.
+ *     -   Receives `TaskAssignmentMessage` from the scheduler.
+ *     -   Simulates task processing, with duration based on task complexity.
+ *     -   Sends `ResultMessage` (containing success/failure and output) to the `ResultCollectorActor`.
+ *     -   Periodically sends `WorkerHeartbeatMessage` and `WorkerStatusMessage` (with metrics like
+ *         utilization) to the `TaskSchedulerActor`.
+ *     -   Uses `qb::ICallback` for its internal processing loop/heartbeats.
+ * 4.  `ResultCollectorActor`:
+ *     -   Aggregates `TaskResult` events received from all `WorkerNodeActor`s.
+ *     -   Can provide summary statistics on task completion, success rates, and average processing times.
+ * 5.  `SystemMonitorActor` (acts as a coordinator):
+ *     -   Initializes and launches all other actors in the system, potentially using `addRefActor`.
+ *     -   Distributes actors across different CPU cores.
+ *     -   Sends `InitializeMessage` to start other actors.
+ *     -   Receives `ProcessingCompleteEvent` from worker/producer type actors.
+ *     -   Collects overall system statistics (`SystemStatsMessage`) and displays them periodically.
+ *     -   Manages the lifecycle of the simulation, initiating a system-wide shutdown
+ *         (e.g., by broadcasting `ShutdownEvent` or `qb::KillEvent`) after a set duration or
+ *         once all work is deemed complete.
+ *
+ * This example showcases dynamic load balancing, worker health monitoring, task prioritization,
+ * result validation (conceptual), and real-time performance metrics within a QB actor system.
+ *
+ * QB Features Demonstrated:
+ * - Multi-Core Actor System: Actors strategically deployed across cores for performance.
+ * - Advanced Actor Communication: Complex interaction patterns for work distribution, status updates, and results.
+ * - Dynamic Load Balancing: `TaskSchedulerActor` making decisions based on `WorkerMetrics`.
+ * - Health Monitoring: `WorkerHeartbeatMessage` and `WorkerStatusMessage`.
+ * - Asynchronous Operations: Extensive use of `qb::ICallback` and `qb::io::async::callback` for periodic tasks,
+ *   simulated processing, and system orchestration.
+ * - Comprehensive Event System: Numerous custom events for detailed system control and information flow.
+ * - System Orchestration and Lifecycle Management: `SystemMonitorActor` overseeing the simulation.
+ * - Fixed-Size Strings: `qb::string<N>` used in event/model definitions for potentially performance-sensitive data.
+ * - Referenced Actors: `addRefActor` for potentially closer coupling where appropriate (though the example uses it broadly).
  */
 
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <unordered_map>
-#include <deque>
-#include <chrono>
-#include <algorithm>
-#include <random>
-#include <iomanip>
-#include <sstream>
-#include <atomic>
-#include <memory>
-#include <functional>
-#include <cmath>
+
 
 namespace {
     // Global settings

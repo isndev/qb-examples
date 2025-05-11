@@ -1,3 +1,43 @@
+/**
+ * @file examples/core_io/message_broker/shared/Events.h
+ * @example Message Broker - Shared Event & Message Container Definitions
+ * @brief Defines custom `qb::Event` types and a `MessageContainer` for efficient,
+ *        zero-copy message handling in the message broker example.
+ *
+ * @details
+ * This header is crucial for the message broker system. It declares:
+ * 1.  `broker::MessageContainer`:
+ *     -   A class designed to manage the lifetime of `broker::Message` data using a
+ *         `std::shared_ptr` with atomic operations for thread-safe reference counting.
+ *     -   Enables zero-copy message passing: a single instance of message data can be
+ *         safely referenced by multiple events or actors (potentially on different cores)
+ *         without copying the payload. String views (`std::string_view`) can then point
+ *         into the container's payload.
+ *     -   Used by `PublishEvent` and `SendMessageEvent` to hold the actual message content.
+ * 2.  `NewSessionEvent`: Sent by `AcceptActor` to `ServerActor` with a new client socket.
+ * 3.  `SubscribeEvent`: Sent by `ServerActor` to `TopicManagerActor`.
+ *     -   Contains `session_id` and the `broker::MessageContainer` (holding the raw subscribe message,
+ *       from which a `topic` string_view is derived).
+ * 4.  `UnsubscribeEvent`: Similar to `SubscribeEvent`, for unsubscription requests.
+ * 5.  `PublishEvent`: Sent by `ServerActor` to `TopicManagerActor`.
+ *     -   Contains `session_id`, the `broker::MessageContainer` (holding the raw publish message),
+ *       and `std::string_view`s for `topic` and `content` that point into the container's payload.
+ *       This demonstrates efficient passing of message parts without copying.
+ * 6.  `SendMessageEvent`: Sent by `TopicManagerActor` to a `ServerActor` to deliver a message
+ *     to a specific client. It holds a `broker::MessageContainer`, allowing the message data
+ *     to be shared efficiently if broadcast to multiple clients via different `ServerActor`s.
+ * 7.  `DisconnectEvent`: Sent by `ServerActor` to `TopicManagerActor` when a client disconnects.
+ * 8.  `BrokerInputEvent`: Client-side event from `InputActor` to `ClientActor`, carrying the raw command string.
+ *
+ * QB Features Demonstrated:
+ * - Custom `qb::Event`s for typed, asynchronous communication.
+ * - Advanced Message Handling: Use of `MessageContainer` with `std::string_view` to achieve
+ *   zero-copy semantics for message payloads passed between actors.
+ * - `qb::string<N>` for fixed-size string event fields.
+ * - `qb::uuid` for session identification.
+ * - `qb::io::tcp::socket` carried by events.
+ */
+
 #pragma once
 
 #include <qb/event.h>
@@ -7,21 +47,6 @@
 #include <memory>
 #include <string_view>
 #include <atomic>
-
-/**
- * @file Events.h
- * @brief Event definitions for the QB message broker system
- * 
- * This file defines the event types that enable communication between
- * different actors in the broker system. The events form the backbone of
- * the system's message passing architecture, enabling:
- * 
- * - Asynchronous communication between actors
- * - Type-safe message passing
- * - Clear separation of concerns
- * - Efficient state management
- * - Zero-copy message passing optimization
- */
 
 namespace broker {
 

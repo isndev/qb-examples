@@ -1,13 +1,29 @@
 /**
- * @file BrokerSession.h
- * @brief Session management for individual broker clients
- * 
- * This file demonstrates:
- * 1. How to implement client session handling in QB
- * 2. How to use QB's I/O framework for TCP communication
- * 3. How to handle protocol messages and timeouts
- * 4. How to integrate multiple QB I/O features
+ * @file examples/core_io/message_broker/server/BrokerSession.h
+ * @example Message Broker Server - Client Session Handler
+ * @brief Defines `BrokerSession` for managing individual client connections to the broker.
+ *
+ * @details
+ * `BrokerSession` handles I/O and protocol parsing for a single client connected to a `ServerActor`.
+ * - Inherits `qb::io::use<BrokerSession>::tcp::client<ServerActor>` (server-side client endpoint)
+ *   and `qb::io::use<BrokerSession>::timeout` (for inactivity timeouts).
+ * - Uses `BrokerProtocol` (custom binary protocol from `shared/`) for message framing.
+ *   Activated by `this->template switch_protocol<Protocol>(*this);`.
+ * - `on(broker::Message msg)`: Processes parsed messages from the client. It uses `std::move`
+ *   for the incoming message to enable potential zero-copy forwarding of the payload.
+ *   It delegates handling to the parent `ServerActor` (e.g., `handleSubscribe`, `handlePublish`).
+ * - Handles disconnection and timeout events, notifying the `ServerActor`.
+ *
+ * QB Features Demonstrated:
+ * - `qb::io::use<BrokerSession>::tcp::client<ServerActor>`: Server-side client session.
+ * - `qb::io::use<BrokerSession>::timeout`: Session inactivity timeout.
+ * - Custom Protocol Integration: Using `BrokerProtocol`.
+ * - `switch_protocol<Protocol>(*this)`.
+ * - `on(broker::Message msg)`: Receiving parsed custom messages (passed by value for move).
+ * - QB Event Handling: `on(qb::io::async::event::disconnected const&)`, `on(qb::io::async::event::timer const &)`.
+ * - Interaction with Parent Actor: `this->server()`.
  */
+
 #pragma once
 
 #include <qb/io/async.h>

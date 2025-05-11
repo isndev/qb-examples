@@ -1,13 +1,44 @@
 /**
- * @file Protocol.h
- * @brief Chat protocol definition and QB framework integration
- * 
- * This file defines the core protocol used for communication between chat clients and server.
- * Key components:
- * - Message framing and serialization
- * - Protocol state management
- * - QB framework integration via CRTP pattern
- * - Type-safe message handling
+ * @file examples/core_io/chat_tcp/shared/Protocol.h
+ * @example TCP Chat Server/Client - Shared Protocol Definition
+ * @brief Defines the simple text-based chat protocol, including message structure,
+ * serialization, and parsing logic for QB-IO integration.
+ *
+ * @details
+ * This file specifies a custom protocol for the TCP chat application.
+ * **Protocol Format**:
+ * A simple header is used for message framing:
+ * - Magic (uint16_t `0x5143` 'QC'): Identifies QB Chat protocol.
+ * - Version (uint8_t `0x01`): Protocol version.
+ * - Type (uint8_t `chat::MessageType`): Defines the kind of message (e.g., AUTH_REQUEST, CHAT_MESSAGE).
+ * - Length (uint32_t): Size of the string payload that follows.
+ * The header is followed by the UTF-8 string payload.
+ *
+ * **Components**:
+ * - `chat::MessageHeader`: Struct representing the 8-byte protocol header.
+ * - `chat::MessageType`: Enum for different message types.
+ * - `chat::Message`: Struct holding the `MessageType` and `std::string payload` for an application-level message.
+ * - `qb::allocator::pipe<char>::put<chat::Message>`: A template specialization that serializes
+ *   a `chat::Message` object into the defined binary format (header + payload) into a QB pipe buffer.
+ *   This enables sending with `*this << chat_message_object;`.
+ * - `chat::ChatProtocol<IO_>`: A class template inheriting from `qb::io::async::AProtocol<IO_>`.
+ *   This class implements the server-side and client-side logic for parsing the byte stream:
+ *     - `getMessageSize()`: Reads the header, validates magic/version, and returns the total expected
+ *       message size (header + payload_length). If not enough data is available for the header or
+ *       the full payload, it returns 0, indicating more data is needed.
+ *     - `onMessage()`: Called when a complete message is buffered. It reconstructs the `chat::Message`
+ *       object from the header and payload data and passes it to the `IO_` handler (e.g., `ClientActor`
+ *       or `ChatSession`) via `this->_io.on(parsed_message)`.
+ *     - `reset()`: Resets the protocol parsing state, e.g., after an error.
+ *
+ * QB Features Demonstrated:
+ * - Custom Protocol Design: Defining a binary header for message framing.
+ * - `qb::io::async::AProtocol<IO_>`: Implementing a custom protocol handler for QB-IO.
+ *   - Reading from input buffer: `this->_io.in()`.
+ *   - Dispatching parsed messages: `this->_io.on(message)`.
+ * - `qb::allocator::pipe`: Specializing `put<T>()` for custom message type serialization, enabling
+ *   efficient, low-copy sending.
+ * - CRTP (Curiously Recurring Template Pattern): Used by `AProtocol`.
  */
 
 #pragma once

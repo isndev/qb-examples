@@ -1,10 +1,45 @@
-#include <iostream>
-#include <chrono>
-#include <string>
-#include <unordered_map>
+/**
+ * @file examples/core/example5_timers.cpp
+ * @example Actor-Based Timer Simulation and Delayed Actions
+ * 
+ * @brief This example demonstrates how to implement timer-like behavior and delayed
+ * actions within the QB Actor Framework using self-messaging patterns. It simulates
+ * a timer manager that can schedule events to fire after specific intervals.
+ *
+ * @details
+ * The system includes:
+ * 1.  `TimerManager` Actor:
+ *     -   Receives `StartTimerMsg` to schedule a new "timer".
+ *     -   Manages timers internally by sending `DelayedActionMsg` events to itself.
+ *         When a `DelayedActionMsg` (acting as a timer tick) is processed, it emits a
+ *         `TimerFiredMsg`.
+ *     -   Handles `CancelTimerMsg` to stop existing timers.
+ *     -   This actor simulates timer functionality. For direct timer scheduling, QB provides
+ *         `qb::io::async::callback(func, delay_seconds)`.
+ * 2.  `Application` Actor:
+ *     -   Interacts with the `TimerManager` to start and cancel timers.
+ *     -   Receives `TimerFiredMsg` and logs them.
+ *     -   Uses `DelayedActionMsg` sent to itself to sequence its own operations
+ *         (e.g., stopping a timer after some time, then shutting down).
+ *     -   Initiates a system-wide shutdown using `broadcast<qb::KillEvent>()`.
+ * 
+ * This example illustrates a pattern for managing timed or delayed operations purely
+ * through actor events and internal logic, and coordinates a graceful shutdown.
+ *
+ * QB Features Demonstrated:
+ * - Actor Communication: `push<EventType>(...)` for sending commands and events, including to self (`id()`).
+ * - Event-Driven Logic: Actors reacting to various custom events (`StartTimerMsg`, `TimerFiredMsg`, etc.).
+ * - Simulated Timers: Implementing timer functionality via self-directed `DelayedActionMsg` events.
+ *   (Note: QB offers `qb::io::async::callback(func, delay)` for direct asynchronous delayed execution).
+ * - Coordinated Shutdown: Using `broadcast<qb::KillEvent>()` for system-wide termination.
+ * - Actor State Management: Actors maintain internal state for timers and application steps.
+ * - Engine Management: `qb::Main`, `engine.addActor<ActorType>()`, `engine.start()`, `engine.join()`.
+ * - System Event Handling: Actors registering for and handling `qb::KillEvent`.
+ */
 
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 #include <qb/event.h>
 #include <qb/icallback.h>
 

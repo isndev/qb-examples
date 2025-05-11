@@ -1,7 +1,35 @@
 /**
- * @file messages.h
- * @brief Definition of shared messages/events between actors
+ * @file examples/core_io/file_processor/messages.h
+ * @example Distributed File Processor - Shared Event/Message Definitions
+ * @brief Defines custom `qb::Event` types used for communication between actors
+ *        in the distributed file processing system example.
+ *
+ * @details
+ * This header declares events for requesting file operations (read/write),
+ * responding to those requests, and worker status notifications.
+ *
+ * Event Types:
+ * - `ReadFileRequest`: A `qb::Event` sent to `FileManager` to request reading a file.
+ *   Contains file path, requestor's `ActorId`, and a unique request ID.
+ * - `ReadFileResponse`: A `qb::Event` sent back from `FileManager` (forwarded from `FileWorker`)
+ *   with the content of the read file (or error). Contains file path, data (`std::shared_ptr<std::vector<char>>`),
+ *   success status, error message, and the original request ID.
+ * - `WriteFileRequest`: A `qb::Event` sent to `FileManager` to request writing data to a file.
+ *   Contains file path, data to write (`std::shared_ptr<std::vector<char>>`), requestor's `ActorId`, and request ID.
+ * - `WriteFileResponse`: A `qb::Event` sent back from `FileManager` (forwarded from `FileWorker`)
+ *   indicating the result of the write operation. Contains file path, bytes written,
+ *   success status, error message, and request ID.
+ * - `WorkerAvailable`: A `qb::Event` sent by a `FileWorker` to the `FileManager` to indicate
+ *   it is ready to process a new task.
+ *
+ * QB Features Demonstrated:
+ * - Custom `qb::Event` Creation for application-specific messaging.
+ * - Data Encapsulation: Events carry all necessary data for the operation/response.
+ * - Use of `qb::string<N>` for fixed-size string fields in events.
+ * - `qb::ActorId` for routing responses back to the original requestor.
+ * - `std::shared_ptr<std::vector<char>>` for efficient handling of potentially large file data.
  */
+
 #pragma once
 
 #include <qb/actor.h>

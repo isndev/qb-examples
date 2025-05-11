@@ -1,13 +1,34 @@
 /**
- * @file ChatRoomActor.h
- * @brief Central actor demonstrating QB's event-driven state management
- * 
- * This file demonstrates:
- * 1. How to implement centralized state management in QB
- * 2. How to handle inter-actor communication
- * 3. How to manage shared resources in an actor system
- * 4. How to implement broadcast patterns in QB
+ * @file examples/core_io/chat_tcp/server/ChatRoomActor.h
+ * @example TCP Chat Server - Central Chat Room Logic Actor
+ * @brief Defines the `ChatRoomActor` which manages the central state of the chat,
+ * including user sessions, authentication, and message broadcasting.
+ *
+ * @details
+ * The `ChatRoomActor` is a key component in the server-side architecture. Its main
+ * responsibilities are:
+ * - **Session Management**: Keeps track of all active client sessions (`_sessions` map)
+ *   and their associated usernames (`_usernames` map for quick lookup).
+ * - **Authentication**: Handles `AuthEvent`s sent by `ServerActor`s. It checks for username
+ *   uniqueness, registers new users, and sends an authentication response.
+ * - **Message Broadcasting**: Receives `ChatEvent`s (containing messages from clients)
+ *   and broadcasts them to all other connected and authenticated clients by sending
+ *   `SendMessageEvent`s to the appropriate `ServerActor`s.
+ * - **Disconnection Handling**: Processes `DisconnectEvent`s to remove users from its
+ *   tracking maps and notify other users of departures.
+ *
+ * It acts as a centralized point of coordination and state for the chat application logic,
+ * ensuring that all participants see a consistent view of the chat room.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For encapsulating state and behavior.
+ * - Event Handling: `onInit()`, `on(AuthEvent&)`, `on(ChatEvent&)`, `on(DisconnectEvent&)`.
+ * - Inter-Actor Communication: Receiving events from `ServerActor`s and sending `SendMessageEvent`s
+ *   back to `ServerActor`s for delivery to specific clients.
+ * - State Management: Using `std::map` to store session information and usernames.
+ * - Centralized Logic: Implementing core application logic (authentication, broadcast) in one actor.
  */
+
 #pragma once
 
 #include <qb/actor.h>

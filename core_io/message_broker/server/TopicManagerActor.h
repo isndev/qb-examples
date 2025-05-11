@@ -1,13 +1,42 @@
 /**
- * @file TopicManagerActor.h
- * @brief Central actor managing topics and subscriptions
- * 
- * This file demonstrates:
- * 1. How to implement centralized state management in QB
- * 2. How to handle inter-actor communication
- * 3. How to manage shared resources in an actor system
- * 4. How to implement publish-subscribe patterns in QB
+ * @file examples/core_io/message_broker/server/TopicManagerActor.h
+ * @example Message Broker Server - Topic Management Actor
+ * @brief Defines `TopicManagerActor`, the central logic hub for managing topics,
+ *        subscriptions, and message distribution in the broker.
+ *
+ * @details
+ * The `TopicManagerActor` is responsible for:
+ * - Managing a list of topics and which client sessions are subscribed to each topic
+ *   (using `_subscriptions`: `std::map<std::string, std::set<qb::uuid>>`).
+ * - Keeping track of which topics each session is subscribed to (using `_session_topics`
+ *   for efficient cleanup on disconnect).
+ * - Storing basic session information (`_sessions`: `std::map<qb::uuid, SessionInfo>`).
+ * - Handling `SubscribeEvent`: Adds a session to a topic's subscriber list and updates the session's
+ *   own list of subscribed topics. Sends a response to the client.
+ * - Handling `UnsubscribeEvent`: Removes a session from a topic and updates corresponding state.
+ *   Sends a response to the client.
+ * - Handling `PublishEvent`: Receives a message to be published to a topic.
+ *   It iterates through all subscribers for that topic and creates a `SendMessageEvent`
+ *   (using a shared `broker::MessageContainer` for the message payload to achieve zero-copy
+ *   for broadcast) for each, `push`ing it to the `ServerActor` managing that subscriber's session.
+ * - Handling `DisconnectEvent`: Cleans up all subscriptions for the disconnected session.
+ *
+ * This actor uses `std::string_view` in its event handlers (via `PublishEvent`, `SubscribeEvent`,
+ * `UnsubscribeEvent`) that point to data within a `broker::MessageContainer` to achieve
+ * zero-copy processing of topic names and message content where possible.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For centralized state management and application logic.
+ * - Event Handling: `onInit()`, `on(SubscribeEvent&)`, `on(UnsubscribeEvent&)`, `on(PublishEvent&)`,
+ *   `on(DisconnectEvent&)`.
+ * - State Management: Using `std::map` and `std::set` to manage complex relationships
+ *   (topics, subscribers, sessions).
+ * - Inter-Actor Communication: Receiving requests from `ServerActor`s and sending messages
+ *   back to `ServerActor`s for client delivery.
+ * - Zero-Copy Message Handling: Working with `broker::MessageContainer` and `std::string_view`
+ *   from events to efficiently process and broadcast messages.
  */
+
 #pragma once
 
 #include <qb/actor.h>

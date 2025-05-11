@@ -1,12 +1,33 @@
 /**
- * @file ChatRoomActor.cpp
- * @brief Implementation of the centralized chat room management actor
- * 
- * This actor serves as the central state manager for the chat system, handling:
- * 1. User authentication and session tracking
- * 2. Message broadcasting and routing
- * 3. Session lifecycle management
- * 4. Concurrent user management
+ * @file examples/core_io/chat_tcp/server/ChatRoomActor.cpp
+ * @example TCP Chat Server - Central Chat Room Logic Implementation
+ * @brief Implements the `ChatRoomActor` which manages chat room state, user
+ * authentication, and message broadcasting for the TCP chat server.
+ *
+ * @details
+ * This file provides the implementation for the `ChatRoomActor`.
+ * - `onInit()`: Registers handlers for `AuthEvent`, `ChatEvent`, and `DisconnectEvent`.
+ * - `on(AuthEvent&)`: Handles new user authentication. It checks if a username is taken.
+ *   If not, it stores the user's session ID and username, then sends a welcome message
+ *   to the user (via `SendMessageEvent` to the relevant `ServerActor`) and broadcasts
+ *   a "user has joined" message to all other users.
+ * - `on(ChatEvent&)`: Processes incoming chat messages. It retrieves the sender's username
+ *   using the session ID and then broadcasts the formatted message (e.g., "Username: message")
+ *   to all connected clients.
+ * - `on(DisconnectEvent&)`: Handles user disconnections. It removes the user from its internal
+ *   tracking maps (`_sessions`, `_usernames`) and broadcasts a "user has left" message.
+ * - `sendToSession()`: A helper method to send a `chat::Message` to a specific client session
+ *   by creating a `SendMessageEvent` and `push`ing it to the `ServerActor` responsible for that session.
+ * - `sendError()`: A utility to send an error message to a specific client.
+ * - `broadcastMessage()`: A helper to create a `chat::Message` and send it to all currently
+ *   active sessions via their respective `ServerActor`s.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods for event handling and lifecycle.
+ * - `push<Event>(destination, args...)` for sending events to other actors.
+ * - Managing application state (user sessions, usernames) within an actor.
+ * - Implementing application-specific logic (authentication, message formatting, broadcasting).
+ * - `qb::io::cout`: Thread-safe console output for logging.
  */
 
 #include "ChatRoomActor.h"

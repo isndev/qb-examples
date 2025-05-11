@@ -1,31 +1,60 @@
 /**
- * @file example9_trading_system.cpp
- * @brief High-performance trading system simulation using QB actors
+ * @file examples/core/example9_trading_system.cpp
+ * @example Simulated Multi-Core Trading System
  * 
- * This example demonstrates a professional-grade trading system with:
- * - Order Entry component for receiving client orders
- * - Matching Engine for executing trades
- * - Market Data for disseminating price information
+ * @brief This example simulates a basic financial trading system, showcasing how
+ * QB actors can be used to build complex, multi-component applications distributed
+ * across multiple CPU cores. It includes order entry, a matching engine, and
+ * market data dissemination.
+ *
+ * @details
+ * The system is composed of several actor types:
+ * 1.  `ClientActor` (multiple instances):
+ *     -   Simulates trading clients by generating and sending `NewOrderMessage`s.
+ *     -   Placed on various cores.
+ *     -   Receives `ExecutionMessage`s for filled orders and `OrderStatusMessage`s.
+ *     -   Uses `qb::io::async::callback` for periodic order generation.
+ * 2.  `OrderEntryActor`:
+ *     -   Acts as a gateway for client orders.
+ *     -   Receives `NewOrderMessage`s, performs initial validation (not detailed), and forwards them
+ *         to the `MatchingEngineActor`.
+ *     -   Handles `CancelOrderMessage` requests.
+ *     -   Routes `ExecutionMessage`s and `OrderStatusMessage`s back to clients.
+ * 3.  `MatchingEngineActor`:
+ *     -   The core of the trading system, often placed on a dedicated core for low latency.
+ *     -   Maintains `OrderBook`s for various financial symbols.
+ *     -   Matches buy and sell orders based on price-time priority.
+ *     -   Generates `Trade` objects upon successful matches.
+ *     -   Sends `TradeMessage`s (containing executed trade details) to the `MarketDataActor`.
+ *     -   Sends `ExecutionMessage`s (confirming part or full execution of an order).
+ *     -   Publishes `MarketDataMessage` (top of book, last trade) to the `MarketDataActor`.
+ * 4.  `MarketDataActor`:
+ *     -   Receives `TradeMessage`s and `MarketDataMessage`s from the `MatchingEngineActor`.
+ *     -   Disseminates `MarketDataMessage` to subscribed clients (client subscription to market data is conceptual here).
+ * 5.  `SupervisorActor`:
+ *     -   Initializes and orchestrates the entire system.
+ *     -   Sends `InitializeMessage` to start other actors.
+ *     -   Uses `qb::io::async::callback` to periodically request and display `StatisticsMessage`.
+ *     -   Manages the simulation lifecycle, initiating a shutdown after a set duration by sending `qb::KillEvent` to actors.
  * 
- * The system runs across multiple cores for optimal performance.
+ * The example emphasizes actor communication patterns, state management within order books,
+ * and multi-core deployment strategies for different components of a complex system.
+ *
+ * QB Features Demonstrated:
+ * - Multi-Core Deployment: Assigning different actors (`MatchingEngineActor`, `ClientActor`s, etc.) to specific CPU cores via `engine.addActor<T>(core_id, ...)`.
+ * - Complex Actor Interactions: Multiple actors collaborating through message passing to achieve system goals.
+ * - Custom Event Hierarchy: `OrderMessage` as a base for various order-related events.
+ * - Asynchronous Operations: `qb::io::async::callback` for periodic tasks (order generation, stats reporting).
+ * - State Encapsulation: `MatchingEngineActor` managing `OrderBook` state internally.
+ * - Application-Specific Logic: Implementation of order matching and market data generation.
+ * - System Orchestration: `SupervisorActor` managing the lifecycle and monitoring of the system.
+ * - Engine Management: `qb::Main`, `engine.start()`, `engine.join()`.
  */
+
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <unordered_map>
-#include <deque>
-#include <chrono>
-#include <algorithm>
-#include <random>
-#include <iomanip>
-#include <sstream>
-#include <atomic>
-#include <memory>
-#include <mutex>
 
 namespace {
     // Global settings

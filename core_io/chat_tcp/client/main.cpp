@@ -1,23 +1,35 @@
 /**
- * @file main.cpp
- * @brief Chat client application entry point
- * 
- * This file implements the chat client's core architecture:
- * 
- * System Architecture:
- * - Multi-core actor distribution
- * - Clean separation of concerns
- * - Robust error handling
- * - Resource management
- * 
- * Actor Distribution:
- * - InputActor (Core 0): User interface and input handling
- * - ClientActor (Core 1): Network communication and protocol
- * 
- * The separation across cores enables:
- * - Non-blocking user interface
- * - Responsive network handling
- * - Optimal resource utilization
+ * @file examples/core_io/chat_tcp/client/main.cpp
+ * @example TCP Chat Client - Application Entry Point
+ * @brief Main entry point for the TCP chat client application.
+ *
+ * @details
+ * This file sets up and launches the client-side actor system for the TCP chat application.
+ * It performs the following steps:
+ * 1.  Parses command-line arguments for server host, port, and username.
+ * 2.  Initializes the `qb::Main` engine.
+ * 3.  Creates and configures the necessary actors:
+ *     -   `InputActor`: Placed on core 0, responsible for handling user console input.
+ *         It takes a reference to the `ClientActor`'s ID to send `ChatInputEvent`s.
+ *     -   `ClientActor`: Placed on core 1, responsible for network communication with the
+ *         chat server. It takes the username, the `InputActor`'s ID (to know its counterpart,
+ *         though not strictly used for sending messages back in this example), and the server URI.
+ * 4.  Starts the QB engine using `engine.start()` (asynchronously) and then waits for the
+ *     engine to terminate using `engine.join()`.
+ * 5.  Includes basic error handling for argument parsing and engine execution.
+ *
+ * This demonstrates a simple multi-core actor deployment strategy where UI/input handling
+ * is separated from network operations, promoting responsiveness.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: The main engine kvinnherad for the actor system.
+ * - `engine.addActor<ActorType>(core_id, args...)`: For creating actors and assigning them to specific cores.
+ * - `engine.start(true)`: To start the engine asynchronously.
+ * - `engine.join()`: To wait for the engine and all its actors to terminate.
+ * - `engine.hasError()`: To check for errors during engine execution.
+ * - `qb::io::uri`: For parsing and representing the server connection URI.
+ * - `qb::ActorId`: Used for inter-actor referencing (passed during construction).
+ * - Basic multi-core actor deployment.
  */
 
 #include <qb/main.h>

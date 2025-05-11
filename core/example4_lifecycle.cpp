@@ -1,18 +1,47 @@
 /**
- * @example Actor Lifecycle and Callbacks
+ * @file examples/core/example4_lifecycle.cpp
+ * @example Actor Lifecycle Management and Supervision
  * 
- * This example demonstrates:
- * - Actor lifecycle events (initialization, termination)
- * - Periodic callbacks for scheduled work
- * - Graceful actor shutdown
- * - Actor communication patterns
+ * @brief This example showcases advanced actor lifecycle management, including
+ * starting, stopping, monitoring, and coordinated shutdown of actors using a
+ * supervisor-worker pattern.
+ *
+ * @details
+ * The system features:
+ * 1.  `WorkerActor`:
+ *     -   Represents a unit of work that can be started, monitored, and stopped.
+ *     -   Waits for a `StartWorkEvent` to begin its periodic processing task (managed by `qb::ICallback`).
+ *     -   Responds to `StatusRequestEvent` with its current progress (e.g., items processed).
+ *     -   Handles `ShutdownRequestEvent` by performing cleanup (e.g., unregistering its callback)
+ *         and then terminating itself using `kill()`.
+ *     -   Explicitly handles `qb::KillEvent` for graceful termination.
+ * 2.  `SupervisorActor`:
+ *     -   Manages a group of `WorkerActor` instances.
+ *     -   Upon initialization, sends `StartWorkEvent` to all its workers.
+ *     -   Periodically uses `qb::ICallback` to send `StatusRequestEvent` to each worker and
+ *         receives `StatusResponseEvent`s.
+ *     -   After a predefined number of status checks, or if it receives a `qb::KillEvent`,
+ *         it initiates a coordinated shutdown by sending `ShutdownRequestEvent` to all workers
+ *         before terminating itself.
+ *  
+ * This example highlights how to manage actor states, interactions, and ensure
+ * graceful startup and shutdown procedures in a multi-actor system.
+ *
+ * QB Features Demonstrated:
+ * - Supervisor-Worker Pattern: `SupervisorActor` managing `WorkerActor`s.
+ * - Coordinated Lifecycle: Starting workers with `StartWorkEvent`, stopping with `ShutdownRequestEvent`.
+ * - Status Polling: `StatusRequestEvent` and `StatusResponseEvent` for monitoring.
+ * - Event System: Multiple custom events for specific lifecycle and control actions.
+ * - System Event Handling: Explicit handling of `qb::KillEvent`.
+ * - Callback Management: `qb::ICallback`, `registerCallback()`, `onCallback()`, and `unregisterCallback()`.
+ * - Actor Communication: `push<EventType>(...)`, `event.getSource()`.
+ * - Engine and Actor Management: `qb::Main`, `engine.addActor<ActorType>()`, `kill()`.
+ * - Thread-Safe I/O: `qb::io::cout()`.
  */
+
 #include <qb/actor.h>
 #include <qb/main.h>
-#include <iostream>
-#include <iomanip>
-#include <chrono>
-#include <ctime>
+#include <qb/io.h>
 
 // Helper function to get current timestamp string
 std::string getCurrentTimeString() {

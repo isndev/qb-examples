@@ -1,7 +1,40 @@
 /**
- * @file file_worker.h
- * @brief Actor that performs asynchronous I/O operations on files
+ * @file examples/core_io/file_processor/file_worker.h
+ * @example Distributed File Processor - File Worker Actor Definition
+ * @brief Defines the `FileWorker` actor, which performs the actual asynchronous
+ *        file read and write operations.
+ *
+ * @details
+ * The `FileWorker` actor is responsible for executing file I/O tasks delegated by the
+ * `FileManager`. Each worker operates independently.
+ *
+ * Key Responsibilities:
+ * - Receives `ReadFileRequest` and `WriteFileRequest` events from the `FileManager`.
+ * - Upon receiving a request, it marks itself as busy.
+ * - Uses `qb::io::async::callback` to schedule the potentially blocking file operation
+ *   (read or write using `qb::io::system::file`) off the main actor event processing path.
+ *   This ensures the actor remains responsive and doesn't block its core's event loop.
+ * - After the file operation completes (or fails) within the async callback:
+ *   - It creates a `ReadFileResponse` or `WriteFileResponse` event containing the result
+ *     (data read, bytes written, success status, error message) and the original request ID.
+ *   - It `push`es this response event to the `requestor` specified in the original request
+ *     (which is typically the `ClientActor` via the `FileManager`).
+ *   - It marks itself as not busy and sends a `WorkerAvailable` event to its `_manager_id`
+ *     (the `FileManager`) to signal readiness for new tasks.
+ * - Handles `qb::KillEvent` for graceful shutdown.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For encapsulating file operation logic.
+ * - Event Handling: `onInit()`, `on(ReadFileRequest&)`, `on(WriteFileRequest&)`, `on(qb::KillEvent&)`.
+ * - Asynchronous Task Execution: Using `qb::io::async::callback` to perform blocking I/O
+ *   operations without stalling the actor's event loop.
+ * - `qb::io::system::file`: For performing synchronous file open, read, write, and close operations
+ *   within the `qb::io::async::callback`.
+ * - Inter-Actor Communication: Sending response events (`ReadFileResponse`, `WriteFileResponse`)
+ *   and status events (`WorkerAvailable`) using `push<Event>(...)`.
+ * - Managing Actor State: `_is_busy` flag.
  */
+
 #pragma once
 
 #include <qb/actor.h>

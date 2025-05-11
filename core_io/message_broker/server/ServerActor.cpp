@@ -1,12 +1,29 @@
 /**
- * @file ServerActor.cpp
- * @brief Implementation demonstrating QB's server-side patterns
- * 
- * This file demonstrates:
- * 1. How to implement a QB server actor
- * 2. How to manage multiple client sessions
- * 3. How to handle inter-actor communication
- * 4. How to integrate with QB's I/O framework
+ * @file examples/core_io/message_broker/server/ServerActor.cpp
+ * @example Message Broker Server - Session Managing Actor Implementation
+ * @brief Implements `ServerActor` for managing client sessions and relaying messages
+ *        to/from the `TopicManagerActor`.
+ *
+ * @details
+ * This file implements the `ServerActor` methods.
+ * - `onInit()`: Registers for `NewSessionEvent` (from `AcceptActor`) and `SendMessageEvent` (from `TopicManagerActor`).
+ * - `on(NewSessionEvent&)`: Creates and registers a new `BrokerSession` using `registerSession()`.
+ * - `handleSubscribe()`, `handleUnsubscribe()`, `handlePublish()`: These are called by `BrokerSession`.
+ *   They construct and `push` `SubscribeEvent`, `UnsubscribeEvent`, or `PublishEvent` to the `TopicManagerActor`.
+ *   `handlePublish` specifically takes a `broker::MessageContainer&&` and `std::string_view`s to pass
+ *   message data efficiently, leveraging the zero-copy mechanism established in `BrokerSession` and `Events.h`.
+ * - `handleDisconnect()`: Creates and `push`es a `DisconnectEvent` to `TopicManagerActor`.
+ * - `on(SendMessageEvent&)`: When `TopicManagerActor` needs to send a message to a client, this handler
+ *   finds the appropriate `BrokerSession` and uses its stream operator (`*it->second << evt.message()`) to send
+ *   the message data (obtained via `evt.message()` from the `SendMessageEvent`'s `MessageContainer`).
+ *   Updates the session timeout after sending.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` event handling.
+ * - `qb::io::use<...>::tcp::io_handler<BrokerSession>` for session creation (`registerSession()`) and access (`sessions()`).
+ * - `push<Event>(...)` for inter-actor messaging.
+ * - Efficient message forwarding using `std::move` for `MessageContainer` and `std::string_view`s
+ *   in conjunction with `Events.h` definitions.
  */
 
 #include "ServerActor.h"

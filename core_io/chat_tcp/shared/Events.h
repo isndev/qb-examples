@@ -1,23 +1,43 @@
+/**
+ * @file examples/core_io/chat_tcp/shared/Events.h
+ * @example TCP Chat Server/Client - Shared Event Definitions
+ * @brief Defines the custom `qb::Event` types used for communication between actors
+ * in the TCP chat system, particularly on the server side, and for client input.
+ *
+ * @details
+ * This header declares several structures inheriting from `qb::Event`. These events
+ * facilitate typed, asynchronous message passing within the QB actor system.
+ *
+ * Defined Events:
+ * - `NewSessionEvent`: Sent by `AcceptActor` to a `ServerActor` when a new client TCP
+ *   connection is accepted. It carries the `qb::io::tcp::socket` for the new session.
+ * - `AuthEvent`: Sent by a `ServerActor` (on behalf of a `ChatSession`) to the
+ *   `ChatRoomActor` to request user authentication. Contains session ID and username.
+ * - `ChatEvent`: Sent by a `ServerActor` (on behalf of a `ChatSession`) to the
+ *   `ChatRoomActor` when a client sends a chat message. Contains session ID and message content.
+ * - `SendMessageEvent`: Sent by `ChatRoomActor` to a specific `ServerActor` to deliver
+ *   a `chat::Message` (from `Protocol.h`) to a client connected to that `ServerActor`.
+ *   Contains the target session ID and the `chat::Message`.
+ * - `DisconnectEvent`: Sent by a `ServerActor` (notified by a `ChatSession`) to the
+ *   `ChatRoomActor` when a client disconnects. Contains the session ID of the disconnected client.
+ * - `ChatInputEvent`: Sent by the client-side `InputActor` to its `ClientActor` when the
+ *   user enters a line of text in the console. Contains the user's message.
+ *
+ * QB Features Demonstrated:
+ * - Custom Event Creation: Defining structs inheriting from `qb::Event`.
+ * - Data Encapsulation in Events: Events carry necessary data (e.g., sockets, IDs, strings).
+ * - `qb::string<N>`: Fixed-size strings for event fields, potentially offering
+ *   performance benefits by avoiding heap allocations for small strings when an event is created on the stack.
+ * - `qb::uuid`: For unique session identification.
+ * - `qb::io::tcp::socket`: Carried by an event to transfer socket ownership.
+ */
+
 #pragma once
 
 #include <qb/event.h>
 #include <qb/io/tcp/socket.h>
 #include <qb/string.h>
 #include "Protocol.h"
-
-/**
- * @file Events.h
- * @brief Event definitions for the QB chat system
- * 
- * This file defines the event types that enable communication between
- * different actors in the chat system. The events form the backbone of
- * the system's message passing architecture, enabling:
- * 
- * - Asynchronous communication between actors
- * - Type-safe message passing
- * - Clear separation of concerns
- * - Efficient state management
- */
 
 /**
  * @brief Event triggered when a new TCP connection is accepted

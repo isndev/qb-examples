@@ -1,12 +1,26 @@
 /**
- * @file InputActor.h
- * @brief User input handling actor for the chat client
- * 
- * This actor manages the user interface aspects of the chat client:
- * - Non-blocking console input handling
- * - Message formatting and routing
- * - Command interpretation
- * - Clean shutdown handling
+ * @file examples/core_io/chat_tcp/client/InputActor.h
+ * @example TCP Chat Client - User Input Actor
+ * @brief Actor responsible for handling user console input in a non-blocking manner.
+ *
+ * @details
+ * This actor interfaces with the user via the console. It uses `qb::ICallback` to
+ * periodically check for console input without blocking the actor's thread or the
+ * QB engine's event loop. When input is detected, it's packaged into a
+ * `ChatInputEvent` and sent to the `ClientActor` for processing and network transmission.
+ *
+ * It demonstrates a common pattern for integrating blocking I/O (like `std::getline`
+ * from `std::cin` in a naive way) into the QB actor model by using a non-blocking check
+ * within a periodic callback.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: Base class for concurrent entities.
+ * - `qb::ICallback`: Interface for periodic execution within an actor's lifecycle.
+ *   - `registerCallback(*this)`: To enable periodic calls to `onCallback()`.
+ *   - `onCallback()`: Method called by the QB engine periodically.
+ * - `qb::Event`: Base for `ChatInputEvent`.
+ * - Inter-Actor Communication: `push<ChatInputEvent>(_client_id, ...)` to send user input to the `ClientActor`.
+ * - Actor Lifecycle: Handles `qb::KillEvent` implicitly for shutdown (though explicit handling could be added).
  */
 
 #pragma once

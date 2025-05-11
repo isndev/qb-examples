@@ -1,26 +1,56 @@
 /**
- * @file example7_pub_sub.cpp
- * @brief Example of a publish/subscribe pattern implementation with qb-core
+ * @file examples/core/example7_pub_sub.cpp
+ * @example Publish-Subscribe Messaging Pattern
  * 
- * This example demonstrates how to implement a publish/subscribe (pub/sub) pattern
- * using qb-core actors. The pub/sub pattern allows for loose coupling between
- * message publishers and subscribers, enabling flexible broadcast communication.
+ * @brief This example demonstrates the implementation of a publish-subscribe (pub/sub)
+ * pattern using QB actors. It showcases how to build a decoupled messaging system
+ * where publishers can broadcast messages to multiple subscribers interested in specific topics.
+ *
+ * @details
+ * The system consists of several actors:
+ * 1.  `BrokerActor`:
+ *     -   Acts as the central message hub.
+ *     -   Manages topic subscriptions: handles `SubscribeMessage` to add a subscriber to a topic
+ *         and `UnsubscribeMessage` to remove them.
+ *     -   Receives `PublishMessage` containing a topic and content.
+ *     -   Forwards the content as a `MessageReceivedMessage` to all `SubscriberActor`s
+ *         currently subscribed to that topic.
+ *     -   Tracks and can print statistics about messages and subscriptions via `PrintStatisticsMessage`.
+ * 2.  `MessagePublisher` Actor:
+ *     -   Publishes messages to various topics by sending `PublishMessage` events to the `BrokerActor`.
+ *     -   Its publishing actions are triggered by `StepMessage` events from the `DemoController`.
+ * 3.  `SubscriberActor` (multiple instances):
+ *     -   Represents an entity interested in messages on specific topics.
+ *     -   (In this demo, subscriptions are initiated by `DemoController` on their behalf).
+ *     -   Receives `MessageReceivedMessage` events from the `BrokerActor` for topics it's subscribed to.
+ *     -   Maintains a local history of received messages and can print it upon receiving `PrintHistoryMessage`.
+ * 4.  `DemoController` Actor:
+ *     -   Orchestrates the entire demonstration flow.
+ *     -   Initializes subscriptions by sending `SubscribeMessage`s to the `BrokerActor`.
+ *     -   Triggers message publications by sending `StepMessage`s to the `MessagePublisher`.
+ *     -   Requests message history and statistics from relevant actors.
+ *     -   Uses `qb::ICallback` and `qb::io::async::callback` with self-sent `DelayedActionMessage`
+ *         to manage the sequence of demo steps.
+ *     -   Handles the graceful shutdown of the system by sending `qb::KillEvent` to other actors.
+ *
+ * QB Features Demonstrated:
+ * - Publish-Subscribe Pattern: Implemented with a central `BrokerActor`.
+ * - Decoupled Communication: Publishers don't need to know about subscribers.
+ * - Dynamic Subscriptions: (Simulated by controller) Actors can subscribe/unsubscribe to topics.
+ * - Message Broadcasting: `BrokerActor` distributing messages to multiple recipients.
+ * - Event-Driven Architecture: System driven by various custom `qb::Event` types.
+ * - Actor Lifecycle Management: `onInit()`, `kill()`, handling `qb::KillEvent`.
+ * - Inter-Actor Communication: `push<EventType>(...)`.
+ * - Asynchronous Operations: `qb::io::async::callback()` used by `DemoController` for sequencing.
+ * - Periodic/Delayed Actions: `qb::ICallback` and self-messaging in `DemoController`.
+ * - Engine Management: `qb::Main`, `engine.addActor<ActorType>()`.
+ * - State Management: Actors like `BrokerActor` and `SubscriberActor` maintain internal state
+ *   (subscriptions, message history).
  */
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <set>
-#include <memory>
-#include <chrono>
-#include <random>
-#include <functional>
-#include <thread>
-#include <tuple>
-#include <iomanip>
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 
 using namespace qb;
 

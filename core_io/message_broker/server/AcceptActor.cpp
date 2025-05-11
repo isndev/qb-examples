@@ -1,12 +1,23 @@
 /**
- * @file AcceptActor.cpp
- * @brief Implementation demonstrating QB's TCP acceptor patterns
- * 
- * This file demonstrates:
- * 1. How to implement a TCP acceptor in QB
- * 2. How to handle connection distribution
- * 3. How to manage server pool
- * 4. How to handle acceptor lifecycle
+ * @file examples/core_io/message_broker/server/AcceptActor.cpp
+ * @example Message Broker Server - Connection Acceptor Implementation
+ * @brief Implements the `AcceptActor` for the message broker server.
+ *
+ * @details
+ * This file provides the implementation for the `AcceptActor` specific to the
+ * message broker example. Its functionality is largely the same as the `AcceptActor`
+ * in the `chat_tcp` example.
+ * - `onInit()`: Initializes the listener.
+ * - `on(accepted_socket_type&& new_io)`: Forwards new connections to `ServerActor`s
+ *   via `NewSessionEvent`.
+ * - `on(qb::io::async::event::disconnected const&)`: Handles listener socket errors
+ *   by broadcasting a `qb::KillEvent`.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods.
+ * - `qb::io::use<AcceptActor>::tcp::acceptor` usage.
+ * - `push<NewSessionEvent>(...)`.
+ * - `broadcast<qb::KillEvent>()`.
  */
 
 #include "AcceptActor.h"

@@ -1,170 +1,193 @@
 /**
- * @file example4_udp_networking.cpp
- * @brief Example showing UDP networking with qb::io::udp::socket class
+ * @file examples/io/example4_udp_networking.cpp
+ * @example Asynchronous UDP Client-Server Communication
  *
- * This example demonstrates how to use the qb::io::udp::socket class to send and receive
- * UDP datagrams, showing both client and server functionality.
+ * @brief This example demonstrates basic User Datagram Protocol (UDP) networking
+ * using QB-IO's asynchronous framework. It sets up a UDP server that echoes
+ * received messages and a UDP client that sends messages and processes responses.
+ *
+ * @details
+ * The example features two main classes:
+ * 1.  `UDPServer`:
+ *     -   Inherits from `qb::io::use<UDPServer>::udp::server`.
+ *     -   Binds to a specific port using `transport().bind_v4()`.
+ *     -   Uses `qb::protocol::text::command<UDPServer>` to interpret incoming datagrams
+ *         as newline-terminated text messages.
+ *     -   The `on(Protocol::message&& msg)` handler is invoked for each received message.
+ *     -   It sends an echo response back to the client. The UDP server infrastructure
+ *         implicitly handles sending the response to the source endpoint of the received datagram.
+ *     -   Calls `start()` to begin listening for and processing datagrams.
+ * 2.  `UDPClient`:
+ *     -   Inherits from `qb::io::use<UDPClient>::udp::client`.
+ *     -   Initializes its underlying socket using `transport().init()`.
+ *     -   Uses `setDestination(qb::io::endpoint().as_in(host, port))` to specify the
+ *         server's address before sending each datagram.
+ *     -   Also uses `qb::protocol::text::command<UDPClient>` for message framing.
+ *     -   Sends a series of messages to the server and processes responses in its
+ *         `on(Protocol::message&& msg)` handler.
+ *     -   Calls `start()` to enable receiving responses.
+ *
+ * The `main` function:
+ * - Initializes the QB asynchronous I/O system using `qb::io::async::init()` for both server (main thread)
+ *   and client (separate thread).
+ * - Runs the `UDPServer` in the main thread and the `UDPClient` in a new thread.
+ * - Both client and server use `qb::io::async::run(EVRUN_NOWAIT)` within loops to process
+ *   I/O events asynchronously.
+ * - Atomic counters (`server_received`, `client_received`) are used to track message flow
+ *   and determine when the example can conclude.
+ *
+ * QB-IO Features Demonstrated:
+ * - Asynchronous UDP Server: `qb::io::use<T>::udp::server`, `transport().bind_v4()`.
+ * - Asynchronous UDP Client: `qb::io::use<T>::udp::client`, `transport().init()`, `setDestination()`.
+ * - Endpoint Management: `qb::io::endpoint` for specifying destination addresses.
+ * - Built-in Text Protocol over UDP: `qb::protocol::text::command<HandlerType>`.
+ * - Asynchronous Event Loop: `qb::io::async::init()`, `qb::io::async::run()`.
+ * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
-#include <chrono>
-#include <iostream>
+#include <qb/io.h>
+#include <qb/io/async.h>
+#include <qb/io/protocol/text.h>
 #include <thread>
+#include <atomic>
+#include <iostream>
 
-#include <qb/io/udp/socket.h>
+constexpr const unsigned short SERVER_PORT = 9090;
+constexpr const char* TEST_MESSAGE = "Hello from UDP client!";
+constexpr const size_t MESSAGE_COUNT = 5;
 
-// Helper function to print endpoint information
-void print_endpoint_info(const qb::io::endpoint& ep, const std::string& prefix) {
-    qb::io::cout() << prefix << ep.to_string() << " (family: ";
-    switch (ep.af()) {
-        case AF_INET:
-            qb::io::cout() << "IPv4";
-            break;
-        case AF_INET6:
-            qb::io::cout() << "IPv6";
-            break;
-        default:
-            qb::io::cout() << "Unknown";
-    }
-    qb::io::cout() << ")" << std::endl;
+// Atomic counters for tracking messages
+std::atomic<std::size_t> server_received{0};
+std::atomic<std::size_t> client_received{0};
+
+// Check if client has received all responses
+bool client_done() {
+    return client_received >= MESSAGE_COUNT;
 }
 
-// Server function - receives UDP datagrams
-void udp_server(uint16_t port) {
-    qb::io::udp::socket server_socket;
-    
-    // Initialize the socket
-    if (!server_socket.init(AF_INET)) {
-        qb::io::cerr() << "Failed to initialize server socket" << std::endl;
-        return;
-    }
-    
-    // Bind to any local address on the specified port
-    int result = server_socket.bind_v4(port);
-    if (result != 0) {
-        qb::io::cerr() << "Failed to bind server socket: " << result << std::endl;
-        return;
-    }
-    
-    // Print server information
-    print_endpoint_info(server_socket.local_endpoint(), "Server listening on: ");
-    
-    // Set socket to non-blocking mode
-    server_socket.set_nonblocking(true);
-    
-    qb::io::cout() << "UDP server started. Waiting for messages..." << std::endl;
-    
-    char buffer[qb::io::udp::socket::MaxDatagramSize];
-    qb::io::endpoint client_endpoint;
-    
-    // Loop to receive datagrams
-    for (int i = 0; i < 5; ++i) {
-        // Try to receive a datagram
-        int bytes_read = server_socket.read(buffer, sizeof(buffer), client_endpoint);
-        
-        if (bytes_read > 0) {
-            // Ensure null termination for string data
-            buffer[bytes_read] = '\0';
-            
-            // Print information about the received datagram
-            print_endpoint_info(client_endpoint, "Received from: ");
-            qb::io::cout() << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
-            
-            // Send a response
-            std::string response = "Hello from server!";
-            int bytes_sent = server_socket.write(response.c_str(), response.size(), client_endpoint);
-            
-            if (bytes_sent > 0) {
-                qb::io::cout() << "Sent response: " << response << " (" << bytes_sent << " bytes)" << std::endl;
-            } else {
-                qb::io::cerr() << "Failed to send response: " << bytes_sent << std::endl;
-            }
-        } else if (bytes_read < 0 && bytes_read != -EAGAIN && bytes_read != -EWOULDBLOCK) {
-            qb::io::cerr() << "Error receiving datagram: " << bytes_read << std::endl;
-        }
-        
-        // Sleep briefly to avoid busy-waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    
-    qb::io::cout() << "Server shutting down" << std::endl;
-    server_socket.close();
+// Check if server has received all messages
+bool server_done() {
+    return server_received >= MESSAGE_COUNT;
 }
 
-// Client function - sends UDP datagrams
-void udp_client(const std::string& server_host, uint16_t server_port) {
-    qb::io::udp::socket client_socket;
-    
-    // Initialize the socket
-    if (!client_socket.init(AF_INET)) {
-        qb::io::cerr() << "Failed to initialize client socket" << std::endl;
-        return;
+// UDP Server implementation
+class UDPServer : public qb::io::use<UDPServer>::udp::server {
+public:
+    // Define the protocol to use for parsing messages
+    using Protocol = qb::protocol::text::command<UDPServer>;
+
+    UDPServer() = default;
+
+    ~UDPServer() {
+        qb::io::cout() << "UDP Server destroyed. Received " << server_received << " messages." << std::endl;
     }
-    
-    // Create an endpoint for the server
-    qb::io::endpoint server_endpoint(server_host.c_str(), server_port);
-    if (!server_endpoint) {
-        qb::io::cerr() << "Failed to create server endpoint" << std::endl;
-        return;
-    }
-    
-    print_endpoint_info(server_endpoint, "Sending to server: ");
-    
-    // Set socket to non-blocking mode
-    client_socket.set_nonblocking(true);
-    
-    // Send a message to the server
-    std::string message = "Hello from client!";
-    int bytes_sent = client_socket.write(message.c_str(), message.size(), server_endpoint);
-    
-    if (bytes_sent > 0) {
-        qb::io::cout() << "Sent: " << message << " (" << bytes_sent << " bytes)" << std::endl;
-    } else {
-        qb::io::cerr() << "Failed to send message: " << bytes_sent << std::endl;
-        return;
-    }
-    
-    // Wait for a response
-    char buffer[qb::io::udp::socket::MaxDatagramSize];
-    qb::io::endpoint response_endpoint;
-    
-    // Try to receive the response several times
-    for (int i = 0; i < 10; ++i) {
-        int bytes_read = client_socket.read(buffer, sizeof(buffer), response_endpoint);
+
+    // Handler for received messages
+    void on(Protocol::message&& msg) {
+        qb::io::cout() << "Server received: " << msg.text << std::endl;
         
-        if (bytes_read > 0) {
-            // Ensure null termination for string data
-            buffer[bytes_read] = '\0';
-            
-            // Print information about the received response
-            print_endpoint_info(response_endpoint, "Response from: ");
-            qb::io::cout() << "Data: " << buffer << " (" << bytes_read << " bytes)" << std::endl;
-            break;
-        } else if (bytes_read < 0 && bytes_read != -EAGAIN && bytes_read != -EWOULDBLOCK) {
-            qb::io::cerr() << "Error receiving response: " << bytes_read << std::endl;
-            break;
-        }
+        // Echo the message back to the client
+        *this << "Response to: " << msg.text << Protocol::end;
         
-        // Sleep briefly to avoid busy-waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Increment message counter
+        ++server_received;
     }
-    
-    client_socket.close();
-}
+};
+
+// UDP Client implementation
+class UDPClient : public qb::io::use<UDPClient>::udp::client {
+public:
+    // Define the protocol to use for parsing messages
+    using Protocol = qb::protocol::text::command<UDPClient>;
+
+    UDPClient() = default;
+
+    ~UDPClient() {
+        qb::io::cout() << "UDP Client destroyed. Received " << client_received << " responses." << std::endl;
+    }
+
+    // Handler for received messages
+    void on(Protocol::message&& msg) {
+        qb::io::cout() << "Client received: " << msg.text << std::endl;
+        
+        // Increment response counter
+        ++client_received;
+    }
+};
 
 int main() {
-    const uint16_t port = 12345;
+    // Initialize async system
+    qb::io::async::init();
     
-    // Start the server in a separate thread
-    std::thread server_thread(udp_server, port);
+    // Create and start the UDP server
+    UDPServer server;
+    if (server.transport().bind_v4(SERVER_PORT)) {
+        qb::io::cerr() << "Failed to bind server to port " << SERVER_PORT << std::endl;
+        return 1;
+    }
+    server.start();
+    qb::io::cout() << "UDP Server started on port " << SERVER_PORT << std::endl;
     
-    // Give the server time to start
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    // Create and run the client in a separate thread
+    std::thread client_thread([]() {
+        // Initialize async system in this thread
+        qb::io::async::init();
+        
+        // Create the UDP client
+        UDPClient client;
+        
+        // Initialize the client transport
+        client.transport().init();
+        if (!client.transport().is_open()) {
+            qb::io::cerr() << "Failed to initialize client socket" << std::endl;
+            return;
+        }
+        
+        // Start the client
+        client.start();
+        qb::io::cout() << "UDP Client started" << std::endl;
+        
+        // Send messages to the server
+        for (size_t i = 0; i < MESSAGE_COUNT; ++i) {
+            // Set the destination to the server
+            client.setDestination(qb::io::endpoint().as_in("127.0.0.1", SERVER_PORT));
+            
+            // Create the message with a sequence number
+            std::string message = std::string(TEST_MESSAGE) + " #" + std::to_string(i+1);
+            
+            // Send the message using the protocol's stream syntax
+            client << message << UDPClient::Protocol::end;
+            qb::io::cout() << "Client sent: " << message << std::endl;
+            
+            // Process events to avoid backup
+            qb::io::async::run(EVRUN_NOWAIT);
+            
+            // Small delay between messages
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        
+        // Wait for all responses or timeout
+        qb::io::cout() << "Client waiting for responses..." << std::endl;
+        for (int i = 0; i < 100 && !client_done(); ++i) {
+            qb::io::async::run(EVRUN_NOWAIT);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    });
     
-    // Run the client
-    udp_client("127.0.0.1", port);
+    // Process server events until all expected messages are received
+    qb::io::cout() << "Server processing events..." << std::endl;
+    for (int i = 0; i < 100 && (!server_done() || !client_done()); ++i) {
+        qb::io::async::run(EVRUN_NOWAIT);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     
-    // Wait for the server to finish
-    server_thread.join();
+    // Wait for client thread to finish
+    client_thread.join();
+    
+    // Print results
+    qb::io::cout() << "Example completed: " << std::endl
+                  << "  - Server received: " << server_received << " messages" << std::endl
+                  << "  - Client received: " << client_received << " responses" << std::endl;
     
     return 0;
 } 

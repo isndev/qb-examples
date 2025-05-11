@@ -1,12 +1,30 @@
 /**
- * @file BrokerSession.cpp
- * @brief Implementation demonstrating QB's session management patterns
- * 
- * This file demonstrates:
- * 1. How to implement QB session lifecycle management
- * 2. How to handle protocol messages in a session
- * 3. How to integrate timeout mechanisms
- * 4. How to manage client disconnections
+ * @file examples/core_io/message_broker/server/BrokerSession.cpp
+ * @example Message Broker Server - Client Session Implementation
+ * @brief Implements `BrokerSession` for handling client connections and protocol
+ *        for the message broker server.
+ *
+ * @details
+ * This file implements the `BrokerSession` class.
+ * - Constructor: Initializes with the parent `ServerActor`, switches to `BrokerProtocol`,
+ *   and sets an inactivity timeout (600 seconds).
+ * - `on(broker::Message msg)`: Handles messages parsed by `BrokerProtocol`.
+ *   - It uses `std::move(msg)` when calling `ServerActor` handlers (`handleSubscribe`,
+ *     `handleUnsubscribe`) to potentially pass ownership of the message payload efficiently.
+ *   - For `PUBLISH` messages, it parses the payload into topic and content `std::string_view`s.
+ *     It creates a `broker::MessageContainer` to manage the lifetime of the original message data,
+ *     allowing the `string_view`s to be safely used when forwarding to `ServerActor::handlePublish`.
+ *     This is a key zero-copy optimization technique.
+ *   - Updates session timeout on activity.
+ * - `on(qb::io::async::event::disconnected const &)`: Notifies `ServerActor` of disconnection.
+ * - `on(qb::io::async::event::timer const &)`: Handles session timeout by closing the connection.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::io::use<...>::tcp::client<ServerActor>` and `qb::io::use<...>::timeout` integration.
+ * - Custom protocol handling (`BrokerProtocol`).
+ * - Zero-Copy Techniques: Using `std::move` for message objects and `std::string_view` with
+ *   `broker::MessageContainer` to avoid copying message payloads when forwarding data.
+ * - Delegation of application logic to the parent `ServerActor`.
  */
 
 #include "BrokerSession.h"

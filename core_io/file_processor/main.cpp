@@ -1,10 +1,42 @@
 /**
- * @file main.cpp
- * @brief Main program for the file_processor example
- * 
- * This program demonstrates the use of qb::Actor actors combined
- * with qb::io asynchronous I/O to create a distributed file
- * processing system.
+ * @file examples/core_io/file_processor/main.cpp
+ * @example Distributed File Processor - Application Entry Point
+ * @brief Main entry point for the distributed file processing example.
+ *
+ * @details
+ * This application demonstrates a system for processing file read and write
+ * requests using a manager-worker actor pattern distributed across multiple cores.
+ *
+ * System Setup:
+ * 1.  Initializes the `qb::Main` engine.
+ * 2.  Creates a `FileManager` actor on core 0. This actor is responsible for
+ *     receiving client requests, queuing them, and dispatching them to available workers.
+ * 3.  Creates a pool of `FileWorker` actors (e.g., 4 workers). These workers are
+ *     distributed across other available CPU cores (e.g., cores 1, 2, 3, then cycling).
+ *     Each `FileWorker` performs the actual file I/O operations asynchronously (by using
+ *     `qb::io::async::callback` to wrap synchronous `qb::io::system::file` calls).
+ * 4.  Creates a `ClientActor` on core 0. This actor simulates a client by sending a
+ *     series of test `ReadFileRequest` and `WriteFileRequest` events to the `FileManager`.
+ *     It also receives `ReadFileResponse` and `WriteFileResponse` events.
+ * 5.  The `ClientActor`, after all its operations are acknowledged, initiates a system-wide
+ *     shutdown by broadcasting a `qb::KillEvent`.
+ * 6.  The `main` function starts the engine and waits for it to join, indicating all actors
+ *     have terminated.
+ *
+ * This example highlights how to offload potentially blocking I/O operations to worker actors,
+ * manage a pool of workers, and queue requests, all within the QB actor model.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: For engine setup and lifecycle.
+ * - `qb::Actor`: Base for `FileManager`, `FileWorker`, and `ClientActor`.
+ * - `engine.addActor<T>(core_id, ...)`: For multi-core actor deployment.
+ * - Custom `qb::Event`s: For requests, responses, and worker status (`messages.h`).
+ * - Inter-Actor Communication: `push<Event>(...)` for task dispatch and result forwarding.
+ * - Asynchronous Operations: `qb::io::async::callback` used by `FileWorker` to perform
+ *   blocking I/O without stalling the actor, and by `ClientActor` to sequence tests and shutdown.
+ * - `qb::io::system::file`: For synchronous file I/O within `FileWorker`'s async callbacks.
+ * - Coordinated Shutdown: `ClientActor` broadcasting `qb::KillEvent` after tests.
+ * - Manager-Worker Pattern.
  */
 
 #include <qb/main.h>
@@ -78,7 +110,7 @@ public:
             if (response.data->size() > max_display) {
                 qb::io::cout() << "... [plus " << (response.data->size() - max_display) << " bytes]";
             }
-            qb::io::cout() << std::endl;
+            qb::io::cout() << "\n";
         } else {
             qb::io::cout() << "Error: " << response.error_msg.c_str() << std::endl;
         }

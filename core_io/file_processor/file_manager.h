@@ -1,7 +1,37 @@
 /**
- * @file file_manager.h
- * @brief Actor that manages file processing requests
+ * @file examples/core_io/file_processor/file_manager.h
+ * @example Distributed File Processor - File Manager Actor Definition
+ * @brief Defines the `FileManager` actor, which acts as a dispatcher for file
+ *        processing requests to a pool of `FileWorker` actors.
+ *
+ * @details
+ * The `FileManager` actor is central to the distributed file processing system.
+ * Its primary roles are:
+ * - **Request Reception**: Receives `ReadFileRequest` and `WriteFileRequest` events from `ClientActor`(s).
+ * - **Request Queuing**: If no `FileWorker` actors are immediately available, it queues incoming
+ *   requests (`_read_requests`, `_write_requests`). Read requests are implicitly prioritized.
+ * - **Worker Management**: Maintains a set of available `FileWorker` IDs (`_available_workers`).
+ *   It listens for `WorkerAvailable` events sent by `FileWorker`s when they complete a task.
+ * - **Task Dispatching**: When a request arrives and a worker is available, or when a worker
+ *   becomes available and there are queued requests, it assigns the task to a worker by
+ *   `push`ing the original request event (e.g., `ReadFileRequest`) to the chosen worker's `ActorId`.
+ * - **Response Forwarding**: Receives `ReadFileResponse` and `WriteFileResponse` events from
+ *   `FileWorker`s (after they complete an operation) and forwards these responses to the
+ *   original `requestor` (the `ClientActor`) identified in the response event.
+ * - **Request ID Management**: Assigns unique request IDs if not provided by the client.
+ * - Handles `qb::KillEvent` for graceful shutdown.
+ *
+ * This actor demonstrates a manager-worker pattern, request queuing, and dynamic task assignment.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For orchestrating file processing tasks.
+ * - Event Handling: `onInit()`, `on(ReadFileRequest&)`, `on(WriteFileRequest&)`,
+ *   `on(WorkerAvailable&)`, `on(ReadFileResponse&)`, `on(WriteFileResponse&)`, `on(qb::KillEvent&)`.
+ * - Inter-Actor Communication: Receiving requests, dispatching tasks to workers, and forwarding responses.
+ * - State Management: Maintaining queues of requests (`std::queue`) and a set of available workers (`std::unordered_set`).
+ * - Dynamic Task Assignment to a worker pool.
  */
+
 #pragma once
 
 #include <qb/actor.h>

@@ -1,13 +1,26 @@
 /**
- * @file AcceptActor.h
- * @brief Connection acceptor demonstrating QB's TCP server capabilities
- * 
- * This file demonstrates:
- * 1. How to implement a TCP acceptor using QB's I/O framework
- * 2. How to distribute connections across multiple server actors
- * 3. How to handle connection events in an actor system
- * 4. How to implement load balancing in QB
+ * @file examples/core_io/message_broker/server/AcceptActor.h
+ * @example Message Broker Server - Connection Acceptor Actor
+ * @brief Actor for accepting incoming TCP connections and distributing them
+ *        to `ServerActor` instances for the message broker.
+ *
+ * @details
+ * This actor is identical in structure and function to the `AcceptActor` in the
+ * `chat_tcp` example. It listens on a network port and forwards new client sockets
+ * to a pool of `ServerActor`s using a round-robin strategy.
+ *
+ * Inherits from `qb::Actor` and `qb::io::use<AcceptActor>::tcp::acceptor`.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`.
+ * - `qb::io::use<AcceptActor>::tcp::acceptor`: TCP acceptor mixin.
+ *   - `transport().listen()`, `start()`, `on(accepted_socket_type&&)`.
+ * - `qb::io::uri`: For listen address.
+ * - `qb::ActorIdList`: For `ServerActor` pool.
+ * - Inter-Actor Communication: `push<NewSessionEvent>(...)`.
+ * - System Event Handling: `on(qb::io::async::event::disconnected const&)` triggering `broadcast<qb::KillEvent>()`.
  */
+
 #pragma once
 
 #include <qb/actor.h>

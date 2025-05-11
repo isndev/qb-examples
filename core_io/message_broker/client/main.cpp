@@ -1,23 +1,24 @@
 /**
- * @file main.cpp
- * @brief Message broker client application entry point
- * 
- * This file implements the broker client's core architecture:
- * 
- * System Architecture:
- * - Multi-core actor distribution
- * - Clean separation of concerns
- * - Robust error handling
- * - Resource management
- * 
- * Actor Distribution:
- * - InputActor (Core 0): User interface and input handling
- * - ClientActor (Core 1): Network communication and protocol
- * 
- * The separation across cores enables:
- * - Non-blocking user interface
- * - Responsive network handling
- * - Optimal resource utilization
+ * @file examples/core_io/message_broker/client/main.cpp
+ * @example Message Broker Client - Application Entry Point
+ * @brief Main entry point for the message broker client application.
+ *
+ * @details
+ * Sets up and launches the client-side actor system for the message broker.
+ * 1.  Parses command-line arguments: server host and port.
+ * 2.  Initializes the `qb::Main` engine.
+ * 3.  Creates actors with core assignments:
+ *     -   `InputActor` (core 0): Handles console input.
+ *     -   `ClientActor` (core 1): Manages network communication with the broker server.
+ * 4.  Starts the QB engine (`engine.start()`) and waits for termination (`engine.join()`).
+ * This structure separates UI input from network logic for better responsiveness.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Main`: Actor system engine.
+ * - `engine.addActor<ActorType>(core_id, args...)`: Multi-core actor deployment.
+ * - `engine.start(true)`, `engine.join()`: Engine lifecycle.
+ * - `qb::io::uri`: For server address representation.
+ * - `qb::ActorId`: For inter-actor referencing.
  */
 
 #include <qb/main.h>

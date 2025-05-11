@@ -1,12 +1,32 @@
 /**
- * @file ChatSession.cpp
- * @brief Implementation demonstrating QB's session management patterns
- * 
- * This file demonstrates:
- * 1. How to implement QB session lifecycle management
- * 2. How to handle protocol messages in a session
- * 3. How to integrate timeout mechanisms
- * 4. How to manage client disconnections
+ * @file examples/core_io/chat_tcp/server/ChatSession.cpp
+ * @example TCP Chat Server - Client Session Implementation
+ * @brief Implements the `ChatSession` class for handling individual client
+ * connections in the TCP chat server.
+ *
+ * @details
+ * This file provides the implementation for `ChatSession`.
+ * - Constructor: Initializes the base `client` with the managing `ServerActor`,
+ *   switches to the `ChatProtocol`, and sets an inactivity timeout.
+ * - Destructor: Logs client disconnection.
+ * - `on(const chat::Message& msg)`: This is the handler for messages successfully parsed
+ *   by `ChatProtocol`. It inspects the `msg.type` and delegates processing to the
+ *   parent `ServerActor` (`this->server()`) by calling its `handleAuth` or `handleChat` methods.
+ *   It also calls `this->updateTimeout()` to reset the inactivity timer upon message receipt.
+ * - `on(qb::io::async::event::disconnected const &)`: Called by QB-IO when the client TCP connection
+ *   is lost. It notifies the parent `ServerActor` by calling `this->server().handleDisconnect()`.
+ * - `on(qb::io::async::event::timer const &)`: Called by the `qb::io::use<...>::timeout` mixin
+ *   when the session has been inactive for the configured duration. It initiates a client
+ *   disconnection by calling `this->disconnect()` (a method from the `tcp::client` base).
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::io::use<...>::tcp::client<ServerActor>` base class usage and initialization.
+ * - `switch_protocol<Protocol>(*this)` to apply a custom protocol.
+ * - `setTimeout(duration)` and `updateTimeout()` from `qb::io::use<...>::timeout`.
+ * - Handling protocol messages: `on(const chat::Message& msg)`.
+ * - Handling I/O events: `on(qb::io::async::event::disconnected const &)`, `on(qb::io::async::event::timer const &)`.
+ * - Delegating logic to a parent/managing actor (`this->server()`).
+ * - `qb::io::cout`, `qb::io::cerr`: Thread-safe console output.
  */
 
 #include "ChatSession.h"

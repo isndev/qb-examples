@@ -1,12 +1,22 @@
 /**
- * @file InputActor.h
- * @brief User input handling actor for the broker client
- * 
- * This actor manages the user interface aspects of the broker client:
- * - Non-blocking console input handling
- * - Command parsing and routing
- * - Command interpretation
- * - Clean shutdown handling
+ * @file examples/core_io/message_broker/client/InputActor.h
+ * @example Message Broker Client - User Input Actor
+ * @brief Actor for handling user console input for the message broker client.
+ *
+ * @details
+ * This actor captures user commands from the console for interacting with the message broker.
+ * It uses `qb::ICallback` for non-blocking input reading, periodically checking `std::cin`.
+ * Entered commands are packaged into `BrokerInputEvent`s and sent to the `ClientActor`
+ * for parsing and network transmission.
+ * Special commands like "quit" and "help" are handled locally.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: Base class.
+ * - `qb::ICallback`: For periodic, non-blocking console input checks.
+ *   - `registerCallback(*this)` and `onCallback()`.
+ * - `qb::Event`: Base for `BrokerInputEvent`.
+ * - Inter-Actor Communication: `push<BrokerInputEvent>(...)` to `ClientActor`.
+ * - Local Command Handling: Processing "quit" and "help" directly.
  */
 
 #pragma once

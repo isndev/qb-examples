@@ -1,34 +1,53 @@
 /**
- * @file example1_async_io.cpp
- * @brief QB-IO Asynchronous I/O Fundamentals Example
+ * @file examples/io/example1_async_io.cpp
+ * @example Asynchronous I/O Fundamentals with QB-IO
  *
- * This example demonstrates the fundamental concepts of asynchronous I/O in QB:
- * - Using asynchronous timers for scheduling operations
- * - Working with the file system asynchronously
- * - Event-driven programming with callbacks
- * - File operations with proper error handling
- * - Signal handling for graceful termination
+ * @brief This example demonstrates core asynchronous capabilities of the QB-IO library,
+ * including timer-driven operations, basic file I/O, and file system event watching.
+ * It is designed to run as a standalone application, showcasing `qb-io` features
+ * outside of the full `qb-core` actor system.
  *
- * The example creates a text file, performs alternating read/write operations on it,
- * monitors it for changes, and demonstrates timer-based operations.
+ * @details
+ * The example comprises three main components:
+ * 1.  `FileProcessor`:
+ *     -   Inherits from `qb::io::async::with_timeout<FileProcessor>` to implement periodic actions.
+ *     -   On each timer expiration (`on(qb::io::async::event::timer const&)`), it alternates
+ *         between writing to and reading from a test file (`qb_io_example.txt`).
+ *     -   File operations are performed using `qb::io::system::file` (synchronous file API),
+ *         but their execution is driven by asynchronous timer events.
+ *     -   Reschedules itself using `updateTimeout()`.
+ * 2.  `TimerDemonstration`:
+ *     -   Also inherits from `qb::io::async::with_timeout<TimerDemonstration>`.
+ *     -   Provides a simple demonstration of a recurring timer that logs a "tick" message
+ *         at regular intervals.
+ * 3.  `FileWatcher`:
+ *     -   Uses `ev::stat` (a `libev` watcher integrated with QB-IO's event loop via
+ *         `qb::io::async::listener::current.loop()`) to monitor the test file for attribute changes
+ *         (e.g., size, modification time).
+ *     -   Logs detected changes to the console. (For a higher-level QB abstraction, one might use
+ *         `qb::io::async::directory_watcher`).
  *
- * @author QB Framework Team
- * @copyright Apache-2.0 License
+ * The `main` function:
+ * - Initializes the QB asynchronous I/O system for the current thread using `qb::io::async::init()`.
+ * - Sets up signal handling for graceful shutdown (Ctrl+C).
+ * - Creates instances of `FileProcessor`, `TimerDemonstration`, and `FileWatcher`.
+ * - Runs the QB event loop using `qb::io::async::run(EVRUN_NOWAIT)` in a loop for a
+ *   fixed duration or until a termination signal is received.
+ * - Cleans up the test file upon completion.
+ *
+ * QB-IO Features Demonstrated:
+ * - Asynchronous System Initialization: `qb::io::async::init()`.
+ * - Event Loop Integration: `qb::io::async::run()`.
+ * - Timer-Based Operations: `qb::io::async::with_timeout<T>`, `on(qb::io::async::event::timer const&)`, `updateTimeout()`.
+ * - Basic File I/O: `qb::io::system::file` for synchronous file read/write operations, orchestrated asynchronously.
+ * - Low-Level File Watching: Direct use of `ev::stat` with `qb::io::async::listener::current.loop()` to monitor file attribute changes.
+ * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
-#include <qb/actor.h>
-#include <qb/main.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/system/file.h>
-#include <iostream>
-#include <fstream>
-#include <chrono>
-#include <thread>
-#include <string>
-#include <ctime>
-#include <functional>
 #include <csignal>
-#include <atomic>
 
 namespace {
     // Global constants for the example
@@ -71,7 +90,7 @@ namespace {
  * This structure is used to pass file content and metadata 
  * between different components of the application.
  */
-struct FileContentEvent : public qb::Event {
+struct FileContentEvent {
     std::string content;
     std::string filename;
     bool success;

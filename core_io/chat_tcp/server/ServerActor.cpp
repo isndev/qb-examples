@@ -1,12 +1,35 @@
 /**
- * @file ServerActor.cpp
- * @brief Implementation demonstrating QB's server-side patterns
- * 
- * This file demonstrates:
- * 1. How to implement a QB server actor
- * 2. How to manage multiple client sessions
- * 3. How to handle inter-actor communication
- * 4. How to integrate with QB's I/O framework
+ * @file examples/core_io/chat_tcp/server/ServerActor.cpp
+ * @example TCP Chat Server - Session Managing Actor Implementation
+ * @brief Implements the `ServerActor` class for managing client sessions and
+ * interfacing with the `ChatRoomActor`.
+ *
+ * @details
+ * This file provides the implementation for `ServerActor`.
+ * - Constructor: Initializes with the `ChatRoomActor`'s ID.
+ * - `onInit()`: Registers handlers for `NewSessionEvent` (from `AcceptActor`) and
+ *   `SendMessageEvent` (from `ChatRoomActor`).
+ * - `on(NewSessionEvent& evt)`: When a new connection is delegated by `AcceptActor`,
+ *   this handler calls `registerSession(std::move(evt.socket))` (from the `io_handler`
+ *   base class) to create a new `ChatSession` instance and start its I/O processing.
+ * - `handleAuth(qb::uuid session_id, const std::string& username)`: Called by a `ChatSession`
+ *   when it receives an authentication request. This method creates an `AuthEvent`
+ *   and `push`es it to the `ChatRoomActor`.
+ * - `handleChat(qb::uuid session_id, const std::string& message)`: Called by a `ChatSession`
+ *   for a chat message. It creates a `ChatEvent` and `push`es it to the `ChatRoomActor`.
+ * - `handleDisconnect(qb::uuid session_id)`: Called by a `ChatSession` upon disconnection.
+ *   It creates a `DisconnectEvent` and `push`es it to the `ChatRoomActor`.
+ * - `on(SendMessageEvent& evt)`: Called by `ChatRoomActor` when a message needs to be sent
+ *   to a specific client. This handler looks up the target `ChatSession` by its ID from the
+ *   `sessions()` map (provided by the `io_handler` base) and sends the message through it.
+ *   It also updates the session's timeout.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods for event handling.
+ * - `qb::io::use<...>::tcp::io_handler<ChatSession>` methods: `registerSession()`, `sessions()`.
+ * - `push<Event>(destination, args...)` for inter-actor communication.
+ * - Managing multiple client sessions within a single actor via the `io_handler` pattern.
+ * - `qb::io::cout`: Thread-safe console output.
  */
 
 #include "ServerActor.h"

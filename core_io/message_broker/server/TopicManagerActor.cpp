@@ -1,12 +1,37 @@
 /**
- * @file TopicManagerActor.cpp
- * @brief Implementation of the centralized topic management actor
- * 
- * This actor serves as the central state manager for the broker system, handling:
- * 1. Topic subscription and unsubscription
- * 2. Message broadcasting and routing
- * 3. Session lifecycle management
- * 4. Concurrent client management
+ * @file examples/core_io/message_broker/server/TopicManagerActor.cpp
+ * @example Message Broker Server - Topic Management Implementation
+ * @brief Implements `TopicManagerActor` for managing topics, subscriptions, and
+ *        message broadcasting in the message broker.
+ *
+ * @details
+ * This file provides the `TopicManagerActor` implementation.
+ * - `onInit()`: Registers handlers for `SubscribeEvent`, `UnsubscribeEvent`, `PublishEvent`, and `DisconnectEvent`.
+ * - `on(SubscribeEvent&)`: Adds the client session (`evt.session_id`) to the subscriber list for
+ *   `evt.topic` (a `std::string_view` into `evt.message_data`). Updates internal maps and sends a response.
+ * - `on(UnsubscribeEvent&)`: Removes the client session from the topic's subscriber list. Cleans up
+ *   empty topics and sends a response.
+ * - `on(PublishEvent&)`: When a message is published to `evt.topic` (a `std::string_view`):
+ *   - It formats the message for delivery.
+ *   - It creates a single `broker::MessageContainer shared_message` containing this formatted payload.
+ *   - It then iterates through all subscribers for that topic.
+ *   - For each subscriber, it creates a `SendMessageEvent` that references this *same* `shared_message`
+ *     (via `SendMessageEvent`'s constructor that takes a const reference to `MessageContainer`).
+ *   - This `SendMessageEvent` is `push`ed to the `ServerActor` responsible for that subscriber.
+ *   This demonstrates efficient broadcasting by sharing message data via `MessageContainer`'s
+ *   `std::shared_ptr` semantics, avoiding multiple copies of the payload.
+ * - `on(DisconnectEvent&)`: Cleans up all subscriptions associated with the disconnected session ID.
+ * - `sendToSession()` (two overloads): Helper methods to `push` a `SendMessageEvent` to the appropriate
+ *   `ServerActor`. One overload takes message type and payload string, creating a new `MessageContainer`.
+ *   The other takes a `const broker::MessageContainer&`, allowing shared message data to be passed.
+ * - `sendError()`, `sendResponse()`: Utility methods using `sendToSession()`.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` event handling and state management for core broker logic.
+ * - Efficient broadcasting using `broker::MessageContainer` to share message data among multiple `SendMessageEvent`s.
+ * - Use of `std::string_view` to refer to parts of message payloads without copying.
+ * - Complex state management (`_sessions`, `_subscriptions`, `_session_topics`).
+ * - `qb::io::cout`: Thread-safe console output.
  */
 
 #include "TopicManagerActor.h"

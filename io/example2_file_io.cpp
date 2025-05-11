@@ -1,108 +1,61 @@
 /**
- * @file example2_file_io.cpp
- * @brief QB-IO File I/O Operations Example
+ * @file examples/io/example2_file_io.cpp
+ * @example Comprehensive File I/O Operations with QB-IO and POSIX
  *
- * This example demonstrates efficient file I/O operations using QB-IO:
- * - Reading and writing files with proper error handling
- * - Memory-mapped file access for high-performance operations
- * - Working with file streams and buffers
- * - File system operations (creating directories, checking file existence)
+ * @brief This example demonstrates a variety of file input/output operations,
+ * primarily utilizing `qb::io::system::file` for basic read/write tasks,
+ * and supplementing with standard C++/POSIX calls for memory-mapped files
+ * and detailed file statistics.
  *
- * @author QB Framework Team
- * @copyright Apache-2.0 License
+ * @details
+ * The example is structured around a `FileOperationsManager` class that performs several demonstrations:
+ * 1.  **Writing Binary File**:
+ *     -   Generates a buffer of random binary data.
+ *     -   Writes this data to a test file using `qb::io::system::file::open()` (with `O_WRONLY | O_CREAT | O_TRUNC`)
+ *         and `qb::io::system::file::write()`.
+ *     -   Measures and prints write throughput.
+ * 2.  **Reading Binary File**:
+ *     -   Reads the content of the previously written binary file using `qb::io::system::file::open()` (with `O_RDONLY`)
+ *         and `qb::io::system::file::read()`.
+ *     -   Measures and prints read throughput.
+ *     -   Displays a sample of the read data.
+ * 3.  **Memory-Mapped I/O**:
+ *     -   Creates a new file and sets its size using POSIX `open()` and `ftruncate()`.
+ *     -   Maps the file into memory using POSIX `mmap()`.
+ *     -   Writes a pattern directly to the memory-mapped region.
+ *     -   Ensures data is flushed to disk using POSIX `msync()`.
+ *     -   Unmaps the file using POSIX `munmap()`.
+ *     -   This section illustrates high-performance I/O via memory mapping, using standard OS facilities.
+ * 4.  **File Copy**:
+ *     -   Copies a source file to a destination file by reading from the source and writing to the
+ *         destination in chunks, using `qb::io::system::file` for both.
+ *     -   Measures and prints copy throughput.
+ * 5.  **File Information**:
+ *     -   Retrieves and displays metadata for a file (size, permissions, last modified time)
+ *         using POSIX `stat()`.
+ *
+ * The `main` function orchestrates these demonstrations and handles the creation and cleanup
+ * of a test directory and files. This example primarily showcases synchronous file operations.
+ *
+ * QB-IO Features Demonstrated:
+ * - Synchronous File Operations: `qb::io::system::file` for `open()`, `read()`, `write()`, and `close()`.
+ * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
+ *
+ * Other POSIX/Standard C++ Features Shown:
+ * - Memory-Mapped Files: `mmap`, `munmap`, `msync`, `ftruncate` (POSIX).
+ * - File Statistics: `stat` (POSIX).
+ * - Filesystem Operations: `std::filesystem` for directory creation and existence checks.
  */
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <fstream>
-#include <filesystem>
-#include <iomanip>
-
-// Add necessary system headers
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-
-#include <qb/actor.h>
-#include <qb/main.h>
-#include <qb/event.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/system/file.h>
-#include <chrono>
-#include <thread>
-#include <random>
+#include <filesystem>
+#include <iostream>
+#include <iomanip>
+#include <sys/mman.h>
 
 namespace fs = std::filesystem;
-
-// Message pour lire un fichier
-struct ReadFileMsg : public qb::Event {
-    std::string file_path;
-    
-    ReadFileMsg(const std::string& path) : file_path(path) {}
-};
-
-// Message pour écrire dans un fichier
-struct WriteFileMsg : public qb::Event {
-    std::string file_path;
-    std::string content;
-    
-    WriteFileMsg(const std::string& path, const std::string& data) 
-        : file_path(path), content(data) {}
-};
-
-// Message avec le contenu du fichier lu
-struct FileContentMsg : public qb::Event {
-    std::string file_path;
-    std::string content;
-    bool success;
-    std::string error_message;
-    
-    FileContentMsg(const std::string& path, const std::string& data, 
-                  bool ok, const std::string& error = "")
-        : file_path(path), content(data), success(ok), error_message(error) {}
-};
-
-// Message de confirmation d'écriture de fichier
-struct FileWrittenMsg : public qb::Event {
-    std::string file_path;
-    bool success;
-    std::string error_message;
-    
-    FileWrittenMsg(const std::string& path, bool ok, const std::string& error = "")
-        : file_path(path), success(ok), error_message(error) {}
-};
-
-// Message pour lister un répertoire
-struct ListDirectoryMsg : public qb::Event {
-    std::string directory_path;
-    
-    ListDirectoryMsg(const std::string& path) : directory_path(path) {}
-};
-
-// Message avec le contenu d'un répertoire
-struct DirectoryContentMsg : public qb::Event {
-    std::string directory_path;
-    std::vector<std::string> entries;
-    bool success;
-    std::string error_message;
-    
-    DirectoryContentMsg(const std::string& path, const std::vector<std::string>& list,
-                       bool ok, const std::string& error = "")
-        : directory_path(path), entries(list), success(ok), error_message(error) {}
-};
-
-// Message de planification différée
-struct DelayedActionMsg : public qb::Event {
-    qb::ActorId target_id;
-    int delay_ms;
-    
-    DelayedActionMsg(qb::ActorId id, int delay)
-        : target_id(id), delay_ms(delay) {}
-};
 
 namespace {
     // Constants for the example
@@ -124,7 +77,7 @@ namespace {
         if (!details.empty()) {
             qb::io::cout() << " - " << details;
         }
-        qb::io::cout() << std::endl;
+        //qb::io::cout() << std::endl;
     }
     
     // Utility function to get current timestamp

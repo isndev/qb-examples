@@ -1,24 +1,52 @@
 /**
- * @file example8_state_machine.cpp
- * @brief Example of implementing a finite state machine with qb-core
+ * @file examples/core/example8_state_machine.cpp
+ * @example Actor-Based Finite State Machine (FSM)
  * 
- * This example demonstrates how to implement an actor-based state machine
- * using qb-core. The state machine simulates a simple coffee vending machine
- * that transitions between different states based on user inputs and internal
- * processes.
+ * @brief This example demonstrates how to implement a finite state machine (FSM)
+ * using a QB actor. It simulates a coffee vending machine that transitions
+ * through various states based on user inputs and internal timed operations.
+ * 
+ * @details
+ * The system features two main actors:
+ * 1.  `CoffeeMachineActor`:
+ *     -   Implements the core FSM logic. Its state (`MachineState`) can be IDLE,
+ *         SELECTING, PAYMENT, BREWING, DISPENSING, MAINTENANCE, or ERROR.
+ *     -   Manages state transitions triggered by `InputEventMessage`s (e.g., COIN_INSERTED,
+ *         BUTTON_PRESSED, CANCEL).
+ *     -   Uses a `std::map` as a transition table to define state-specific event handlers.
+ *     -   Simulates timed operations like brewing and dispensing by scheduling `DelayedActionMessage`s
+ *         to itself using `qb::io::async::callback(func, delay_seconds)`.
+ *     -   Responds to `StatusRequestMessage` with its current operational status.
+ *     -   Publishes `StateChangeMessage` to notify subscribers of state transitions.
+ * 2.  `UserInterfaceActor`:
+ *     -   Simulates user interactions with the coffee machine.
+ *     -   Sends `InputEventMessage`s to the `CoffeeMachineActor` to trigger operations.
+ *     -   Subscribes to the `CoffeeMachineActor` (via `SubscribeMessage`) to receive
+ *         `StateChangeMessage` notifications.
+ *     -   Requests and displays machine status by sending `StatusRequestMessage` and
+ *         handling `StatusResponseMessage`.
+ *     -   Orchestrates a multi-step demo sequence using `qb::io::async::callback` and
+ *         self-sent `DelayedActionMessage`s to showcase various FSM scenarios.
+ *     -   Initiates a system-wide shutdown using `broadcast<qb::KillEvent>()`.
+ *
+ * This example highlights how actors can encapsulate complex stateful logic and
+ * manage timed events effectively.
+ *
+ * QB Features Demonstrated:
+ * - Finite State Machine (FSM) Implementation: Actor (`CoffeeMachineActor`) managing internal states and transitions.
+ * - Event-Driven State Changes: Using custom `InputEventMessage`s to drive the FSM.
+ * - Asynchronous Timed Operations: `qb::io::async::callback(func, delay)` for simulating processes like brewing.
+ * - State Notification/Subscription: `SubscribeMessage` and `StateChangeMessage` for observers.
+ * - Status Reporting: `StatusRequestMessage` and `StatusResponseMessage`.
+ * - Actor Communication: `push<EventType>(...)`, `event.getSource()`.
+ * - System-Wide Shutdown: `broadcast<qb::KillEvent>()`.
+ * - Engine and Actor Management: `qb::Main`, `engine.addActor<ActorType>()`, `kill()`.
  */
 
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
-#include <iostream>
-#include <string>
-#include <map>
-#include <vector>
-#include <chrono>
-#include <memory>
-#include <functional>
-#include <thread>
 
 using namespace qb;
 

@@ -1,20 +1,46 @@
 /**
- * @example New Multi-Core Example
+ * @file examples/core/example3_multicore.cpp
+ * @example Multi-Core Actor Distribution and Event Broadcasting
  * 
- * This example demonstrates:
- * - Using multiple CPU cores with the QB Actor Framework
- * - Event priorities and handling
- * - Broadcast events
- * - Load distribution across cores
+ * @brief This example illustrates how to distribute actors across multiple CPU cores
+ * and how to use broadcast events for system-wide or core-specific notifications.
+ * It simulates a workload distributed by a dispatcher to worker actors running on different cores.
+ *
+ * @details
+ * The system comprises:
+ * 1.  `WorkerActor`:
+ *     -   Deployed on multiple CPU cores (configurable, up to `std::thread::hardware_concurrency()`).
+ *     -   Handles three types of events: `HighPriorityEvent`, `StandardEvent`, and `LowPriorityEvent`.
+ *     -   Simulates different processing times based on event priority.
+ *     -   Receives `SystemNotificationEvent`s broadcast by the dispatcher.
+ *     -   Terminates after processing a predefined number of events.
+ * 2.  `DispatcherActor`:
+ *     -   Runs on a specific core (core 0 in this example).
+ *     -   Uses `qb::ICallback` to periodically create and dispatch work events to `WorkerActor`s
+ *         in a round-robin fashion.
+ *     -   Periodically broadcasts `SystemNotificationEvent`s to all actors on core 0 using `push<SystemNotificationEvent>(qb::BroadcastId(0), ...)`.
+ *         (Note: Workers are on other cores but also register for this event. For true all-worker broadcast, iterating known worker IDs or using `broadcast<T>()` would be typical).
+ *     -   Terminates after dispatching all planned work.
+ *
+ * The `qb::Main` engine manages the actors and their assignment to cores.
+ *
+ * QB Features Demonstrated:
+ * - Multi-Core Actor Assignment: `engine.addActor<ActorType>(core_id, args...)`.
+ * - Actor Concurrency: Multiple `WorkerActor`s processing events in parallel on different cores.
+ * - Event System: Multiple custom event types (`HighPriorityEvent`, `StandardEvent`, `LowPriorityEvent`, `SystemNotificationEvent`).
+ * - Event Handling: `onInit()`, `registerEvent<EventType>()`, `on(EventType& event)`.
+ * - Message Sending: `push<EventType>(destination_actor_id, args...)`.
+ * - Broadcast Messaging: `push<EventType>(qb::BroadcastId(core_id), args...)` for core-specific broadcasts. (Actual system-wide broadcast is `broadcast<T>(args...)`).
+ * - Actor Lifecycle: `kill()` for self-termination.
+ * - Periodic Tasks: `qb::ICallback`, `registerCallback()`, `onCallback()`.
+ * - Core Information: `getIndex()` to retrieve the actor's current core ID.
+ * - Engine Management: `qb::Main`, `std::thread::hardware_concurrency()`.
+ * - Thread-Safe I/O: `qb::io::cout()`.
  */
+
 #include <qb/actor.h>
 #include <qb/main.h>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <string>
-#include <vector>
-#include <atomic>
+#include <qb/io.h>
 
 // Define event types with different priorities
 struct HighPriorityEvent : public qb::Event {

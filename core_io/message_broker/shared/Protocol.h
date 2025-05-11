@@ -1,13 +1,41 @@
 /**
- * @file Protocol.h
- * @brief Message broker protocol definition and QB framework integration
- * 
- * This file defines the core protocol used for communication between broker clients and server.
- * Key components:
- * - Message framing and serialization
- * - Protocol state management
- * - QB framework integration via CRTP pattern
- * - Type-safe message handling
+ * @file examples/core_io/message_broker/shared/Protocol.h
+ * @example Message Broker - Shared Protocol Definition
+ * @brief Defines the custom binary protocol for the message broker system,
+ *        including message structure, serialization, and parsing logic for QB-IO.
+ *
+ * @details
+ * This file specifies the network protocol for communication between message broker
+ * clients and the server.
+ *
+ * **Protocol Format**:
+ * A fixed-size header precedes a variable-length payload:
+ * - Magic (uint16_t `0x514D` 'QM'): Identifies QB Message Broker protocol.
+ * - Version (uint8_t `0x01`): Protocol version.
+ * - Type (uint8_t `broker::MessageType`): Defines message type (SUBSCRIBE, PUBLISH, MESSAGE, etc.).
+ * - Length (uint32_t): Size of the string payload.
+ * The header (8 bytes) is followed by the UTF-8 string payload.
+ *
+ * **Components**:
+ * - `broker::MessageHeader`: Struct for the 8-byte protocol header.
+ * - `broker::MessageType`: Enum for message types.
+ * - `broker::Message`: Struct for application-level message representation (type, payload string).
+ * - `qb::allocator::pipe<char>::put<broker::Message>`: (Defined in Protocol.cpp) Template specialization
+ *   for serializing `broker::Message` into the binary format for QB pipe buffers.
+ * - `broker::BrokerProtocol<IO_>`: Class template deriving from `qb::io::async::AProtocol<IO_>`.
+ *   - `getMessageSize()`: Reads and validates the header, returns total expected message size.
+ *   - `onMessage()`: Reconstructs `broker::Message` from the buffer and dispatches it to the
+ *     `IO_` handler (e.g., `ClientActor` or `BrokerSession`) via `this->_io.on(std::move(parsed_message))`
+ *     (using `std::move` for potential optimization if payload is large).
+ *   - `reset()`: Resets parsing state on error.
+ *
+ * QB Features Demonstrated:
+ * - Custom Protocol Design: Binary header for message framing.
+ * - `qb::io::async::AProtocol<IO_>`: Base for custom protocol handlers.
+ *   - Input buffer access: `this->_io.in()`.
+ *   - Parsed message dispatch: `this->_io.on(message)`.
+ * - `qb::allocator::pipe`: `put<T>()` specialization for custom type serialization (see .cpp).
+ * - Efficient Message Handling: Passing parsed messages with `std::move` in `onMessage()`.
  */
 
 #pragma once

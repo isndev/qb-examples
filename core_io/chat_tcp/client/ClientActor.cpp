@@ -1,16 +1,35 @@
 /**
- * @file ClientActor.cpp
- * @brief Implementation of the chat client's network actor
- * 
- * This file implements the core client functionality including:
- * - Connection management and recovery
- * - Message processing and routing
- * - State management and transitions
- * - Error handling and user feedback
+ * @file examples/core_io/chat_tcp/client/ClientActor.cpp
+ * @example TCP Chat Client - Client Network Actor Implementation
+ * @brief Implements the `ClientActor` class, which handles network communication
+ * for the TCP chat client.
+ *
+ * @details
+ * This file provides the implementation for `ClientActor`. Its responsibilities include:
+ * - Constructor initialization.
+ * - `onInit()`: Registers event handlers and initiates the first connection attempt.
+ * - `on(const chat::Message&)`: Processes messages received from the server via the `ChatProtocol`,
+ *   displaying chat messages, authentication responses, and errors.
+ * - `on(qb::io::async::event::disconnected const&)`: Handles disconnections and schedules
+ *   reconnection attempts using `qb::io::async::callback`.
+ * - `connect()`: Uses `qb::io::async::tcp::connect` to establish a connection to the server.
+ * - `onConnected()`: Configures the transport and protocol upon successful connection and triggers authentication.
+ * - `onConnectionFailed()`: Handles connection failures and schedules retries.
+ * - `authenticate()`: Sends an authentication request to the server.
+ * - `sendChat(const std::string&)`: Sends a chat message if connected and authenticated.
+ * - `disconnect()`: Initiates a clean disconnection.
+ * - `on(const ChatInputEvent&)`: Receives input from the `InputActor` and calls `sendChat()`.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods: `onInit()`, `on(...)` handlers, `id()`.
+ * - `qb::io::use<ClientActor>::tcp::client<>` inherited methods: `transport()`, `in()`, `out()`, `switch_protocol()`, `start()`.
+ * - `qb::io::async::tcp::connect`: For initiating non-blocking TCP connections.
+ * - `qb::io::async::callback`: For scheduling delayed actions (reconnection).
+ * - `qb::io::cout`, `qb::io::cerr`: Thread-safe console output.
+ * - Event-driven logic for network events and inter-actor communication.
  */
 
 #include "ClientActor.h"
-#include <iostream>
 
 /**
  * @brief Constructs client actor with required configuration

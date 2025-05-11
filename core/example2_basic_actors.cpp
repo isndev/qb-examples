@@ -1,18 +1,43 @@
 /**
- * @example Basic Actors
+ * @file examples/core/example2_basic_actors.cpp
+ * @example Basic Actor Request-Response Communication
  * 
- * This example demonstrates basic actor communication with the latest QB API:
- * - Actor creation and initialization
- * - Message passing between actors
- * - Event handling
- * - Actor lifecycle management
+ * @brief This example demonstrates a common actor communication pattern: request-response.
+ * It showcases how actors can send messages and receive replies, managing their
+ * state and lifecycle accordingly.
+ *
+ * @details
+ * The example features three main actors:
+ * 1.  `ReceiverActor`:
+ *     -   Listens for `MessageEvent`s.
+ *     -   Simulates processing work upon receiving a message.
+ *     -   Sends a `ResponseEvent` back to the original sender of the `MessageEvent`.
+ *     -   Keeps track of processed messages and terminates after a certain count.
+ * 2.  `SenderActor` (two instances, "Alice" and "Bob"):
+ *     -   Uses `qb::ICallback` to periodically send `MessageEvent`s to the `ReceiverActor`.
+ *     -   Listens for `ResponseEvent`s from the `ReceiverActor`.
+ *     -   Keeps track of sent messages and received responses, terminating after fulfilling its task.
+ * 
+ * The `qb::Main` engine orchestrates these actors. The use of `event.getSource()` is
+ * crucial for the `ReceiverActor` to know where to send the response.
+ *
+ * QB Features Demonstrated:
+ * - Actor Creation & Management: `qb::Actor`, `engine.addActor<ActorType>()`.
+ * - Event System: Custom `MessageEvent` and `ResponseEvent` inheriting from `qb::Event`.
+ * - Event Handling: `onInit()`, `registerEvent<EventType>()`, `void on(EventType& event)` (note non-const for `event.getSource()`).
+ * - Message Passing:
+ *     - Sending requests: `push<MessageEvent>(receiver_id, ...)`.
+ *     - Sending responses: `push<ResponseEvent>(event.getSource(), ...)`.
+ * - Actor Lifecycle: `kill()` for self-termination based on application logic.
+ * - Periodic Tasks: `qb::ICallback`, `registerCallback()`, `onCallback()`.
+ * - Engine Control: `qb::Main`, `engine.start()`, `engine.join()`.
+ * - Actor Identification: `id()`, `event.getSource()`.
+ * - Thread-Safe I/O: `qb::io::cout()`.
  */
+
 #include <qb/actor.h>
 #include <qb/main.h>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <string>
+#include <qb/io.h>
 
 // Define a message event
 struct MessageEvent : public qb::Event {

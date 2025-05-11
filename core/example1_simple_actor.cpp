@@ -1,8 +1,37 @@
 /**
- * @example Simple Actor
- * 
- * This is a very basic example of the QB Actor Framework.
+ * @file examples/core/example1_simple_actor.cpp
+ * @example Simple Actor Communication and Lifecycle
+ *
+ * @brief This example demonstrates the fundamental concepts of the QB Actor Framework,
+ * including actor creation, basic message passing, event handling, and lifecycle management.
+ *
+ * @details
+ * The example consists of two actors:
+ * 1.  `SimpleActor`:
+ *     -   Receives `SimpleEvent` messages.
+ *     -   Processes these events and prints their content.
+ *     -   Terminates itself after receiving a specific number of events.
+ * 2.  `SenderActor`:
+ *     -   Uses the `qb::ICallback` interface to perform periodic actions.
+ *     -   Periodically sends `SimpleEvent` messages to the `SimpleActor`.
+ *     -   Terminates itself after sending a specific number of events.
+ *
+ * The `qb::Main` engine is used to initialize, run, and manage these actors.
+ *
+ * QB Features Demonstrated:
+ * - Actor Creation: `qb::Actor`, `engine.addActor<ActorType>(core_id, args...)`.
+ * - Actor Initialization: `virtual bool onInit()`.
+ * - Event Definition: Custom event `SimpleEvent` inheriting from `qb::Event`.
+ * - Event Registration: `registerEvent<EventType>(*this)` within `onInit()`.
+ * - Event Handling: `void on(const EventType& event)`.
+ * - Message Sending: `push<EventType>(destination_actor_id, args...)`.
+ * - Actor Lifecycle: `kill()` for self-termination.
+ * - Periodic Callbacks: `qb::ICallback`, `registerCallback(*this)`, `void onCallback()`.
+ * - Engine Management: `qb::Main`, `engine.start()`, `engine.join()`.
+ * - Thread-Safe Output: `qb::io::cout()`.
+ * - Actor Identification: `id()` to get the `qb::ActorId`.
  */
+
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <iostream>

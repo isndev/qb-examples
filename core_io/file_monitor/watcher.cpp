@@ -1,6 +1,41 @@
 /**
- * @file watcher.cpp
- * @brief Implementation of classes for file monitoring
+ * @file examples/core_io/file_monitor/watcher.cpp
+ * @example File Monitoring System - Directory Watcher Implementation
+ * @brief Implements the `DirectoryMonitor` helper and the `DirectoryWatcher` actor
+ *        for the file monitoring system.
+ *
+ * @details
+ * This file contains the implementations for:
+ * 1.  `DirectoryMonitor`:
+ *     -   Constructor: Takes a `FileEventCallback` to notify its owner of events.
+ *     -   `on(qb::io::async::event::file const& event)`: Interprets the low-level `qb::io::async::event::file`
+ *         to determine a more specific `FileEventType` (CREATED, MODIFIED, DELETED, ATTRIBUTES_CHANGED)
+ *         by comparing current and previous file attributes and existence. It then invokes the callback.
+ *     -   `startWatching()`/`stopWatching()`: Wrappers around the base class's `start()`/`disconnect()` methods. 
+ * 2.  `DirectoryWatcher` (Actor):
+ *     -   `onInit()`: Basic actor initialization.
+ *     -   `on(WatchDirectoryRequest&)`: Handles requests to monitor a new directory. It normalizes the path,
+ *         checks for existence, and calls `getOrCreateWatch()` to manage a `WatchInfo` struct.
+ *         It then uses `qb::io::async::callback` to asynchronously call `setupDirectoryWatch()`.
+ *         A `WatchDirectoryResponse` is sent back to the requestor.
+ *     -   `on(UnwatchDirectoryRequest&)`: Handles requests to stop monitoring. Removes the subscriber
+ *         and, if no subscribers remain for a path, stops the underlying `DirectoryMonitor`.
+ *     -   `on(qb::KillEvent&)`: Cleans up all watchers and terminates.
+ *     -   `getOrCreateWatch()`: Manages `WatchInfo` entries in `_watched_directories` map.
+ *     -   `setupDirectoryWatch()`: Creates and starts a `DirectoryMonitor` for a path. If recursive,
+ *         it iterates subdirectories and calls itself to set up watches for them, propagating subscriber lists.
+ *     -   `publishFileEvent()`: Called by the `DirectoryMonitor`'s callback. Creates a `FileEvent`
+ *         and `push`es it to all actors subscribed to notifications for the relevant watched path.
+ *     -   `countWatchedFiles()`: Utility to count files under watch (for statistics).
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` event handling and lifecycle.
+ * - `qb::io::async::directory_watcher<T>` methods and event structure (`qb::io::async::event::file`).
+ * - Using `qb::io::async::callback` to defer potentially complex setup logic from an event handler.
+ * - `push<Event>(...)` for actor communication.
+ * - Managing collections of watched resources and their subscribers.
+ * - `qb::io::cout`, `qb::io::cerr`: Thread-safe console output.
+ * - Standard C++ filesystem (`std::filesystem`) for path normalization and checks.
  */
 
 #include "watcher.h"

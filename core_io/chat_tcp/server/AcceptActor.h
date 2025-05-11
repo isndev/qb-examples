@@ -1,13 +1,33 @@
 /**
- * @file AcceptActor.h
- * @brief Connection acceptor demonstrating QB's TCP server capabilities
- * 
- * This file demonstrates:
- * 1. How to implement a TCP acceptor using QB's I/O framework
- * 2. How to distribute connections across multiple server actors
- * 3. How to handle connection events in an actor system
- * 4. How to implement load balancing in QB
+ * @file examples/core_io/chat_tcp/server/AcceptActor.h
+ * @example TCP Chat Server - Connection Acceptor Actor
+ * @brief Actor responsible for accepting incoming TCP connections and distributing
+ * them to a pool of `ServerActor`s for session management.
+ *
+ * @details
+ * This actor utilizes QB-IO's TCP acceptor capabilities to listen on a specified
+ * network address and port. When a new client connection is established, the
+ * `AcceptActor` employs a round-robin strategy to select a `ServerActor` from
+ * a predefined pool and forwards the new connection (socket) to it via a
+ * `NewSessionEvent`.
+ *
+ * It inherits from `qb::Actor` for QB framework integration and
+ * `qb::io::use<AcceptActor>::tcp::acceptor` to gain TCP listening and connection
+ * acceptance functionalities.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: Base class for concurrent entities.
+ * - `qb::io::use<AcceptActor>::tcp::acceptor`: Mixin providing TCP acceptor capabilities.
+ *   - `transport().listen()`: To bind to an address and start listening.
+ *   - `start()`: To begin accepting connections.
+ *   - `on(accepted_socket_type&& new_io)`: Callback for newly accepted connections.
+ * - `qb::io::uri`: For specifying the listening address (e.g., "tcp://0.0.0.0:8080").
+ * - `qb::ActorIdList`: To manage a pool of `ServerActor` IDs for load distribution.
+ * - Inter-Actor Communication: `push<NewSessionEvent>(server_id)` to delegate connection handling.
+ * - System Event Handling: `on(qb::io::async::event::disconnected const&)` to handle listener socket issues,
+ *   typically by initiating a system shutdown (`broadcast<qb::KillEvent>()`).
  */
+
 #pragma once
 
 #include <qb/actor.h>

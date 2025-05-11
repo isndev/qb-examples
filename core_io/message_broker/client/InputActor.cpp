@@ -1,9 +1,21 @@
 /**
- * @file InputActor.cpp
- * @brief Implementation of the user input handling actor
- * 
- * This file contains the implementation of the InputActor class,
- * handling user interaction and command processing for the broker client.
+ * @file examples/core_io/message_broker/client/InputActor.cpp
+ * @example Message Broker Client - User Input Actor Implementation
+ * @brief Implements the `InputActor` for handling console input for the broker client.
+ *
+ * @details
+ * This file provides the `InputActor` implementation.
+ * - `onInit()`: Registers the `qb::ICallback` and displays a welcome message and help info.
+ * - `onCallback()`: Periodically called to read from `std::cin` using `std::getline`.
+ *   Handles "quit" to shut down the client and itself (by sending `qb::KillEvent`).
+ *   Handles "help" to redisplay command usage.
+ *   Other non-empty input is sent as a `BrokerInputEvent` to the `ClientActor`.
+ * - `displayHelp()`: Prints available commands and usage examples to the console.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::ICallback` for periodic input polling.
+ * - Sending events (`BrokerInputEvent`, `qb::KillEvent`).
+ * - `qb::io::cout()` for console output.
  */
 
 #include "InputActor.h"

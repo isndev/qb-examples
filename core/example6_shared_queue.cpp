@@ -1,15 +1,52 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <queue>
-#include <mutex>
-#include <random>
-#include <chrono>
+/**
+ * @file examples/core/example6_shared_queue.cpp
+ * @example Producer-Consumer Pattern with a Shared Thread-Safe Queue
+ * 
+ * @brief This example demonstrates how QB actors can implement a producer-consumer
+ * pattern by interacting through an externally managed, thread-safe shared queue.
+ * It also shows a supervisor actor monitoring the system.
+ *
+ * @details
+ * The system consists of:
+ * 1.  `SharedQueue<WorkItemMsg>`: A custom thread-safe queue (using `std::mutex`) that
+ *     stores `WorkItemMsg` objects. This is not a QB feature but a standard C++ utility
+ *     used here to illustrate interaction with shared memory.
+ * 2.  `Producer` Actor:
+ *     -   Periodically generates `WorkItemMsg` objects, each with a simulated complexity.
+ *     -   Pushes these work items into the `SharedQueue`.
+ *     -   Uses self-sent `DelayedActionMsg` to trigger periodic production.
+ * 3.  `Consumer` Actors (multiple instances):
+ *     -   Periodically attempt to pop `WorkItemMsg` objects from the `SharedQueue`.
+ *     -   Simulate processing the work item, with processing time dependent on its complexity.
+ *     -   Use self-sent `DelayedActionMsg` to continuously check the queue.
+ *     -   Respond to `RequestStatsMsg` from the `Supervisor` with their processing count.
+ * 4.  `Supervisor` Actor:
+ *     -   Periodically requests statistics from all `Consumer` actors by sending `RequestStatsMsg`.
+ *     -   Receives `ReportStatsMsg` and aggregates total processed items.
+ *     -   Monitors the size of the `SharedQueue`.
+ *     -   After a set duration, initiates a system-wide shutdown by broadcasting `qb::KillEvent`.
+ * 
+ * This example illustrates a hybrid approach where actors coordinate around a shared
+ * resource, contrasting with pure message-passing designs. It highlights the flexibility
+ * of actors to integrate with other concurrency mechanisms.
+ *
+ * QB Features Demonstrated:
+ * - Actor Creation and Management: `qb::Actor`, `engine.addActor<ActorType>()`.
+ * - Event System: Custom events for work items, stats, and control (`DelayedActionMsg`, `WorkItemMsg`, etc.).
+ * - Actor Communication: `push<EventType>(...)` for commands and data.
+ * - System-Wide Shutdown: `broadcast<qb::KillEvent>()`.
+ * - Actor Lifecycle: `onInit()`, `kill()`, handling `qb::KillEvent`.
+ * - Simulated Periodic Actions: Using self-sent `DelayedActionMsg` for periodic checks/actions by actors.
+ *   (QB also offers `qb::ICallback` or `qb::io::async::callback()` for more direct periodic/delayed actions).
+ * - Engine Control: `qb::Main`, `engine.start()`, `engine.join()`.
+ * - Interaction with External Shared State: Actors accessing a custom `SharedQueue` (demonstrates integration, not a QB-specific pattern for inter-actor comms which is typically message passing).
+ */
 
 #include <qb/actor.h>
 #include <qb/main.h>
+#include <qb/io.h>
 #include <qb/event.h>
-#include <qb/icallback.h>
+#include <random>
 
 // Thread-safe shared queue for actors
 template <typename T>

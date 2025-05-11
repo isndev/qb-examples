@@ -1,13 +1,31 @@
 /**
- * @file ClientActor.h
- * @brief Message broker client actor managing network communication
- * 
- * This actor serves as the core of the broker client, providing:
- * - Robust connection management with automatic reconnection
- * - Protocol-compliant message handling
- * - State management and error recovery
- * - Integration with QB's actor framework
+ * @file examples/core_io/message_broker/client/ClientActor.h
+ * @example Message Broker Client - Client Network Actor
+ * @brief Manages network communication with the message broker server.
+ *
+ * @details
+ * This actor is the core network component of the message broker client. It handles:
+ * - TCP connection to the broker server (`qb::io::async::tcp::connect`).
+ * - Sending commands (SUBSCRIBE, UNSUBSCRIBE, PUBLISH) using the custom `BrokerProtocol`.
+ * - Receiving and processing messages from the server (responses, published messages, errors).
+ * - Connection state management and reconnection attempts on failure.
+ * - Interaction with `InputActor` via `BrokerInputEvent` to process user commands.
+ *
+ * It inherits from `qb::Actor` and `qb::io::use<ClientActor>::tcp::client<>` for QB framework
+ * integration and TCP client capabilities.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`: For event-driven logic.
+ * - `qb::io::use<ClientActor>::tcp::client<>`: TCP client mixin.
+ * - `qb::io::async::tcp::connect`: Asynchronous connection.
+ * - `qb::io::uri`: For server address.
+ * - Custom Protocol Handling: Integration with `BrokerProtocol`.
+ * - Event Handling: `onInit()`, `on(const BrokerInputEvent&)`, `on(const broker::Message&)`,
+ *   `on(qb::io::async::event::disconnected const&)`. Message sending via `*this << broker_message;`.
+ * - Asynchronous Callbacks: `qb::io::async::callback` for reconnection.
+ * - Inter-Actor Communication: Receiving `BrokerInputEvent`.
  */
+
 #pragma once
 
 #include <qb/actor.h>

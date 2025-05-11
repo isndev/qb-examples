@@ -1,12 +1,27 @@
 /**
- * @file AcceptActor.cpp
- * @brief Implementation demonstrating QB's TCP acceptor patterns
- * 
- * This file demonstrates:
- * 1. How to implement a TCP acceptor in QB
- * 2. How to handle connection distribution
- * 3. How to manage server pool
- * 4. How to handle acceptor lifecycle
+ * @file examples/core_io/chat_tcp/server/AcceptActor.cpp
+ * @example TCP Chat Server - Connection Acceptor Implementation
+ * @brief Implements the `AcceptActor` for the TCP chat server.
+ *
+ * @details
+ * This file provides the implementation for the `AcceptActor`.
+ * - Constructor: Initializes with the listen URI and the pool of `ServerActor` IDs.
+ * - `onInit()`: Validates the server pool, attempts to listen on the specified URI using
+ *   `transport().listen()`, and starts the acceptor using `start()`. Returns `false` on failure.
+ * - `on(accepted_socket_type&& new_io)`: Called by the QB-IO framework when a new TCP connection
+ *   is accepted. It selects a `ServerActor` from the pool (round-robin) and sends it a
+ *   `NewSessionEvent`, transferring ownership of the accepted socket (`new_io`).
+ * - `on(qb::io::async::event::disconnected const&)`: Handles the scenario where the listener socket
+ *   itself disconnects (e.g., network interface issue). It triggers a system-wide shutdown
+ *   by broadcasting a `qb::KillEvent`.
+ *
+ * QB Features Demonstrated (in context of this implementation):
+ * - `qb::Actor` methods: `onInit()`, `on(...)`.
+ * - `qb::io::use<AcceptActor>::tcp::acceptor` inherited methods: `transport()`, `start()`.
+ * - Event-driven connection handling.
+ * - `push<NewSessionEvent>(...)`: Sending events to other actors.
+ * - `broadcast<qb::KillEvent>()`: Initiating system-wide shutdown.
+ * - `qb::io::cout`, `qb::io::cerr`: Thread-safe console output.
  */
 
 #include "AcceptActor.h"

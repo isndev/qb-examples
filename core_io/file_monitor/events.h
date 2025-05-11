@@ -1,6 +1,35 @@
 /**
- * @file events.h
- * @brief Event definitions for the file monitoring system
+ * @file examples/core_io/file_monitor/events.h
+ * @example File Monitoring System - Shared Event Definitions
+ * @brief Defines custom `qb::Event` types and related structures for the
+ * file monitoring system example.
+ *
+ * @details
+ * This header declares events used for communication between actors in the file
+ * monitoring system, as well as data structures to hold file and statistics information.
+ *
+ * Event Types:
+ * - `FileEventType`: Enum (`CREATED`, `MODIFIED`, `DELETED`, `ATTRIBUTES_CHANGED`)
+ *   to categorize file system changes.
+ * - `FileMetadata`: Struct to store file path, size, content hash (simple hash in example),
+ *   and last modification timestamp.
+ * - `FileEvent`: A `qb::Event` sent by `DirectoryWatcher` when a file system change is detected.
+ *   Contains the file path, `FileEventType`, and timestamp of the event.
+ * - `WatchDirectoryRequest`: A `qb::Event` sent to `DirectoryWatcher` to request monitoring
+ *   of a specific directory. Contains path, recursive flag, and requestor's `ActorId`.
+ * - `WatchDirectoryResponse`: A `qb::Event` sent by `DirectoryWatcher` back to the requestor,
+ *   indicating success or failure of the watch request.
+ * - `UnwatchDirectoryRequest`: A `qb::Event` to stop monitoring a directory.
+ * - `MonitoringStats`: A `qb::Event` (or struct) to carry statistics from `DirectoryWatcher`.
+ * - `ProcessingStats`: A `qb::Event` (or struct) to carry statistics from `FileProcessor`.
+ * - `SetProcessingConfigRequest`: A `qb::Event` to configure the `FileProcessor` (e.g., to process hidden files).
+ * - `GetProcessingStatsRequest`: A `qb::Event` to request statistics from `FileProcessor`.
+ *
+ * QB Features Demonstrated:
+ * - Custom `qb::Event` Creation: Defining various event structs for specific system interactions.
+ * - Data Encapsulation: Events carrying relevant data for consumers.
+ * - Use of `std::string`, `std::chrono` for event data.
+ * - `qb::ActorId` for identifying event sources/destinations.
  */
 
 #pragma once

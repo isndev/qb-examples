@@ -1,14 +1,31 @@
 /**
- * @file Protocol.cpp
- * @brief Implements QB-integrated message serialization for the broker protocol
- * 
- * This file contains the QB framework integration code that enables:
- * - Efficient binary serialization of broker messages
- * - Zero-copy buffer management
- * - Type-safe message handling
- * 
- * The implementation uses QB's pipe system for optimal performance and
- * memory management during network I/O operations.
+ * @file examples/core_io/message_broker/shared/Protocol.cpp
+ * @example Message Broker - Shared Protocol Serialization Implementation
+ * @brief Implements the serialization logic for the custom `broker::Message` type
+ *        into QB-IO's pipe buffers for the message broker system.
+ *
+ * @details
+ * This file provides the template specialization of `qb::allocator::pipe<char>::put<broker::Message>()`.
+ * This function defines how a `broker::Message` object is converted into a byte stream
+ * according to the message broker's custom binary protocol when an actor sends such a message
+ * using the `*this << message_object;` syntax.
+ *
+ * Serialization Process:
+ * 1.  A `broker::MessageHeader` is constructed. It includes:
+ *     -   `broker::PROTOCOL_MAGIC` (0x514D).
+ *     -   `broker::PROTOCOL_VERSION` (0x01).
+ *     -   The message type from `msg.type`.
+ *     -   The payload length from `msg.payload.size()`.
+ * 2.  This 8-byte header is written to the QB pipe buffer.
+ * 3.  If the `msg.payload` is not empty, its string data is then written to the pipe buffer
+ *     immediately following the header.
+ *
+ * This mechanism allows QB-IO to efficiently serialize and send custom message types over the network.
+ *
+ * QB Features Demonstrated:
+ * - `qb::allocator::pipe<char>::put<T>()`: Template specialization for custom type serialization.
+ * - Writing data to QB pipe buffers: `this->put(pointer_to_data, size_of_data)`.
+ * - Integration with a custom-defined protocol (`broker::Message`, `broker::MessageHeader`).
  */
 
 #include "Protocol.h"

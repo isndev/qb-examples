@@ -1,13 +1,33 @@
 /**
- * @file ServerActor.h
- * @brief Server actor that manages broker sessions and bridges them with TopicManagerActor
- * 
- * This file demonstrates:
- * 1. How to combine QB Actor system with I/O handling
- * 2. How to manage multiple client sessions
- * 3. How to bridge communication between different actor types
- * 4. Proper event handling and routing in a QB application
+ * @file examples/core_io/message_broker/server/ServerActor.h
+ * @example Message Broker Server - Session Managing Actor
+ * @brief Defines `ServerActor` for managing `BrokerSession` instances and bridging
+ *        communication with the `TopicManagerActor`.
+ *
+ * @details
+ * The `ServerActor` handles client connections delegated by `AcceptActor`.
+ * - Inherits `qb::Actor` and `qb::io::use<ServerActor>::tcp::io_handler<BrokerSession>`.
+ * - `onInit()`: Registers for `NewSessionEvent` and `SendMessageEvent`.
+ * - `on(NewSessionEvent&)`: Creates a `BrokerSession` for new client sockets.
+ * - `handleSubscribe()`, `handleUnsubscribe()`, `handlePublish()`: These methods are called by
+ *   `BrokerSession` instances. They create corresponding events (`SubscribeEvent`,
+ *   `UnsubscribeEvent`, `PublishEvent`) and `push` them to the `TopicManagerActor`.
+ *   These handlers demonstrate efficient message forwarding, particularly `handlePublish` which
+ *   accepts a `broker::MessageContainer&&` and `std::string_view`s to enable zero-copy forwarding.
+ * - `handleDisconnect()`: Called by `BrokerSession` upon client disconnection, forwards a
+ *   `DisconnectEvent` to `TopicManagerActor`.
+ * - `on(SendMessageEvent&)`: Receives messages from `TopicManagerActor` intended for a specific
+ *   client, looks up the `BrokerSession`, and sends the message through it.
+ *
+ * QB Features Demonstrated:
+ * - `qb::Actor`.
+ * - `qb::io::use<ServerActor>::tcp::io_handler<BrokerSession>`: For managing `BrokerSession`s.
+ * - Event Handling: `on(NewSessionEvent&)`, `on(SendMessageEvent&)`.
+ * - Inter-Actor Communication: `push<Event>(...)` to `TopicManagerActor`.
+ * - Zero-Copy Message Forwarding: Design of `handlePublish` to work with `MessageContainer`
+ *   and `string_view`s for efficient data propagation (actual event definitions in `Events.h`).
  */
+
 #pragma once
 
 #include <qb/actor.h>

@@ -1,34 +1,57 @@
 /**
- * @file example3_tcp_networking.cpp
- * @brief QB-IO TCP Networking Example
+ * @file examples/io/example3_tcp_networking.cpp
+ * @example Asynchronous TCP Client-Server Communication
  *
- * This example demonstrates TCP networking capabilities in QB-IO:
- * - Creating TCP servers and clients
- * - Implementing text-based protocols
- * - Handling multiple client connections
- * - Asynchronous communication between network components
+ * @brief This example demonstrates fundamental TCP networking using QB-IO's asynchronous
+ * capabilities. It sets up a TCP server that handles multiple client connections
+ * and a TCP client that interacts with the server using a simple text-based command protocol.
  *
- * @author QB Framework Team
- * @copyright Apache-2.0 License
+ * @details
+ * The example consists of three main classes:
+ * 1.  `TCPServer`:
+ *     -   Inherits from `qb::io::use<TCPServer>::tcp::server<ServerClientHandler>`, making it a TCP server
+ *         that creates `ServerClientHandler` instances for each connected client.
+ *     -   Listens on a specified port using `transport().listen_v4()`.
+ *     -   Calls `start()` to begin accepting connections and processing I/O events.
+ * 2.  `ServerClientHandler`:
+ *     -   Inherits from `qb::io::use<ServerClientHandler>::tcp::client<TCPServer>`, representing a
+ *         server-side session for a connected client.
+ *     -   Uses `qb::protocol::text::command<ServerClientHandler>` as its protocol, allowing it to
+ *         receive newline-terminated text commands from the client and send text responses.
+ *     -   Implements an `on(Protocol::message&& msg)` handler to process commands such as "help",
+ *         "time", "echo", "stats", "quit", and "shutdown".
+ *     -   Sends responses back to the client using the `*this << "response" << Protocol::end;` syntax.
+ * 3.  `TCPClient`:
+ *     -   Inherits from `qb::io::use<TCPClient>::tcp::client<>`.
+ *     -   Connects to the `TCPServer` using `transport().connect_v4()`.
+ *     -   Also uses `qb::protocol::text::command<TCPClient>` for communication.
+ *     -   Sends a sequence of commands to the server and prints the received responses.
+ *     -   Handles server-initiated disconnection messages like "Goodbye!" or "Server shutting down...".
+ *
+ * The `main` function:
+ * - Initializes the QB asynchronous I/O system using `qb::io::async::init()` in each thread.
+ * - Runs the `TCPServer` in one thread and the `TCPClient` in another.
+ * - The client sends several commands, and the server responds accordingly.
+ * - Includes logic for the client to request server shutdown and for the main loop to manage
+ *   the server's lifecycle based on the `g_server_running` flag.
+ * - Uses `qb::io::async::run(EVRUN_NOWAIT)` in loops with short sleeps to drive the event processing.
+ *
+ * QB-IO Features Demonstrated:
+ * - Asynchronous TCP Server: `qb::io::use<T>::tcp::server<SessionType>`, `transport().listen_v4()`.
+ * - Asynchronous TCP Client: `qb::io::use<T>::tcp::client<>`, `transport().connect_v4()`.
+ * - Session Management: Server creating and managing `ServerClientHandler` sessions.
+ * - Built-in Text Protocol: `qb::protocol::text::command<HandlerType>` for simple command-based communication.
+ * - Protocol Integration: `switch_protocol<Protocol>()` (implicitly via `use<>`) and `on(Protocol::message&& msg)` handlers.
+ * - Stream-Based Sending: `*this << message << Protocol::end;`.
+ * - Asynchronous Event Loop: `qb::io::async::init()`, `qb::io::async::run()`.
+ * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
-#include <qb/actor.h>
-#include <qb/main.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/tcp/socket.h>
 #include <qb/io/tcp/listener.h>
 #include <qb/io/protocol/text.h>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <string>
-#include <atomic>
-#include <memory>
-#include <ctime>
-#include <mutex>
-#include <iomanip>
-#include <functional>
-#include <condition_variable>
 
 namespace {
     // Configuration constants

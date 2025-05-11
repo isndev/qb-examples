@@ -17,10 +17,6 @@ target_link_libraries(example3_tcp_networking PRIVATE qb-core qb-io)
 add_executable(example4_udp_networking example4_udp_networking.cpp)
 target_link_libraries(example4_udp_networking PRIVATE qb-core qb-io)
 
-# Example 5: Memory filesystem
-add_executable(example5_memory_filesystem example5_memory_filesystem.cpp)
-target_link_libraries(example5_memory_filesystem PRIVATE qb-core qb-io)
-
-# Example 6: Custom Protocol
-add_executable(example6_custom_protocol example6_custom_protocol.cpp)
-target_link_libraries(example6_custom_protocol PRIVATE qb-core qb-io) 
+# Example 5: Custom Protocol
+add_executable(example5_custom_protocol example5_custom_protocol.cpp)
+target_link_libraries(example5_custom_protocol PRIVATE qb-core qb-io) 

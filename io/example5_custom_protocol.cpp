@@ -1,26 +1,66 @@
 /**
- * @file example6_custom_protocol.cpp
- * @brief Example implementing a custom protocol using qb-io
+ * @file examples/io/example5_custom_protocol.cpp
+ * @example Custom Binary Protocol Implementation with QB-IO
  *
- * This example demonstrates how to build a custom protocol on top of qb-io:
- * - Protocol message format definition
- * - Protocol serialization/deserialization
- * - Client-server communication using the protocol
- * - Asynchronous message handling
+ * @brief This example demonstrates how to define, implement, and use a custom
+ * binary network protocol with the QB-IO asynchronous networking framework.
+ * It includes message structure definition, serialization, deserialization (parsing),
+ * and a client-server interaction using this protocol.
+ *
+ * @details
+ * The example is divided into several key parts:
+ * 1.  **Protocol Definition (`qb_protocol` namespace)**:
+ *     -   `MessageHeader`: A 12-byte structure defining the message frame:
+ *         -   `magic` (uint16_t): Protocol identifier (0x5150 'QP').
+ *         -   `version` (uint8_t): Protocol version.
+ *         -   `type` (uint8_t): `qb_protocol::MessageType` enum (HELLO, ECHO_REQUEST, etc.).
+ *         -   `id` (uint32_t): Message identifier for correlating requests/responses.
+ *         -   `length` (uint32_t): Length of the variable payload.
+ *     -   `qb::custom_message`: An application-level struct representing a parsed message,
+ *         containing type, id, and a string payload.
+ *
+ * 2.  **Serialization (`qb::allocator::pipe` specialization)**:
+ *     -   `template<> pipe<char>& pipe<char>::put<qb::custom_message>(...)`: A specialization
+ *         that teaches QB-IO's pipe buffer how to serialize a `qb::custom_message` object
+ *         into the defined binary format (header + payload). This enables sending
+ *         messages using the `*this << custom_message_object;` syntax.
+ *
+ * 3.  **Deserialization/Parsing (`qb::custom_protocol<IO_>` class)**:
+ *     -   Inherits from `qb::io::async::AProtocol<IO_>`.
+ *     -   `getMessageSize()`: Implements the logic to read the `MessageHeader` from the
+ *         incoming byte stream, validate it (magic, version), and determine the total
+ *         expected size of the full message (header + payload length).
+ *     -   `onMessage()`: Called when `getMessageSize()` indicates a full message is available
+ *         in the input buffer. It reconstructs the `qb::custom_message` from the header
+ *         and payload, then dispatches it to the `IO_` handler's `on(qb::custom_message&&)` method.
+ *     -   `reset()`: Resets the protocol's parsing state in case of errors.
+ *
+ * 4.  **Server Implementation (`EchoServer`, `EchoServerClient`)**:
+ *     -   `EchoServerClient` (server-side session) uses `qb::custom_protocol<EchoServerClient>`.
+ *     -   Handles `HELLO` messages by replying with `ACK`.
+ *     -   Handles `ECHO_REQUEST` messages by replying with `ECHO_REPLY` containing the same payload.
+ *
+ * 5.  **Client Implementation (`EchoClient`)**:
+ *     -   Also uses `qb::custom_protocol<EchoClient>`.
+ *     -   Initiates communication by sending a `HELLO` message.
+ *     -   Provides `sendEchoRequest` to send data to the server and uses a map
+ *         to manage callbacks for responses, including a timeout mechanism.
+ *     -   Includes an interactive command-line mode for sending messages.
+ *
+ * The `main` function allows running the program in either server or client mode.
+ *
+ * QB-IO Features Demonstrated:
+ * - Custom Protocol Implementation: Extending `qb::io::async::AProtocol<IO_>`.
+ * - Message Framing: Logic in `getMessageSize()` to identify message boundaries.
+ * - Message Parsing: Logic in `onMessage()` to deserialize byte streams into structured messages.
+ * - Custom Serialization: Specializing `qb::allocator::pipe<char>::put<T>()` for efficient sending.
+ * - Protocol Switching: `switch_protocol<MyCustomProtocol>()` to activate the custom protocol on a connection.
+ * - Asynchronous TCP Client/Server: Using `qb::io::use<T>::tcp::client` and `qb::io::use<T>::tcp::server`.
+ * - Asynchronous Event Loop: `qb::io::async::init()`, `qb::io::async::run()`.
+ * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
-#include <iostream>
-#include <chrono>
-#include <string>
-#include <atomic>
-#include <thread>
-#include <map>
-#include <mutex>
-#include <condition_variable>
-#include <cstring>
-#include <vector>
-#include <functional>
-
+#include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/system/allocator/pipe.h>
 
