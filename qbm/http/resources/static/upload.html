@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload - QB HTTP Framework</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>File Upload</h1>
+        <p><a href="/static/">← Back to Home</a></p>
+        
+        <!-- Upload Form -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Upload a File</h3>
+            </div>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <p>
+                    <label><strong>Choose File:</strong></label><br>
+                    <input type="file" id="fileInput" name="file" required>
+                    <small>Maximum file size: 50MB</small>
+                </p>
+                
+                <p>
+                    <label><strong>Description (optional):</strong></label><br>
+                    <textarea id="descriptionInput" name="description" rows="3" placeholder="Enter a description for this file..."></textarea>
+                </p>
+                
+                <p>
+                    <label><strong>Tags (optional):</strong></label><br>
+                    <input type="text" id="tagsInput" name="tags" placeholder="Enter comma-separated tags (e.g., document, important, test)">
+                </p>
+                
+                <p>
+                    <button type="submit" class="btn btn-success">Upload File</button>
+                    <button type="button" id="clearBtn" class="btn">Clear Form</button>
+                </p>
+            </form>
+        </div>
+        
+        <!-- Upload Status -->
+        <div id="uploadStatus" class="alert hidden">
+            <div id="uploadProgress" class="hidden">
+                <div class="loading">
+                    <span id="progressText">Uploading file...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Files List -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Uploaded Files</h3>
+                <button id="refreshBtn" class="btn">Refresh List</button>
+            </div>
+            <div id="filesList">
+                <p>Loading files...</p>
+            </div>
+        </div>
+        
+        <!-- API Documentation -->
+        <h2>API Endpoints</h2>
+        <div class="card">
+            <h3>Direct API Endpoints</h3>
+            <div class="api-endpoint">
+                <span class="method method-get">GET</span>
+                <a href="/api/files" target="_blank">/api/files</a>
+                <span>- List all uploaded files (JSON)</span>
+            </div>
+            <div class="api-endpoint">
+                <span class="method method-post">POST</span>
+                <span>/api/upload</span>
+                <span>- Upload endpoint (used by form above)</span>
+            </div>
+            <div class="api-endpoint">
+                <span class="method method-get">GET</span>
+                <a href="/browse" target="_blank">/browse</a>
+                <span>- Browse uploaded files (HTML)</span>
+            </div>
+            <div class="api-endpoint">
+                <span class="method method-delete">DELETE</span>
+                <span>/api/files/:filename</span>
+                <span>- Delete uploaded file</span>
+            </div>
+        </div>
+        
+        <!-- cURL Examples -->
+        <h2>cURL Examples</h2>
+        <pre><code># Upload a file with description and tags
+curl -X POST \
+  -F "file=@yourfile.txt" \
+  -F "description=Test file upload" \
+  -F "tags=test,example,demo" \
+  http://localhost:8080/api/upload
+
+# List all uploaded files
+curl http://localhost:8080/api/files
+
+# Get specific file metadata
+curl http://localhost:8080/api/files/upload_1234567890_yourfile.txt
+
+# Delete a file
+curl -X DELETE http://localhost:8080/api/files/upload_1234567890_yourfile.txt</code></pre>
+        
+        <footer>
+            <p><em>QB HTTP Framework - File Upload Demo</em></p>
+        </footer>
+    </div>
+    
+    <script src="/static/main.js"></script>
+    <script src="/static/upload.js"></script>
+</body>
+</html> 

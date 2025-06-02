@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QB HTTP Static File Server</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>QB HTTP Static File Server Example</h1>
+        <p>Welcome to the QB HTTP framework static file server demonstration.</p>
+        
+        <h2>Features Demonstrated</h2>
+        <ul>
+            <li>Static file serving with proper MIME types</li>
+            <li>Directory browsing and file listing</li>
+            <li>File upload via multipart/form-data</li>
+            <li>JSON API for file operations</li>
+            <li>Caching headers and ETag support</li>
+            <li>Range requests for large files</li>
+            <li>Security measures against path traversal</li>
+        </ul>
+        
+        <h2>Try These Links</h2>
+        <ul>
+            <li><a href="/static/about.html">About Page</a></li>
+            <li><a href="/static/upload.html">File Upload Test</a></li>
+            <li><a href="/static/sample.txt">Sample Text File</a></li>
+            <li><a href="/static/data.json">JSON Data</a></li>
+            <li><a href="/browse">Browse Upload Directory</a></li>
+            <li><a href="/api/files">List Uploaded Files (JSON API)</a></li>
+        </ul>
+        
+        <h2>API Endpoints</h2>
+        <ul>
+            <li><strong>GET /api/files</strong> - List all uploaded files</li>
+            <li><strong>POST /api/upload</strong> - Upload a new file</li>
+            <li><strong>GET /api/files/:filename</strong> - Get file metadata</li>
+            <li><strong>DELETE /api/files/:filename</strong> - Delete a file</li>
+            <li><strong>PUT /api/files/:filename/metadata</strong> - Update file metadata</li>
+        </ul>
+        
+        <footer>
+            <p><em>Powered by QB HTTP Framework</em></p>
+        </footer>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html> 

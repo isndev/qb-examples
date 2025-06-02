@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - QB HTTP Framework</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>About QB HTTP Framework</h1>
+        <p><a href="/static/">← Back to Home</a></p>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Framework Overview</h3>
+            </div>
+            <p>QB HTTP is a modern C++17 library for building high-performance, asynchronous HTTP/1.1 and HTTP/2 clients and servers. It's designed to integrate seamlessly with the QB Actor Framework or work standalone with qb-io.</p>
+        </div>
+
+        <h2>Key Features</h2>
+        <div class="alert alert-info">
+            <ul>
+                <li><strong>Modern C++17</strong> - Uses latest language features for clean, efficient code</li>
+                <li><strong>Asynchronous I/O</strong> - Non-blocking operations for high performance</li>
+                <li><strong>HTTP/1.1 & HTTP/2</strong> - Full support for both protocol versions</li>
+                <li><strong>Middleware System</strong> - Extensible request/response processing pipeline</li>
+                <li><strong>Advanced Routing</strong> - URL patterns, parameters, and wildcard matching</li>
+                <li><strong>Static File Serving</strong> - Built-in support with compression and caching</li>
+                <li><strong>File Upload</strong> - Multipart form-data parsing and handling</li>
+                <li><strong>JSON Support</strong> - Native JSON request/response handling</li>
+                <li><strong>Authentication</strong> - JWT and custom auth middleware</li>
+                <li><strong>Validation</strong> - Request validation with JSON Schema-like rules</li>
+            </ul>
+        </div>
+
+        <h2>Architecture</h2>
+        <div class="card">
+            <h3>Core Components</h3>
+            <ul>
+                <li><strong>Router</strong> - Central request routing and dispatch</li>
+                <li><strong>Context</strong> - Request/response container with lifecycle management</li>
+                <li><strong>Middleware</strong> - Composable request processing components</li>
+                <li><strong>Session</strong> - Connection management and protocol handling</li>
+                <li><strong>Controllers</strong> - Class-based route organization</li>
+            </ul>
+        </div>
+
+        <h2>Performance Characteristics</h2>
+        <div class="alert alert-success">
+            <ul>
+                <li>Event-driven architecture using libev</li>
+                <li>Zero-copy operations where possible</li>
+                <li>Efficient memory management with RAII</li>
+                <li>Lock-free data structures for inter-core communication</li>
+                <li>Optimized HTTP parsing with llhttp</li>
+                <li>Header compression with HPACK (HTTP/2)</li>
+            </ul>
+        </div>
+
+        <h2>Static File Server Example</h2>
+        <p>This demonstration showcases:</p>
+        <div class="api-endpoint">
+            <strong>Static File Middleware</strong><br>
+            Efficient serving of static content with proper MIME types, caching headers, and conditional requests.
+        </div>
+        <div class="api-endpoint">
+            <strong>File Upload API</strong><br>
+            Multipart form-data parsing for file uploads with size validation and metadata management.
+        </div>
+        <div class="api-endpoint">
+            <strong>RESTful API</strong><br>
+            JSON-based API for file operations (list, upload, delete, metadata updates).
+        </div>
+
+        <h2>Try the Examples</h2>
+        <div class="card">
+            <h3>Interactive Testing</h3>
+            <p><a href="/static/upload.html" class="btn btn-success">Test File Upload</a></p>
+            <p><a href="/browse" class="btn">Browse Uploaded Files</a></p>
+            <p><a href="/api/files" class="btn">View API Response</a></p>
+        </div>
+
+        <h2>Command Line Examples</h2>
+        <pre><code># List all uploaded files
+curl http://localhost:8080/api/files
+
+# Upload a file with description
+curl -X POST \
+  -F "file=@example.txt" \
+  -F "description=My test file" \
+  http://localhost:8080/api/upload
+
+# Get file metadata
+curl http://localhost:8080/api/files/upload_1234567890_example.txt
+
+# Delete a file
+curl -X DELETE http://localhost:8080/api/files/upload_1234567890_example.txt</code></pre>
+
+        <footer>
+            <p><em>QB HTTP Framework - Built for Performance and Developer Experience</em></p>
+        </footer>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html> 

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QB HTTP/2 Interactive Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 QB HTTP/2 Server Demo</h1>
+            <p class="subtitle">Interactive demonstration of HTTP/2 features and capabilities</p>
+            <div class="server-info">
+                <p>Server Time: <span id="server-time">Loading...</span></p>
+                <p>Protocol: <strong>HTTP/2 over TLS</strong></p>
+                <p>Port: <strong>8443</strong></p>
+            </div>
+        </div>
+
+        <nav class="navigation">
+            <button class="nav-btn active" data-section="overview">Overview</button>
+            <button class="nav-btn" data-section="multiplexing">Multiplexing</button>
+            <button class="nav-btn" data-section="server-push">Server Push</button>
+            <button class="nav-btn" data-section="stream-priority">Stream Priority</button>
+            <button class="nav-btn" data-section="performance">Performance</button>
+        </nav>
+
+        <main class="content">
+            <section id="overview" class="section active">
+                <h2>🌟 HTTP/2 Features Overview</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>🔄 Request Multiplexing</h3>
+                        <p>Multiple requests over a single TCP connection</p>
+                        <div class="feature-status">✅ Active</div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>📦 Header Compression</h3>
+                        <p>HPACK compression reduces header overhead</p>
+                        <div class="feature-status">✅ Active</div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🚀 Server Push</h3>
+                        <p>Proactive resource delivery to clients</p>
+                        <div class="feature-status">🔄 Simulated</div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>⚡ Stream Prioritization</h3>
+                        <p>Critical resources get higher priority</p>
+                        <div class="feature-status">✅ Active</div>
+                    </div>
+                </div>
+                
+                <div class="protocol-comparison">
+                    <h3>HTTP/1.1 vs HTTP/2</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Feature</th>
+                                <th>HTTP/1.1</th>
+                                <th>HTTP/2</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Multiplexing</td>
+                                <td>❌ Sequential</td>
+                                <td>✅ Parallel</td>
+                            </tr>
+                            <tr>
+                                <td>Header Compression</td>
+                                <td>❌ None</td>
+                                <td>✅ HPACK</td>
+                            </tr>
+                            <tr>
+                                <td>Server Push</td>
+                                <td>❌ Not Available</td>
+                                <td>✅ Supported</td>
+                            </tr>
+                            <tr>
+                                <td>Flow Control</td>
+                                <td>⚠️ TCP Only</td>
+                                <td>✅ Per-Stream</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="demo-controls">
+                    <button id="test-all-features" class="demo-btn">🚀 Test All HTTP/2 Features</button>
+                </div>
+            </section>
+
+            <section id="multiplexing" class="section">
+                <h2>🔄 Request Multiplexing Demo</h2>
+                <p>HTTP/2 allows multiple requests to be sent simultaneously over a single connection.</p>
+                
+                <div class="demo-controls">
+                    <button id="start-multiplexing" class="demo-btn">Start Multiplexing Test</button>
+                    <button id="clear-multiplexing" class="demo-btn secondary">Clear Results</button>
+                </div>
+                
+                <div class="demo-results">
+                    <h3>Simultaneous Requests Status:</h3>
+                    <div id="multiplexing-results" class="results-container">
+                        <div class="info-message">Click "Start Multiplexing Test" to begin</div>
+                    </div>
+                </div>
+
+                <div class="multiplexing-visualization">
+                    <h3>Connection Visualization</h3>
+                    <div class="connection-diagram">
+                        <div class="client-box">Client</div>
+                        <div class="connection-line">
+                            <div class="stream stream-1">Stream 1</div>
+                            <div class="stream stream-2">Stream 2</div>
+                            <div class="stream stream-3">Stream 3</div>
+                        </div>
+                        <div class="server-box">Server</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="server-push" class="section">
+                <h2>🚀 Server Push Demo</h2>
+                <p>Server Push allows the server to proactively send resources to the client.</p>
+                
+                <div class="demo-controls">
+                    <button id="request-push" class="demo-btn">Request with Push</button>
+                    <button id="request-multi-push" class="demo-btn">Multiple Resource Push</button>
+                    <button id="clear-push" class="demo-btn secondary">Clear Results</button>
+                </div>
+                
+                <div class="demo-results">
+                    <h3>Server Push Results:</h3>
+                    <div id="push-results" class="results-container">
+                        <div class="info-message">Click buttons above to test server push</div>
+                    </div>
+                </div>
+
+                <div class="push-explanation">
+                    <h3>How Server Push Works</h3>
+                    <ol>
+                        <li>Client requests a page</li>
+                        <li>Server identifies additional resources needed</li>
+                        <li>Server sends PUSH_PROMISE frame</li>
+                        <li>Server proactively sends the resources</li>
+                        <li>Client receives resources before requesting them</li>
+                    </ol>
+                </div>
+            </section>
+
+            <section id="stream-priority" class="section">
+                <h2>⚡ Stream Prioritization Demo</h2>
+                <p>HTTP/2 allows prioritizing important resources for better page loading.</p>
+                
+                <div class="demo-controls">
+                    <button id="test-critical-priority" class="demo-btn priority-critical" data-priority="critical">Critical Priority</button>
+                    <button id="test-high-priority" class="demo-btn priority-high" data-priority="high">High Priority</button>
+                    <button id="test-medium-priority" class="demo-btn priority-medium" data-priority="medium">Medium Priority</button>
+                    <button id="test-low-priority" class="demo-btn priority-low" data-priority="low">Low Priority</button>
+                    <button id="clear-priority" class="demo-btn secondary">Clear Results</button>
+                </div>
+                
+                <div class="demo-results">
+                    <h3>Priority Test Results:</h3>
+                    <div id="priority-results" class="results-container">
+                        <div class="info-message">Click priority buttons to test stream prioritization</div>
+                    </div>
+                </div>
+
+                <div class="priority-explanation">
+                    <h3>Priority Levels</h3>
+                    <div class="priority-levels">
+                        <div class="priority-item critical">
+                            <strong>Critical (256)</strong> - Essential resources like CSS
+                        </div>
+                        <div class="priority-item high">
+                            <strong>High (128)</strong> - Important scripts and images
+                        </div>
+                        <div class="priority-item medium">
+                            <strong>Medium (64)</strong> - Regular content
+                        </div>
+                        <div class="priority-item low">
+                            <strong>Low (32)</strong> - Optional resources
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="performance" class="section">
+                <h2>📊 Performance Analysis</h2>
+                <p>Compare HTTP/2 performance characteristics with real-time metrics.</p>
+                
+                <div class="demo-controls">
+                    <button id="run-performance" class="demo-btn">Run Performance Test</button>
+                    <button id="clear-performance" class="demo-btn secondary">Clear Results</button>
+                </div>
+                
+                <div class="performance-metrics">
+                    <div class="metric-card">
+                        <h3>Response Time</h3>
+                        <div id="response-time" class="metric-value">-- ms</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Throughput</h3>
+                        <div id="throughput" class="metric-value">-- req/s</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Active Streams</h3>
+                        <div id="active-streams" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Data Transferred</h3>
+                        <div id="data-transferred" class="metric-value">-- KB</div>
+                    </div>
+                </div>
+                
+                <div class="demo-results">
+                    <h3>Performance Test Results:</h3>
+                    <div id="performance-results" class="results-container">
+                        <div class="info-message">Click "Run Performance Test" to start analysis</div>
+                    </div>
+                </div>
+
+                <div class="performance-chart">
+                    <h3>Request Timeline</h3>
+                    <canvas id="performance-chart" width="800" height="300"></canvas>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>© 2024 QB Framework - HTTP/2 Interactive Demo</p>
+            <p>Built with <a href="https://github.com/isndev/qb" target="_blank">QB C++ Actor Framework</a></p>
+        </footer>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/http2-demo.js"></script>
+    <!-- Initialization is handled in http2-demo.js -->
+</body>
+</html> 

@@ -1,0 +1,71 @@
+{
+  "framework": {
+    "name": "QB HTTP Framework",
+    "version": "2.0.0",
+    "language": "C++17",
+    "license": "MIT",
+    "description": "High-performance asynchronous HTTP/1.1 and HTTP/2 framework"
+  },
+  "features": {
+    "protocols": ["HTTP/1.1", "HTTP/2"],
+    "async_io": true,
+    "middleware_system": true,
+    "static_files": true,
+    "file_upload": true,
+    "json_support": true,
+    "authentication": ["JWT", "Custom"],
+    "validation": true,
+    "compression": ["gzip", "deflate"],
+    "caching": ["ETag", "Last-Modified", "Cache-Control"]
+  },
+  "architecture": {
+    "design_patterns": ["Actor Model", "CRTP", "RAII"],
+    "concurrency": "Event-driven with optional Actor Framework integration",
+    "dependencies": ["qb-io", "qb-core (optional)", "libev", "llhttp"],
+    "platforms": ["Linux", "macOS", "Windows"]
+  },
+  "examples": {
+    "static_file_server": {
+      "description": "Demonstrates static file serving with upload capabilities",
+      "endpoints": {
+        "GET /static/*": "Serve static files",
+        "GET /uploads/*": "Browse uploaded files",
+        "GET /api/files": "List all files",
+        "POST /api/upload": "Upload new file",
+        "DELETE /api/files/:filename": "Delete file",
+        "PUT /api/files/:filename/metadata": "Update file metadata"
+      },
+      "features_shown": [
+        "StaticFiles middleware configuration",
+        "Multipart form-data parsing",
+        "File size validation",
+        "MIME type detection",
+        "Directory browsing",
+        "RESTful API design",
+        "Error handling",
+        "Security measures"
+      ]
+    }
+  },
+  "performance": {
+    "benchmarks": {
+      "requests_per_second": "100K+ (depending on hardware)",
+      "memory_usage": "Low footprint with efficient allocators",
+      "latency": "Sub-millisecond for static files"
+    },
+    "optimizations": [
+      "Zero-copy operations",
+      "Lock-free data structures",
+      "Efficient HTTP parsing",
+      "Header compression (HTTP/2)",
+      "Connection pooling",
+      "Smart caching strategies"
+    ]
+  },
+  "metadata": {
+    "generated": "2024-01-01T00:00:00Z",
+    "content_type": "application/json",
+    "encoding": "UTF-8",
+    "size_hint": "This file demonstrates JSON serving with proper headers"
+  }
+} 

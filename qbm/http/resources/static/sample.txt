@@ -1,0 +1,32 @@
+QB HTTP Framework - Sample Text File
+====================================
+
+This is a sample text file served by the QB HTTP static file server.
+
+Features demonstrated:
+- Static file serving with proper MIME type detection
+- Content-Length headers
+- Last-Modified and ETag caching
+- Range request support for partial content delivery
+
+The QB HTTP framework provides:
+✓ High-performance asynchronous I/O
+✓ Modern C++17 architecture
+✓ HTTP/1.1 and HTTP/2 support
+✓ Extensible middleware system
+✓ Advanced routing capabilities
+✓ Built-in authentication and validation
+✓ File upload and multipart handling
+✓ JSON API support
+
+Example usage:
+- GET requests automatically serve this file
+- Range requests allow partial downloads
+- Conditional requests check ETag/Last-Modified
+- Compression is applied when supported by client
+
+For more information, visit:
+http://localhost:8080/static/about.html
+
+Last updated: 2024
+QB HTTP Framework - Built for performance and developer experience. 

@@ -47,6 +47,7 @@
 #include <qb/io.h>
 #include <qb/event.h>
 #include <random>
+#include <queue>
 
 // Thread-safe shared queue for actors
 template <typename T>

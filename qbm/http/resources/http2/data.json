@@ -1,0 +1,73 @@
+{
+  "server": {
+    "name": "QB HTTP/2 Server",
+    "version": "1.0.0",
+    "protocol": "HTTP/2",
+    "features": [
+      "Request Multiplexing",
+      "Server Push",
+      "Stream Prioritization", 
+      "Header Compression (HPACK)",
+      "Flow Control",
+      "SSL/TLS with ALPN"
+    ]
+  },
+  "demo_endpoints": {
+    "multiplexing": "/api/multiplexing-demo",
+    "server_push": "/api/server-push-demo",
+    "stream_priority": "/api/stream-priority/:level",
+    "performance": "/api/performance/:iterations",
+    "bulk_data": "/api/data/:size",
+    "echo": "/api/echo"
+  },
+  "performance_data": {
+    "http2_advantages": [
+      "Single TCP connection for multiple requests",
+      "Header compression reduces bandwidth",
+      "Server push eliminates round trips",
+      "Stream prioritization optimizes critical resources",
+      "Binary protocol is more efficient"
+    ],
+    "typical_improvements": {
+      "latency_reduction": "20-40%",
+      "bandwidth_savings": "15-25%",
+      "page_load_time": "10-30%"
+    }
+  },
+  "sample_data": {
+    "users": [
+      {
+        "id": 1,
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "role": "admin"
+      },
+      {
+        "id": 2,
+        "name": "Bob Smith", 
+        "email": "bob@example.com",
+        "role": "user"
+      },
+      {
+        "id": 3,
+        "name": "Carol Wilson",
+        "email": "carol@example.com",
+        "role": "manager"
+      }
+    ],
+    "products": [
+      {
+        "id": 101,
+        "name": "HTTP/2 Performance Monitor",
+        "price": 99.99,
+        "category": "software"
+      },
+      {
+        "id": 102,
+        "name": "Network Analysis Tool",
+        "price": 149.99,
+        "category": "software"
+      }
+    ]
+  }
+} 

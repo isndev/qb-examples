@@ -22,7 +22,7 @@ foreach(EXAMPLE_NAME ${QB_REDIS_EXAMPLES})
     # Link against QB components.
     # The target names QB::core, QB::io, QB::pgsql are conventional for modern CMake packages.
     # Verify these are the correct imported target names from the QB framework.
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE qb::core qbm-redis)
+    target_link_libraries(${EXAMPLE_NAME} PRIVATE qbm-redis)
 endforeach()
 
 # To make it easier to run examples, you could add install rules
