@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QB WebSocket Chat</title>
+    <link rel="stylesheet" href="/static/chat.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>QB WebSocket Chat</h1>
+            <div class="connection-status" id="connectionStatus">Connecting...</div>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message system">
+                <span class="message-content">Welcome to QB WebSocket Chat!</span>
+                <span class="message-time"></span>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="user-info">
+                <input type="text" id="usernameInput" placeholder="Your name" maxlength="20" value="User">
+            </div>
+            <div class="message-input">
+                <input type="text" id="messageInput" placeholder="Type your message..." maxlength="500">
+                <button id="sendButton" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info-panel">
+        <h3>Features:</h3>
+        <ul>
+            <li>Real-time WebSocket communication</li>
+            <li>QB Actor Framework powered</li>
+            <li>Modern responsive UI</li>
+            <li>Connection status indicator</li>
+            <li>Message timestamps</li>
+            <li>Username support</li>
+        </ul>
+        
+        <h3>Technical Stack:</h3>
+        <ul>
+            <li>Backend: QB Framework + qbm-ws</li>
+            <li>Frontend: HTML5 + CSS3 + Vanilla JS</li>
+            <li>Protocol: WebSocket (RFC 6455)</li>
+            <li>Architecture: Actor-based concurrency</li>
+        </ul>
+        
+        <h3>Test the Chat:</h3>
+        <ul>
+            <li>Open multiple browser tabs</li>
+            <li>Change your username</li>
+            <li>Send messages between tabs</li>
+            <li>Watch real-time communication</li>
+        </ul>
+        
+        <h3>Static Files:</h3>
+        <ul>
+            <li>CSS: <a href="/static/chat.css">/static/chat.css</a></li>
+            <li>JS: <a href="/static/chat.js">/static/chat.js</a></li>
+            <li>API: <a href="/api/info">/api/info</a></li>
+        </ul>
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html> 

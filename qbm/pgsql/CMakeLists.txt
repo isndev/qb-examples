@@ -10,8 +10,8 @@ set(QB_PGSQL_EXAMPLES
     example1_basic_query
     example2_prepared_statements
     example3_transaction_management
-    example4_data_types
-    example5_error_handling
+#    example4_data_types
+#    example5_error_handling
 )
 
 foreach(EXAMPLE_NAME ${QB_PGSQL_EXAMPLES})

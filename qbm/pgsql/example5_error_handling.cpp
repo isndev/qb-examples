@@ -29,7 +29,7 @@ public:
     ErrorHandlingActor() {}
 
     ~ErrorHandlingActor() override {
-        if (_db_connection && _db_connection->is_connected()) {
+        if (_db_connection) {
             cleanupDatabase();
         }
     }

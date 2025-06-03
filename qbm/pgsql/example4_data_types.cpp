@@ -53,7 +53,7 @@ public:
     DataTypesActor() {}
 
     ~DataTypesActor() override {
-        if (_db_connection && _db_connection->is_connected()) {
+        if (_db_connection) {
             cleanupDatabase();
         }
     }
@@ -147,7 +147,7 @@ private:
         qb::Timestamp p_timestamp_col = now_ts;
         qb::Timestamp p_timestamptz_col = now_ts;
 
-        qb::uuid p_uuid_col = qb::uuid::generate_random_uuid();
+        qb::uuid p_uuid_col = qb::generate_random_uuid();
         std::vector<char> p_bytea_col = {'b', 'y', 't', 'e', '\0', 'a', 'r', 'r', 'a', 'y'};
         qb::json p_json_col = {{"key1", "value1"}, {"key2", 100}};
         qb::json p_jsonb_col = {{"item", "jsonb_item"}, {"active", true}, {"nested", {1,2,3}}};
