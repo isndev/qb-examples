@@ -87,6 +87,7 @@ namespace qb_protocol {
     
     // Message types
     enum class MessageType : uint8_t {
+    #undef ERROR
         HELLO = 0x01,
         ECHO_REQUEST = 0x02,
         ECHO_REPLY = 0x03,

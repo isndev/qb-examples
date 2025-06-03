@@ -51,6 +51,7 @@
  * - Engine Management: `qb::Main`, `engine.start()`, `engine.join()`.
  */
 
+#include <deque>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>

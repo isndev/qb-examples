@@ -57,6 +57,7 @@
  * - Referenced Actors: `addRefActor` for potentially closer coupling where appropriate (though the example uses it broadly).
  */
 
+#include <deque>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>

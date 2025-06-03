@@ -5,9 +5,11 @@
 add_executable(example1_async_io example1_async_io.cpp)
 target_link_libraries(example1_async_io PRIVATE qb-core qb-io)
 
+if (NOT WIN32)
 # Example 2: File I/O operations
 add_executable(example2_file_io example2_file_io.cpp)
 target_link_libraries(example2_file_io PRIVATE qb-core qb-io)
+endif ()
 
 # Example 3: TCP networking
 add_executable(example3_tcp_networking example3_tcp_networking.cpp)

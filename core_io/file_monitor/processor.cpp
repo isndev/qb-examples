@@ -200,7 +200,7 @@ FileMetadata FileProcessor::extractMetadata(const std::string& path) {
     
     if (file.open(path.c_str(), O_RDONLY) >= 0) {
         content.resize(metadata.size);
-        ssize_t bytes_read = file.read(content.data(), metadata.size);
+        auto bytes_read = file.read(content.data(), metadata.size);
         file.close();
         
         if (bytes_read >= 0) {

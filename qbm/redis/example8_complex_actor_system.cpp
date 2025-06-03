@@ -61,6 +61,8 @@
 #include <qb/main.h>
 #include <qb/io/async.h>
 #include <qb/json.h>
+#undef ERROR
+#undef DELETE
 
 // Redis Configuration
 #define REDIS_URI "tcp://localhost:6379"

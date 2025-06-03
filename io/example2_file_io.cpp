@@ -188,13 +188,13 @@ private:
         
         if (file.open(file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
             // Write the data - Cast unsigned char* to char* to match the API
-            ssize_t written = file.write(reinterpret_cast<const char*>(data.data()), data.size());
+            auto written = file.write(reinterpret_cast<const char*>(data.data()), data.size());
             file.close();
             
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
             
-            if (written == static_cast<ssize_t>(data.size())) {
+            if (written == static_cast<int>(data.size())) {
                 double throughput = (data.size() / 1024.0) / (duration.count() / 1000000.0);
                 qb::io::cout() << "Successfully wrote " << written << " bytes in "
                           << duration.count() / 1000.0 << " ms" << std::endl;
@@ -237,13 +237,13 @@ private:
             std::vector<char> buffer(file_size);
             
             // Read the file
-            ssize_t bytes_read = file.read(buffer.data(), buffer.size());
+            auto bytes_read = file.read(buffer.data(), buffer.size());
             file.close();
             
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
             
-            if (bytes_read == static_cast<ssize_t>(file_size)) {
+            if (bytes_read == static_cast<int>(file_size)) {
                 double throughput = (file_size / 1024.0) / (duration.count() / 1000000.0);
                 qb::io::cout() << "Successfully read " << bytes_read << " bytes in "
                           << duration.count() / 1000.0 << " ms" << std::endl;

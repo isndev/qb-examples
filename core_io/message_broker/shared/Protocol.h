@@ -93,6 +93,7 @@ constexpr uint8_t PROTOCOL_VERSION = 0x01;
  * allowing new message types to be added in future versions.
  */
 enum class MessageType : uint8_t {
+#undef ERROR
     SUBSCRIBE = 1,     ///< Client -> Server: Subscribe to a topic
     UNSUBSCRIBE,       ///< Client -> Server: Unsubscribe from a topic
     PUBLISH,           ///< Client -> Server: Publish message to a topic

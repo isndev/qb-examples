@@ -96,6 +96,7 @@ constexpr uint8_t PROTOCOL_VERSION = 0x01;
  * allowing new message types to be added in future versions.
  */
 enum class MessageType : uint8_t {
+#undef ERROR
     AUTH_REQUEST = 1,  ///< Client -> Server: Request to join with username
     AUTH_RESPONSE,     ///< Server -> Client: Authentication result
     CHAT_MESSAGE,      ///< Bidirectional: Regular chat message

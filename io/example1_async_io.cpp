@@ -175,10 +175,10 @@ public:
         qb::io::sys::file file;
         if (file.open(_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
             // Write content to file
-            ssize_t bytes_written = file.write(_content.c_str(), _content.size());
+            auto bytes_written = file.write(_content.c_str(), _content.size());
             file.close();
             
-            if (bytes_written == static_cast<ssize_t>(_content.size())) {
+            if (bytes_written == static_cast<int>(_content.size())) {
                 qb::io::cout() << "FileProcessor: Successfully wrote " << bytes_written
                           << " bytes to file" << std::endl;
             } else {
