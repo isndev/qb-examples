@@ -30,6 +30,7 @@ This section contains mini-projects that illustrate how to combine `qb-core` (ac
 
 The `qbm` directory houses examples for various specialized modules that extend the QB Framework's functionality. Each module provides a client or utilities for specific services or protocols.
 - **HTTP**: Examples for building HTTP/HTTPS/HTTP2 servers and clients.
+- **WebSocket**: Advanced WebSocket chat system with separated server architectures and CLI client.
 - **PostgreSQL**: Demonstrations of asynchronous interaction with PostgreSQL databases.
 - **Redis**: Examples for using Redis for caching, messaging (Pub/Sub), and data storage.
 

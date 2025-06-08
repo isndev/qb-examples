@@ -12,13 +12,19 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
 *   **Content**: Examples cover basic servers, routing, middleware, controllers, asynchronous handlers, REST API construction, static file serving, JWT authentication, request validation, and more.
 *   [**View HTTP Module Examples &raquo;**](./http/README.md)
 
-### 2. PostgreSQL Module (`./pgsql/`)
+### 2. WebSocket Module (`./ws/`)
+
+*   **Focus**: Advanced WebSocket implementations with separated server architectures and real-time communication.
+*   **Content**: Features a complete chat system demonstrating socket extraction, actor-based responsibility separation, clean message dispatch systems, and both web browser and command-line clients. Showcases implicit multithreading via QB VirtualCores and event-driven inter-actor communication.
+*   [**View WebSocket Module Examples &raquo;**](./ws/README.md)
+
+### 3. PostgreSQL Module (`./pgsql/`)
 
 *   **Focus**: Asynchronous interaction with PostgreSQL databases.
 *   **Content**: Demonstrations include basic queries, prepared statements, transaction management, handling various PostgreSQL data types, and error handling strategies.
 *   [**View PostgreSQL Module Examples &raquo;**](./pgsql/README.md)
 
-### 3. Redis Module (`./redis/`)
+### 4. Redis Module (`./redis/`)
 
 *   **Focus**: Utilizing Redis for caching, messaging, and data storage within QB actor systems.
 *   **Content**: Examples showcase string operations, hashes, lists, asynchronous operations in actors, Publish/Subscribe messaging, transactions, Redis Streams with consumer groups, and complex actor systems using diverse Redis patterns.
