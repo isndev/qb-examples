@@ -438,7 +438,7 @@ private:
             {"name", "QB WebSocket Chat Server"},
             {"version", "2.0.0"},
             {"framework", "QB Actor Framework"},
-            {"module", "qbm-ws"},
+            {"module", "qbm-websocket"},
             {"architecture", "Separated HTTP/WebSocket Servers"},
             {"features", {
                 "websocket_chat",
