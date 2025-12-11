@@ -1,41 +1,102 @@
-# Core examples
+#
+# qb - C++ Actor Framework
+# Copyright (c) 2011-2025 qb - isndev (cpp.actor). All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# -----------------------------------------------------------------------------
+# qb Core Examples - CMake Configuration
+#
+# This file configures examples demonstrating the core actor system features
+# including actor creation, message passing, lifecycle management, and patterns.
+# -----------------------------------------------------------------------------
+
+# Define project with same version as parent
+project(qb_core_examples
+        LANGUAGES CXX
+        VERSION ${QB_FRAMEWORK_VERSION}
+        DESCRIPTION "Core actor system examples for the qb framework"
+)
+
+qb_status_message("Building qb core examples")
 
 # Example 1: Simple actor example
-add_executable(example1_simple_actor example1_simple_actor.cpp)
-target_link_libraries(example1_simple_actor PRIVATE qb-core)
+qb_add_executable(
+    NAME example1_simple_actor
+    SOURCES example1_simple_actor.cpp
+    DEPENDS qb-core
+)
 
 # Example 2: Basic actor communication
-add_executable(example2_basic_actors example2_basic_actors.cpp)
-target_link_libraries(example2_basic_actors PRIVATE qb-core)
+qb_add_executable(
+    NAME example2_basic_actors
+    SOURCES example2_basic_actors.cpp
+    DEPENDS qb-core
+)
 
 # Example 3: Multiple cores and event priorities
-add_executable(example3_multicore example3_multicore.cpp)
-target_link_libraries(example3_multicore PRIVATE qb-core)
+qb_add_executable(
+    NAME example3_multicore
+    SOURCES example3_multicore.cpp
+    DEPENDS qb-core
+)
 
 # Example 4: Actor lifecycle and callbacks
-add_executable(example4_lifecycle example4_lifecycle.cpp)
-target_link_libraries(example4_lifecycle PRIVATE qb-core)
+qb_add_executable(
+    NAME example4_lifecycle
+    SOURCES example4_lifecycle.cpp
+    DEPENDS qb-core
+)
 
 # Example 5: Timer usage with the latest API
-add_executable(example5_timers example5_timers.cpp)
-target_link_libraries(example5_timers PRIVATE qb-core)
+qb_add_executable(
+    NAME example5_timers
+    SOURCES example5_timers.cpp
+    DEPENDS qb-core
+)
 
 # Example 6: Shared queue between actors
-add_executable(example6_shared_queue example6_shared_queue.cpp)
-target_link_libraries(example6_shared_queue PRIVATE qb-core)
+qb_add_executable(
+    NAME example6_shared_queue
+    SOURCES example6_shared_queue.cpp
+    DEPENDS qb-core
+)
 
 # Example 7: Publisher/Subscriber pattern
-add_executable(example7_pub_sub example7_pub_sub.cpp)
-target_link_libraries(example7_pub_sub PRIVATE qb-core)
+qb_add_executable(
+    NAME example7_pub_sub
+    SOURCES example7_pub_sub.cpp
+    DEPENDS qb-core
+)
 
 # Example 8: State machine implementation
-add_executable(example8_state_machine example8_state_machine.cpp)
-target_link_libraries(example8_state_machine PRIVATE qb-core)
+qb_add_executable(
+    NAME example8_state_machine
+    SOURCES example8_state_machine.cpp
+    DEPENDS qb-core
+)
 
 # Example 9: Trading system simulation
-add_executable(example9_trading_system example9_trading_system.cpp)
-target_link_libraries(example9_trading_system PRIVATE qb-core)
+qb_add_executable(
+    NAME example9_trading_system
+    SOURCES example9_trading_system.cpp
+    DEPENDS qb-core
+)
 
 # Example 10: Distributed computing system
-add_executable(example10_distributed_computing example10_distributed_computing.cpp)
-target_link_libraries(example10_distributed_computing PRIVATE qb-core) 
+qb_add_executable(
+    NAME example10_distributed_computing
+    SOURCES example10_distributed_computing.cpp
+    DEPENDS qb-core
+) 

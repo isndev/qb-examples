@@ -1,11 +1,36 @@
-cmake_minimum_required(VERSION 3.14)
-project(QbHttpExamples CXX)
+#
+# qb - C++ Actor Framework
+# Copyright (c) 2011-2025 qb - isndev (cpp.actor). All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# -----------------------------------------------------------------------------
+# qb HTTP Module Examples - CMake Configuration
+#
+# This file configures comprehensive HTTP server and client examples
+# demonstrating routing, middleware, authentication, and advanced features.
+# -----------------------------------------------------------------------------
 
-# Define executables for each example
+project(qb_http_examples
+        LANGUAGES CXX
+        VERSION ${QB_FRAMEWORK_VERSION}
+        DESCRIPTION "HTTP module examples for the qb framework"
+)
+
+qb_status_message("Building qb HTTP module examples")
+
+# Define HTTP examples to build
 set(QB_HTTP_EXAMPLES
     01_hello_world_server
     02_simple_client
@@ -21,62 +46,27 @@ set(QB_HTTP_EXAMPLES
     12_http2_server
 )
 
+# Build each HTTP example
 foreach(EXAMPLE_NAME ${QB_HTTP_EXAMPLES})
-    add_executable(${EXAMPLE_NAME} ${EXAMPLE_NAME}.cpp)
-    # Link against QB components.
-    # The target names QB::core, QB::io, QB::pgsql are conventional for modern CMake packages.
-    # Verify these are the correct imported target names from the QB framework.
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE qb::core qbm-http)
+    qb_add_executable(
+        NAME ${EXAMPLE_NAME}
+        SOURCES ${EXAMPLE_NAME}.cpp
+        DEPENDS qbm-http
+    )
 endforeach()
 
-# Special handling for 08_static_files - copy static resources
-# Define source and destination paths for static resources
-set(RESOURCES_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
-set(RESOURCES_DEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/resources")
-
-# Create custom command to copy resources during build for 08_static_files
-add_custom_command(
-    TARGET 08_static_files POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCES_DEST_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory 
-            "${RESOURCES_SOURCE_DIR}" 
-            "${RESOURCES_DEST_DIR}"
-    COMMENT "Copying static resources for 08_static_files example"
-    VERBATIM
+# Special handling for examples requiring static resources
+qb_copy_resources(
+    TARGET 08_static_files
+    RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
 )
 
-# Special handling for 12_http2_server - copy HTTP/2 specific resources
-add_custom_command(
-    TARGET 12_http2_server POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCES_DEST_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory 
-            "${RESOURCES_SOURCE_DIR}" 
-            "${RESOURCES_DEST_DIR}"
-    COMMENT "Copying static resources for 12_http2_server example"
-    VERBATIM
+qb_copy_resources(
+    TARGET 12_http2_server
+    RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
 )
 
-# Also copy resources during configuration for immediate availability
-if(EXISTS "${RESOURCES_SOURCE_DIR}")
-    file(COPY "${RESOURCES_SOURCE_DIR}/" DESTINATION "${RESOURCES_DEST_DIR}")
-    message(STATUS "Copied static resources to: ${RESOURCES_DEST_DIR}")
-else()
-    message(WARNING "Static resources directory not found: ${RESOURCES_SOURCE_DIR}")
-endif()
-
-# Set working directory hint for the executables that use static files
-set_target_properties(08_static_files PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-)
-
-set_target_properties(12_http2_server PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-)
-
-# To make it easier to run examples, you could add install rules
-# or custom commands, but this is a basic build setup.
-
-# Message to guide the user
-message(STATUS "QB HTTP examples configured. Build each example, e.g., 'make 01_hello_world_server'")
-message(STATUS "For 08_static_files: static resources will be available in build/examples/qbm/http/resources/")
-message(STATUS "For 12_http2_server: HTTP/2 resources will be available in build/examples/qbm/http/resources/http2/")
+list(LENGTH QB_HTTP_EXAMPLES QB_HTTP_EXAMPLES_COUNT)
+qb_status_message("HTTP examples configured with ${QB_HTTP_EXAMPLES_COUNT} targets")

@@ -716,7 +716,7 @@ private:
                   << "  • CORS (Cross-Origin Resource Sharing)\n"
                   << "  • Security Headers (XSS, CSRF protection)\n"
                   << "  • Rate Limiting (100 requests/minute per IP)\n"
-                  #ifdef QB_IO_WITH_ZLIB
+                  #ifdef QB_HAS_COMPRESSION
                   << "  • Compression (gzip/deflate)\n"
                   #endif
                   << "  • Request/Response Logging\n"

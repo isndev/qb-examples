@@ -1,11 +1,36 @@
-cmake_minimum_required(VERSION 3.14)
-project(QbRedisExamples CXX)
+#
+# qb - C++ Actor Framework
+# Copyright (c) 2011-2025 qb - isndev (cpp.actor). All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# -----------------------------------------------------------------------------
+# qb Redis Module Examples - CMake Configuration
+#
+# This file configures Redis client examples demonstrating data structures,
+# pub/sub messaging, transactions, and stream processing.
+# -----------------------------------------------------------------------------
 
-# Define executables for each example
+project(qb_redis_examples
+        LANGUAGES CXX
+        VERSION ${QB_FRAMEWORK_VERSION}
+        DESCRIPTION "Redis module examples for the qb framework"
+)
+
+qb_status_message("Building qb Redis module examples")
+
+# Define Redis examples to build
 set(QB_REDIS_EXAMPLES
     example1_basic_connection
     example2_hash_operations
@@ -17,17 +42,14 @@ set(QB_REDIS_EXAMPLES
     example8_complex_actor_system
 )
 
+# Build each Redis example
 foreach(EXAMPLE_NAME ${QB_REDIS_EXAMPLES})
-    add_executable(${EXAMPLE_NAME} ${EXAMPLE_NAME}.cpp)
-    # Link against QB components.
-    # The target names QB::core, QB::io, QB::pgsql are conventional for modern CMake packages.
-    # Verify these are the correct imported target names from the QB framework.
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE qbm-redis)
+    qb_add_executable(
+        NAME ${EXAMPLE_NAME}
+        SOURCES ${EXAMPLE_NAME}.cpp
+        DEPENDS qbm-redis
+    )
 endforeach()
 
-# To make it easier to run examples, you could add install rules
-# or custom commands, but this is a basic build setup.
-
-# Message to guide the user
-message(STATUS "QB Redis examples configured. Build each example, e.g., 'make example1_basic_connection'")
-message(STATUS "Ensure your REDIS_CONNECTION_STRING is correctly set in each .cpp file before running!") 
+list(LENGTH QB_REDIS_EXAMPLES QB_REDIS_EXAMPLES_COUNT)
+qb_status_message("Redis examples configured with ${QB_REDIS_EXAMPLES_COUNT} targets") 
