@@ -496,6 +496,10 @@ private:
         event.data->transport = std::forward<Transport>(transport);
         event.data->request = std::move(ctx->request());
         event.data->response = std::move(ctx->response());
+        // Ownership of request/response has been transferred to the WebSocket actor;
+        // suppress the normal HTTP response callback so the Context destructor does not
+        // attempt to send a stale (or moved-from) response over the original transport.
+        ctx->suppress_response();
     }
 
     template<typename ContextPtr>
