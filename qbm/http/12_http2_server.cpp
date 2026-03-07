@@ -86,7 +86,7 @@ private:
         std::cout << "Generating self-signed SSL certificate..." << std::endl;
         std::string cert_command = 
             "openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.crt "
-            "-days 365 -nodes -subj '/C=US/ST=CA/L=San Francisco/O=QB Framework/CN=localhost' 2>/dev/null";
+            "-days 365 -nodes -subj '/C=US/ST=CA/L=San Francisco/O=QB Framework/CN=localhost'";
         
         int result = std::system(cert_command.c_str());
         return result == 0;

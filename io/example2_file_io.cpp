@@ -53,7 +53,9 @@
 #include <filesystem>
 #include <iostream>
 #include <iomanip>
-#include <sys/mman.h>
+#ifndef _WIN32
+#    include <sys/mman.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -170,7 +172,7 @@ private:
         // Generate random data for the file
         std::vector<uint8_t> data(FILE_SIZE);
         std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<uint8_t> dist(0, 255);
+        std::uniform_int_distribution<unsigned short> dist(0, 255);
         
         // Fill the data buffer with random bytes
         qb::io::cout() << "Generating " << FILE_SIZE << " bytes of random data..." << std::endl;
@@ -272,76 +274,64 @@ private:
      */
     void demonstrateMemoryMappedIO() {
         printSection("Memory-Mapped File I/O");
-        
+#ifndef _WIN32
         // Create the file path
         std::string file_path = getTestFilePath(_test_dir, TEST_MMAP_FILE);
         qb::io::cout() << "Creating memory-mapped file: " << file_path << std::endl;
-        
-        // For memory mapping, we need to use standard POSIX file operations
+
         int fd = open(file_path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
             qb::io::cerr() << "Error opening file for memory mapping: " << strerror(errno) << std::endl;
             return;
         }
-        
-        // Set the file size for mapping
+
         size_t map_size = 1024 * 1024; // 1MB
         if (ftruncate(fd, map_size) != 0) {
             qb::io::cerr() << "Error setting file size: " << strerror(errno) << std::endl;
             close(fd);
             return;
         }
-        
-        // Map the file into memory
-        void* mapped_region = mmap(nullptr, map_size, PROT_READ | PROT_WRITE, 
-                               MAP_SHARED, fd, 0);
-        
+
+        void* mapped_region = mmap(nullptr, map_size, PROT_READ | PROT_WRITE,
+                                   MAP_SHARED, fd, 0);
         if (mapped_region == MAP_FAILED) {
             qb::io::cerr() << "Memory mapping failed: " << strerror(errno) << std::endl;
             close(fd);
             return;
         }
-        
-        // Now we can work with the file as if it were memory
+
         qb::io::cout() << "File mapped to memory at address: " << mapped_region << std::endl;
-        
-        // Write data to the mapped region
+
         auto start_time = std::chrono::high_resolution_clock::now();
         uint8_t* data = static_cast<uint8_t*>(mapped_region);
-        
-        // Fill with a pattern (0 to 255 repeated)
         for (size_t i = 0; i < map_size; ++i) {
             data[i] = static_cast<uint8_t>(i % 256);
         }
-        
-        // Ensure data is flushed to disk
+
         if (msync(mapped_region, map_size, MS_SYNC) != 0) {
             qb::io::cerr() << "Error syncing mapped memory: " << strerror(errno) << std::endl;
         }
-        
+
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        
         double throughput = (map_size / 1024.0) / (duration.count() / 1000000.0);
-        qb::io::cout() << "Memory-mapped write completed in " << duration.count() / 1000.0
-                  << " ms" << std::endl;
+        qb::io::cout() << "Memory-mapped write completed in " << duration.count() / 1000.0 << " ms" << std::endl;
         qb::io::cout() << "Memory-mapped write throughput: " << throughput << " KB/s" << std::endl;
-        
-        // Read back a sample of the data
+
         qb::io::cout() << "First 16 bytes from memory-mapped file: ";
         for (size_t i = 0; i < 16; ++i) {
             qb::io::cout() << std::hex << std::setw(2) << std::setfill('0')
-                      << static_cast<int>(data[i]) << " ";
+                           << static_cast<int>(data[i]) << " ";
         }
         qb::io::cout() << std::dec << std::endl;
-        
-        // Unmap the file
+
         if (munmap(mapped_region, map_size) != 0) {
             qb::io::cerr() << "Error unmapping file: " << strerror(errno) << std::endl;
         }
-        
-        // Close the file descriptor
         close(fd);
+#else
+        qb::io::cout() << "Memory-mapped I/O (mmap) is not supported on Windows — skipping." << std::endl;
+#endif
     }
     
     /**
