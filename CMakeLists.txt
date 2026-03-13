@@ -46,3 +46,6 @@ add_subdirectory(qbm/redis)
 add_subdirectory(qbm/pgsql)
 add_subdirectory(qbm/http)
 add_subdirectory(qbm/ws)
+
+# Full-stack examples (HTTP + WS + DB + Redis)
+add_subdirectory(all)

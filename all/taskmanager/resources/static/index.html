@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QB Task Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=4">
+</head>
+<body>
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-icon">⚡</div>
+            <div class="brand-text">
+                <h1>QB Task Manager</h1>
+                <span class="brand-sub">Actor · HTTP · WebSocket · PostgreSQL · Redis</span>
+            </div>
+        </div>
+        <div class="header-controls">
+            <div class="status-cluster">
+                <div id="ws-badge" class="ws-badge">
+                    <span class="ws-dot"></span>
+                    <span class="ws-label">WS</span>
+                </div>
+                <span id="cache-badge" class="cache-badge hidden"></span>
+                <span id="total-count" class="total-count">0 tasks</span>
+            </div>
+            <button id="new-task-btn" class="btn-primary">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                New Task
+            </button>
+        </div>
+    </header>
+
+    <!-- ── Main layout ──────────────────────────────────────────────────── -->
+    <div class="app-layout">
+
+        <!-- Kanban Board -->
+        <main class="kanban-board" id="kanban-board">
+
+            <!-- Pending -->
+            <div class="column" data-status="pending">
+                <div class="column-header">
+                    <span class="col-dot pending"></span>
+                    <span class="col-title">Pending</span>
+                    <span class="col-count" id="count-pending">0</span>
+                </div>
+                <div class="drop-zone" id="zone-pending" data-status="pending">
+                    <div class="empty-hint">No pending tasks</div>
+                </div>
+            </div>
+
+            <!-- In Progress -->
+            <div class="column" data-status="in_progress">
+                <div class="column-header">
+                    <span class="col-dot in_progress"></span>
+                    <span class="col-title">In Progress</span>
+                    <span class="col-count" id="count-in_progress">0</span>
+                </div>
+                <div class="drop-zone" id="zone-in_progress" data-status="in_progress">
+                    <div class="empty-hint">Drag tasks here to start</div>
+                </div>
+            </div>
+
+            <!-- Completed -->
+            <div class="column" data-status="completed">
+                <div class="column-header">
+                    <span class="col-dot completed"></span>
+                    <span class="col-title">Completed</span>
+                    <span class="col-count" id="count-completed">0</span>
+                </div>
+                <div class="drop-zone" id="zone-completed" data-status="completed">
+                    <div class="empty-hint">Completed tasks appear here</div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Live Activity Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-head">
+                <div class="sidebar-title">
+                    <span class="live-dot"></span>
+                    Live Activity
+                </div>
+                <button id="clear-events-btn" class="btn-ghost">Clear</button>
+            </div>
+            <div id="events-log" class="events-log"></div>
+        </aside>
+
+    </div>
+
+    <!-- ── New Task Drawer ──────────────────────────────────────────────── -->
+    <div id="drawer-overlay" class="drawer-overlay"></div>
+    <div id="drawer" class="drawer" role="dialog" aria-label="New Task">
+        <div class="drawer-header">
+            <h2>New Task</h2>
+            <button id="btn-close-drawer" class="btn-icon-close" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer-body">
+            <form id="task-form" novalidate>
+                <div class="field">
+                    <label for="task-title">Title</label>
+                    <input type="text" id="task-title" placeholder="What needs to be done?" autocomplete="off" required>
+                </div>
+                <div class="field">
+                    <label for="task-desc">Description <span class="optional">(optional)</span></label>
+                    <textarea id="task-desc" placeholder="Add more details…" rows="3"></textarea>
+                </div>
+                <div class="field">
+                    <label>Initial Status</label>
+                    <div class="status-picker">
+                        <button type="button" class="status-chip selected" data-value="pending">📋 Pending</button>
+                        <button type="button" class="status-chip" data-value="in_progress">⚡ In Progress</button>
+                        <button type="button" class="status-chip" data-value="completed">✅ Done</button>
+                    </div>
+                </div>
+                <button type="submit" id="btn-submit" class="btn-primary btn-full">Create Task</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Toast container ──────────────────────────────────────────────── -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/app.js?v=4"></script>
+</body>
+</html>

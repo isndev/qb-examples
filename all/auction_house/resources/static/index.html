@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QB Auction House</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- ── Header ─────────────────────────────────────────────────────────── -->
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-icon">🔨</div>
+            <div class="brand-text">
+                <h1>QB Auction House</h1>
+                <span class="brand-sub">Actor · HTTP · WebSocket · PostgreSQL · Redis</span>
+            </div>
+        </div>
+        <div class="header-controls">
+            <div class="status-cluster">
+                <div id="ws-badge" class="ws-badge disconnected">
+                    <span class="ws-dot"></span>
+                    <span class="ws-label">WS</span>
+                </div>
+                <span id="cache-badge" class="cache-badge hidden"></span>
+                <span id="total-count" class="total-count">0 lots</span>
+            </div>
+            <!-- User switcher -->
+            <div class="user-switcher">
+                <span class="user-label">Bidding as:</span>
+                <select id="user-select" class="user-select">
+                    <option value="">Loading...</option>
+                </select>
+                <span id="user-balance" class="user-balance"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ── Main layout ────────────────────────────────────────────────────── -->
+    <div class="app-layout">
+
+        <!-- Lots grid + detail panel -->
+        <main class="main-content">
+
+            <!-- Filters bar -->
+            <div class="filters-bar">
+                <div class="category-tabs" id="category-tabs">
+                    <button class="cat-tab active" data-cat="all">All</button>
+                    <button class="cat-tab" data-cat="watches">Watches</button>
+                    <button class="cat-tab" data-cat="automotive">Automotive</button>
+                    <button class="cat-tab" data-cat="art">Art</button>
+                    <button class="cat-tab" data-cat="books">Books</button>
+                    <button class="cat-tab" data-cat="music">Music</button>
+                </div>
+                <div class="filter-right">
+                    <select id="sort-select" class="sort-select">
+                        <option value="ending">Ending Soon</option>
+                        <option value="price-asc">Price ↑</option>
+                        <option value="price-desc">Price ↓</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Lots grid -->
+            <div id="lots-grid" class="lots-grid">
+                <div class="loading-hint">Loading auctions…</div>
+            </div>
+
+        </main>
+
+        <!-- Live Activity sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-head">
+                <div class="sidebar-title">
+                    <span class="live-dot"></span>
+                    Live Activity
+                </div>
+                <button id="clear-events-btn" class="btn-ghost">Clear</button>
+            </div>
+            <div id="events-log" class="events-log"></div>
+        </aside>
+
+    </div>
+
+    <!-- ── Bid Drawer ─────────────────────────────────────────────────────── -->
+    <div id="drawer-overlay" class="drawer-overlay"></div>
+    <div id="drawer" class="drawer" role="dialog" aria-label="Lot Detail">
+        <div class="drawer-header">
+            <div>
+                <span id="drawer-category" class="drawer-category"></span>
+                <h2 id="drawer-title">Lot Title</h2>
+            </div>
+            <button id="btn-close-drawer" class="btn-icon-close" aria-label="Close">✕</button>
+        </div>
+
+        <div class="drawer-body">
+            <!-- Countdown -->
+            <div class="lot-countdown-block">
+                <div class="countdown-label">Time remaining</div>
+                <div id="drawer-countdown" class="countdown-display">--:--:--</div>
+                <div class="lot-meta-row">
+                    <span>Start price: <strong id="drawer-start-price">—</strong></span>
+                    <span id="drawer-bids-count">0 bids</span>
+                </div>
+            </div>
+
+            <!-- Current price -->
+            <div class="price-block">
+                <div class="price-label">Current Price</div>
+                <div id="drawer-price" class="price-value">$0</div>
+            </div>
+
+            <!-- Description -->
+            <p id="drawer-description" class="drawer-description"></p>
+
+            <!-- Bid form -->
+            <div class="bid-form-block" id="bid-form-block">
+                <div class="field">
+                    <label for="bid-amount">Your Bid ($)</label>
+                    <input type="number" id="bid-amount" class="bid-input" min="0" step="100"
+                           placeholder="Enter amount…">
+                </div>
+                <button id="place-bid-btn" class="btn-primary btn-full">Place Bid</button>
+                <div id="bid-result" class="bid-result hidden"></div>
+            </div>
+            <div id="bid-ended-notice" class="bid-ended-notice hidden">
+                <span>⏰ This auction has ended</span>
+            </div>
+
+            <!-- Bid history -->
+            <div class="bid-history-block">
+                <div class="bid-history-header">
+                    <h3>Bid History</h3>
+                    <span id="bid-history-total"></span>
+                </div>
+                <div id="bid-list" class="bid-list">
+                    <div class="bid-empty">No bids yet — be the first!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Toast container ───────────────────────────────────────────────── -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
