@@ -2,9 +2,13 @@
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
+#include <qb/io/async/coroutine/utils.h>
 #include <pgsql/pgsql.h> // Corrected include path
 
 #include <iostream> // For std::cerr
+#include <string>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string
 const char* PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
@@ -22,7 +26,8 @@ public:
         registerEvent<qb::KillEvent>(*this);
 
         _db_connection = std::make_unique<qb::pg::tcp::database>(PG_CONNECTION_STRING);;
-        if (_db_connection->connect()) {
+        qb::io::async::init();
+        if (qb::io::async::run_sync(_db_connection->connect(std::string(PG_CONNECTION_STRING)))) {
             qb::io::cout() << "Successfully connected to PostgreSQL." << std::endl;
             executeQuery();
 

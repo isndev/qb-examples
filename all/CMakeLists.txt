@@ -1,6 +1,6 @@
 # Full-stack QB examples (HTTP + WS + DB + Redis)
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 project(qb_examples_all LANGUAGES CXX)
 
 if(NOT QB_BUILD_EXAMPLES)

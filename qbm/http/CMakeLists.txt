@@ -44,6 +44,7 @@ set(QB_HTTP_EXAMPLES
     10_request_validation
     11_https_server
     12_http2_server
+    13_coroutine_handlers
 )
 
 # Build each HTTP example

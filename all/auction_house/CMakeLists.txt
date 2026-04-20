@@ -24,7 +24,7 @@
 #     static/                   – frontend SPA files
 # ──────────────────────────────────────────────────────────────────────────────
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 
 project(auction_house
     LANGUAGES    CXX
@@ -52,9 +52,6 @@ qb_add_executable(
     NAME    auction_house
     SOURCES ${SOURCES}
     DEPENDS
-        qb-core
-        qb-io
-        qbm-http
         qbm-pgsql
         qbm-redis
         qbm-websocket

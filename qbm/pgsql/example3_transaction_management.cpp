@@ -3,9 +3,12 @@
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h> // For qb::io::async::callback
+#include <qb/io/async/coroutine.h>
+#include <qb/io/async/coroutine/utils.h>
 #include <pgsql/pgsql.h>
 
 #include <iostream>
+#include <string>
 #include <vector>
 #include <string> // For std::string in displayAccount balance
 #include <optional> // Use standard optional
@@ -49,7 +52,8 @@ public:
         registerEvent<qb::KillEvent>(*this);
 
         _db_connection = std::make_unique<qb::pg::tcp::database>(PG_CONNECTION_STRING);
-        if (_db_connection->connect()) {
+        qb::io::async::init();
+        if (qb::io::async::run_sync(_db_connection->connect(std::string(PG_CONNECTION_STRING)))) {
             qb::io::cout() << "Successfully connected to PostgreSQL." << std::endl;
             initializeSchemaAndStatements();
             return true;

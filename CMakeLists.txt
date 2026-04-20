@@ -22,7 +22,7 @@
 # various features and usage patterns across core, I/O, and modules.
 # -----------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 project(qb_examples
         LANGUAGES CXX
         VERSION ${QB_FRAMEWORK_VERSION}

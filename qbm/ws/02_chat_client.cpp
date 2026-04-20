@@ -130,7 +130,7 @@ private:
     std::string _ws_key;
 
 public:
-    using Protocol    = qb::http::protocol_view<WebSocketClientActor>;
+    using Protocol    = qb::http::protocol<WebSocketClientActor>;
     using WS_Protocol = qb::http::ws::protocol<WebSocketClientActor>;
 
     explicit WebSocketClientActor(qb::ActorId cmdline_id) 

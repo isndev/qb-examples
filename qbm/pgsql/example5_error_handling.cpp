@@ -4,6 +4,8 @@
 #include <qb/io.h>
 #include <pgsql/pgsql.h>
 #include <qb/io/async.h> // For qb::io::async::callback for delayed kill
+#include <qb/io/async/coroutine.h>
+#include <qb/io/async/coroutine/utils.h>
 
 #include <iostream>
 #include <vector>
@@ -40,7 +42,8 @@ public:
 
         try {
             _db_connection = std::make_unique<qb::pg::tcp::database>(PG_CONNECTION_STRING);
-            if (_db_connection->connect()) {
+            qb::io::async::init();
+            if (qb::io::async::run_sync(_db_connection->connect(std::string(PG_CONNECTION_STRING)))) {
                 qb::io::cout() << "Successfully connected to PostgreSQL." << std::endl;
             initializeSchemaAndStatements();
                 return true;
