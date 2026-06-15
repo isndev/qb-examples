@@ -29,6 +29,7 @@
 
 #include "BrokerSession.h"
 #include "ServerActor.h"
+#include <chrono>
 #include <iostream>
 
 /**
@@ -42,7 +43,7 @@ BrokerSession::BrokerSession(ServerActor& server)
     : client(server) {
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
-    this->setTimeout(600);  // 120 second timeout
+    this->setTimeout(std::chrono::seconds(600));  // 120 second timeout
     qb::io::cout() << "New broker client connected" << std::endl;
 }
 

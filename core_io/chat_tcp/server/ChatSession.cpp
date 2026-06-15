@@ -31,6 +31,7 @@
 
 #include "ChatSession.h"
 #include "ServerActor.h"
+#include <chrono>
 #include <iostream>
 
 /**
@@ -44,7 +45,7 @@ ChatSession::ChatSession(ServerActor& server)
     : client(server) {
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
-    this->setTimeout(120);  // 120 second timeout
+    this->setTimeout(std::chrono::seconds(120));  // 120 second timeout
     qb::io::cout() << "New chat client connected" << std::endl;
 }
 

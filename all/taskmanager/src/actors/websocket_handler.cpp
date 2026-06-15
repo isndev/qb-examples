@@ -10,6 +10,7 @@
 #include "actors/websocket_handler.h"
 #include "actors/task_manager.h"
 #include <qb/io.h>
+#include <qb/system/timestamp.h>
 
 namespace taskmanager {
 namespace actors {
@@ -30,7 +31,7 @@ void WsSession::on(ws_protocol::message &&msg) {
         send_json({
             {"type",      "ack"},
             {"received",  json.value("type", "unknown")},
-            {"timestamp", qb::Timestamp::now().count()}
+            {"timestamp", qb::unix_nanos(qb::wall_now())}
         });
     } catch (const std::exception &e) {
         qb::io::cerr() << "[WsSession " << id() << "] parse error: "

@@ -21,6 +21,7 @@
 #include <functional>
 #include <qb/main.h>
 #include <qb/actor.h>
+#include <qb/system/timestamp.h>
 #include <http/http.h>
 #include <ws/ws.h>
 #include <http/middleware/static_files.h>
@@ -259,7 +260,7 @@ private:
     qb::json create_message(const std::string& type, uint64_t timestamp = 0) {
         return qb::json{
             {"type", type},
-            {"timestamp", timestamp == 0 ? qb::Timestamp::now().count() : timestamp}
+            {"timestamp", timestamp == 0 ? qb::unix_nanos(qb::wall_now()) : timestamp}
         };
     }
 
@@ -468,7 +469,7 @@ private:
         return qb::json{
             {"status", "healthy"},
             {"server_type", "HTTP"},
-            {"timestamp", qb::Timestamp::now().count()}
+            {"timestamp", qb::unix_nanos(qb::wall_now())}
         };
     }
 

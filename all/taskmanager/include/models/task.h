@@ -13,6 +13,7 @@
 #pragma once
 
 #include <qb/json.h>
+#include <qb/system/timestamp.h>
 #include <pgsql/pgsql.h>
 #include <cstdint>
 #include <string>
@@ -118,7 +119,7 @@ struct TaskEvent {
         : action(act)
         , task_id(tid)
         , title(ttl)
-        , timestamp(static_cast<uint64_t>(qb::Timestamp::now().count())) {}
+        , timestamp(static_cast<uint64_t>(qb::unix_nanos(qb::wall_now()))) {}
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(TaskEvent, action, task_id, title, timestamp)
 };
