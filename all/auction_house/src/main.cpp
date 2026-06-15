@@ -17,7 +17,9 @@
 #include <qb/main.h>
 #include <qb/actor.h>
 #include <qb/io.h>
+#include <qb/system/timestamp.h>
 #include <pgsql/pgsql.h>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -159,7 +161,7 @@ int main(int argc, char* argv[]) {
     for (uint32_t i = 0; i < NUM_WORKERS; ++i) {
         // Distribute workers across cores 1, 2, 3
         const uint32_t core = 1 + (i % 3);
-        engine.core(core).setLatency(500'000);  // 500µs for workers
+        engine.core(core).setLatency(std::chrono::nanoseconds(500'000));  // 500µs for workers
 
         auto id = engine.addActor<auction_house::actors::AuctionManager>(
             core, pg_uri, redis_uri, static_root
@@ -176,7 +178,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Create TCP listener on dedicated core
-    engine.core(LISTENER_CORE).setLatency(0);  // 0µs for hot loop
+    engine.core(LISTENER_CORE).setLatency(qb::duration::zero());  // 0µs for hot loop
     auto listener_id = engine.addActor<auction_house::actors::TcpListener>(
         LISTENER_CORE, listen_uri, worker_ids
     );

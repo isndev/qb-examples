@@ -2,7 +2,7 @@
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
-#include <qb/system/timestamp.h> // For qb::Timestamp
+#include <qb/system/timestamp.h> // For qb::wall_time
 #include <qb/uuid.h>             // For qb::uuid
 #include <qb/json.h>             // For qb::json (nlohmann::json)
 #include <qb/io/async.h> // For qb::io::async::callback for delayed kill
@@ -144,11 +144,11 @@ private:
         float p_real_col = 123.45f;
         double p_double_col = 9876.54321;
 
-        qb::Timestamp now_ts = qb::Timestamp::now(); 
-        qb::Timestamp p_date_col = now_ts;
-        qb::Timestamp p_time_col = now_ts;
-        qb::Timestamp p_timestamp_col = now_ts;
-        qb::Timestamp p_timestamptz_col = now_ts;
+        qb::wall_time now_ts = qb::wall_now();
+        qb::wall_time p_date_col = now_ts;
+        qb::wall_time p_time_col = now_ts;
+        qb::wall_time p_timestamp_col = now_ts;
+        qb::wall_time p_timestamptz_col = now_ts;
 
         qb::uuid p_uuid_col = qb::generate_random_uuid();
         std::vector<char> p_bytea_col = {'b', 'y', 't', 'e', '\0', 'a', 'r', 'r', 'a', 'y'};
@@ -210,10 +210,10 @@ private:
                 qb::io::cout() << "Real: " << std::fixed << std::setprecision(5) << row["real_col"].as<float>() << std::endl;
                 qb::io::cout() << "Double: " << std::fixed << std::setprecision(10) << row["double_col"].as<double>() << std::endl;
 
-                qb::io::cout() << "Date: " << row["date_col"].as<qb::Timestamp>().to_iso8601_date_string() << std::endl;
-                qb::io::cout() << "Time: " << row["time_col"].as<qb::Timestamp>().to_iso8601_time_string() << std::endl;
-                qb::io::cout() << "Timestamp: " << row["timestamp_col"].as<qb::Timestamp>().to_iso8601_string() << std::endl;
-                qb::io::cout() << "TimestampTZ: " << row["timestamptz_col"].as<qb::Timestamp>().to_iso8601_string_utc() << " (UTC)" << std::endl;
+                qb::io::cout() << "Date: " << qb::format_utc(row["date_col"].as<qb::wall_time>(), "%Y-%m-%d") << std::endl;
+                qb::io::cout() << "Time: " << qb::format_utc(row["time_col"].as<qb::wall_time>(), "%H:%M:%S") << std::endl;
+                qb::io::cout() << "Timestamp: " << qb::to_iso8601(row["timestamp_col"].as<qb::wall_time>()) << std::endl;
+                qb::io::cout() << "TimestampTZ: " << qb::to_iso8601(row["timestamptz_col"].as<qb::wall_time>()) << " (UTC)" << std::endl;
                 
                 qb::io::cout() << "UUID: " << row["uuid_col"].as<qb::uuid>().to_string() << std::endl;
                 

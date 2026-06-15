@@ -148,7 +148,7 @@ Make sure your PostgreSQL server is running and accessible with the connection s
     *   Creating a table (`data_types_test`) with columns of many different PostgreSQL types (integers, text, boolean, numeric/decimal, float, date/time, UUID, bytea, JSON/JSONB, arrays).
     *   Preparing an `INSERT` statement with placeholders for all supported types and specifying their OIDs.
     *   Preparing a `SELECT` statement to retrieve all columns.
-    *   Inserting sample data using C++ types like `int`, `short`, `long long`, `std::string`, `bool`, `float`, `double`, `qb::Timestamp`, `qb::uuid`, `std::vector<char>` (for bytea), `qb::json`, `std::vector<int>`, `std::vector<std::string>`, and `std::optional<std::string>`.
+    *   Inserting sample data using C++ types like `int`, `short`, `long long`, `std::string`, `bool`, `float`, `double`, `qb::wall_time`, `qb::uuid`, `std::vector<char>` (for bytea), `qb::json`, `std::vector<int>`, `std::vector<std::string>`, and `std::optional<std::string>`.
     *   Retrieving data using `row[column_name].as<ExpectedCppType>()`.
     *   Displaying the retrieved data, including formatting for timestamps and byte arrays.
 *   **Database Operations**:

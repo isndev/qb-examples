@@ -24,6 +24,8 @@
 
 #include <qb/main.h>
 #include <qb/io.h>
+#include <qb/system/timestamp.h>
+#include <chrono>
 #include <filesystem>
 
 #include "actors/tcp_listener.h"
@@ -78,7 +80,7 @@ int main() {
     qb::Main engine;
 
     // Core 0 (TcpListener): zero latency = hot loop for minimal accept latency.
-    engine.core(LISTENER_CORE).setLatency(0);
+    engine.core(LISTENER_CORE).setLatency(qb::duration::zero());
 
     // Create the TaskManager pool distributed across cores 1–4.
     // Per-core latency is set here (not in a separate loop) so that
@@ -92,7 +94,7 @@ int main() {
         const uint32_t core = 1 + (i % 4);
         // 500 µs latency – balances CPU usage vs. response time.
         // setLatency is idempotent; safe to call multiple times on the same core.
-        engine.core(core).setLatency(500'000);
+        engine.core(core).setLatency(std::chrono::nanoseconds(500'000));
         auto id = engine.addActor<actors::TaskManager>(
             core, pg_uri, redis_uri, static_root);
         worker_ids.push_back(id);
