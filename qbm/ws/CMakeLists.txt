@@ -46,10 +46,12 @@ foreach (EXAMPLE_NAME ${QB_WS_EXAMPLES})
 endforeach ()
 
 # Special handling for chat server - copy static resources
+# Per-example destination (own bin/<example>/resources subdir) so parallel builds
+# never race on a shared bin/resources — matching the all/* reference apps.
 qb_copy_resources(
         TARGET 01_chat_server
         RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-        DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
+        DESTINATION "${CMAKE_BINARY_DIR}/bin/01_chat_server/resources"
 )
 
 list(LENGTH QB_WS_EXAMPLES QB_WS_EXAMPLES_COUNT)
