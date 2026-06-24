@@ -56,25 +56,27 @@ foreach (EXAMPLE_NAME ${QB_HTTP_EXAMPLES})
     )
 endforeach ()
 
-# Special handling for examples requiring static resources
+# Special handling for examples requiring static resources.
+# Each example copies into its OWN bin/<example>/resources subdir (never a shared
+# bin/resources) so parallel builds can't race or clobber each other on the same
+# destination — matching the convention used by all/taskmanager and all/auction_house.
 qb_copy_resources(
         TARGET 08_static_files
         RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-        DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
+        DESTINATION "${CMAKE_BINARY_DIR}/bin/08_static_files/resources"
 )
 
 qb_copy_resources(
         TARGET 12_http2_server
         RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-        DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
+        DESTINATION "${CMAKE_BINARY_DIR}/bin/12_http2_server/resources"
 )
 
-# The http2 example serves web assets from disk. The binary and the copied
-# resources live in different build directories, so a CWD-relative default path
-# fails when the binary is launched from anywhere else. Bake the absolute in-tree
-# resources path so the example resolves its assets regardless of working dir.
+# The http2 example serves web assets from disk. Bake the absolute path to this
+# target's own copied resources so the example resolves its assets regardless of
+# the working directory (the copy target is a build dependency of 12_http2_server).
 target_compile_definitions(12_http2_server PRIVATE
-        HTTP2_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/http2")
+        HTTP2_RESOURCES_DIR="${CMAKE_BINARY_DIR}/bin/12_http2_server/resources/http2")
 
 list(LENGTH QB_HTTP_EXAMPLES QB_HTTP_EXAMPLES_COUNT)
 qb_status_message("HTTP examples configured with ${QB_HTTP_EXAMPLES_COUNT} targets")
