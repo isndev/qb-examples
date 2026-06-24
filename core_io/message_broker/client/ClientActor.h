@@ -91,7 +91,7 @@ public:
      * 
      * @return true if initialization succeeds
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Processes incoming protocol messages

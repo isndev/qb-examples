@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include <qb/json.h>
 #include <pgsql/pgsql.h>
+#include <qb/json.h>
 #include <string>
 
 namespace auction_house {
@@ -24,7 +24,7 @@ struct Bid {
     double      amount{0.0};
     std::string bid_time;
     bool        is_winning{false};
-    std::string bidder_username;  // Joined from users table
+    std::string bidder_username; // Joined from users table
 
     Bid() = default;
 
@@ -41,19 +41,14 @@ struct Bid {
         try {
             if (!row["bidder_username"].is_null())
                 bidder_username = row["bidder_username"].as<std::string>();
-        } catch (...) {}
+        } catch (...) {
+        }
     }
 
-    [[nodiscard]] qb::json to_json() const {
-        return qb::json{
-            {"id",               id},
-            {"lot_id",           lot_id},
-            {"bidder_id",        bidder_id},
-            {"bidder_username",  bidder_username},
-            {"amount",           amount},
-            {"bid_time",         bid_time},
-            {"is_winning",       is_winning}
-        };
+    [[nodiscard]] qb::json
+    to_json() const {
+        return qb::json{{"id", id},         {"lot_id", lot_id},     {"bidder_id", bidder_id},  {"bidder_username", bidder_username},
+                        {"amount", amount}, {"bid_time", bid_time}, {"is_winning", is_winning}};
     }
 };
 
@@ -72,19 +67,15 @@ struct BidHistory {
             bids.emplace_back(row);
         total_bids = static_cast<int32_t>(bids.size());
         if (!bids.empty())
-            current_price = bids.front().amount;  // Ordered DESC — first = highest
+            current_price = bids.front().amount; // Ordered DESC — first = highest
     }
 
-    [[nodiscard]] qb::json to_json() const {
+    [[nodiscard]] qb::json
+    to_json() const {
         qb::json::array_t arr;
         for (const auto &bid : bids)
             arr.push_back(bid.to_json());
-        return qb::json{
-            {"lot_id",       lot_id},
-            {"current_price",current_price},
-            {"total_bids",   total_bids},
-            {"bids",         arr}
-        };
+        return qb::json{{"lot_id", lot_id}, {"current_price", current_price}, {"total_bids", total_bids}, {"bids", arr}};
     }
 };
 
@@ -98,14 +89,9 @@ struct BidResult {
     double      new_price{0.0};
     int32_t     time_left{0};
 
-    [[nodiscard]] qb::json to_json() const {
-        return qb::json{
-            {"success",   success},
-            {"message",   message},
-            {"bid_id",    bid_id},
-            {"new_price", new_price},
-            {"time_left", time_left}
-        };
+    [[nodiscard]] qb::json
+    to_json() const {
+        return qb::json{{"success", success}, {"message", message}, {"bid_id", bid_id}, {"new_price", new_price}, {"time_left", time_left}};
     }
 };
 

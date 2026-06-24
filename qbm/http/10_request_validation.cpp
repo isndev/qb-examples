@@ -38,7 +38,7 @@ private:
 public:
     ValidationServer() = default;
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing Request Validation Server..." << std::endl;
         
         // Initialize sample data
@@ -54,12 +54,12 @@ public:
         // Start listening
         if (!listen({"tcp://0.0.0.0:8080"})) {
             std::cerr << "Failed to bind to port 8080" << std::endl;
-            return false;
+            co_return false;
         }
-        
+
         start();
         print_api_documentation();
-        return true;
+        co_return true;
     }
 
 private:
@@ -193,13 +193,13 @@ private:
         // GET /api/users - List users with pagination and filtering
         users_group->get("/", [this](auto ctx) {
             // Simple validation example in handler
-            auto page_str = ctx->request().query("page", 0, "1");
-            auto limit_str = ctx->request().query("limit", 0, "10");
+            auto page_str = ctx->request().query_or("page", "1");
+            auto limit_str = ctx->request().query_or("limit", "10");
             
-            // Basic validation
+            // Basic validation: clamp page >= 1, limit in [1, 100]
             int page = 1, limit = 10;
             try {
-                page = std::max(1, std::stoi(page_str));
+                page  = std::max(1, std::stoi(page_str));
                 limit = std::max(1, std::min(100, std::stoi(limit_str)));
             } catch (...) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
@@ -211,7 +211,10 @@ private:
                 ctx->complete();
                 return;
             }
-            
+
+            // Store validated+clamped pagination for use in the handler
+            ctx->set("validated_page",  page);
+            ctx->set("validated_limit", limit);
             handle_list_users(ctx);
         });
         
@@ -304,7 +307,7 @@ private:
         // Advanced search with complex query parameters
         search_group->get("/", [this](auto ctx) {
             // Validate required query parameter
-            auto query = ctx->request().query("q", 0, "");
+            auto query = ctx->request().query("q");
             if (query.empty()) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
                 ctx->response().add_header("Content-Type", "application/json");
@@ -381,17 +384,22 @@ private:
     }
     
     void handle_list_users(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Parameters have been validated and converted by ValidationMiddleware
-        auto page = ctx->request().query("page", 0, "1");
-        auto limit = ctx->request().query("limit", 0, "10");
-        auto active_filter = ctx->request().query("active", 0, "");
-        auto search = ctx->request().query("search", 0, "");
-        
+        // Use validated+clamped pagination values stored by the route handler,
+        // falling back to raw query params if called without prior validation.
+        auto validated_page  = ctx->template get<int>("validated_page");
+        auto validated_limit = ctx->template get<int>("validated_limit");
+        int page  = validated_page.value_or(
+            std::max(1, std::stoi(ctx->request().query_or("page",  "1"))));
+        int limit = validated_limit.value_or(
+            std::max(1, std::min(100, std::stoi(ctx->request().query_or("limit", "10")))));
+        auto active_filter = ctx->request().query("active");
+        auto search = ctx->request().query("search");
+
         qb::json response = {
             {"users", qb::json::array()},
             {"pagination", {
-                {"page", std::stoi(page)},
-                {"limit", std::stoi(limit)},
+                {"page",  page},
+                {"limit", limit},
                 {"total", static_cast<int>(_users.size())}
             }},
             {"filters", {
@@ -706,11 +714,11 @@ private:
     
     void handle_list_products(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         // Parameters have been validated by ValidationMiddleware
-        auto page = ctx->request().query("page", 0, "1");
-        auto limit = ctx->request().query("limit", 0, "20");
-        auto category = ctx->request().query("category", 0, "");
-        auto min_price = ctx->request().query("min_price", 0, "");
-        auto max_price = ctx->request().query("max_price", 0, "");
+        auto page = ctx->request().query_or("page", "1");
+        auto limit = ctx->request().query_or("limit", "20");
+        auto category = ctx->request().query("category");
+        auto min_price = ctx->request().query("min_price");
+        auto max_price = ctx->request().query("max_price");
         
         qb::json response = {
             {"products", qb::json::array()},
@@ -850,10 +858,10 @@ private:
     
     void handle_search(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         // Parameters have been validated by ValidationMiddleware
-        auto query = ctx->request().query("q", 0, "");
-        auto type = ctx->request().query("type", 0, "all");
-        auto sort = ctx->request().query("sort", 0, "relevance");
-        auto limit = ctx->request().query("limit", 0, "10");
+        auto query = ctx->request().query("q");
+        auto type = ctx->request().query_or("type", "all");
+        auto sort = ctx->request().query_or("sort", "relevance");
+        auto limit = ctx->request().query_or("limit", "10");
         auto api_key = ctx->request().header("X-API-Key");
         
         qb::json results = qb::json::array();

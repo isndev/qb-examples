@@ -7,7 +7,7 @@
 #   • qbm-http  – HTTP/1.1 routing, middleware (CORS, logging, static files)
 #   • qbm-pgsql – Async PostgreSQL with prepared statements
 #   • qbm-redis – Redis cache (GET/SET/DEL) + Pub/Sub (PUBLISH/SUBSCRIBE)
-#   • qbm-ws    – WebSocket sessions + real-time event broadcast
+#   • qbm-http  – WebSocket (qb::http::ws) sessions + real-time event broadcast
 #
 # Directory layout:
 #   include/
@@ -54,9 +54,9 @@ qb_add_executable(
     NAME    taskmanager
     SOURCES ${SOURCES}
     DEPENDS
+        qbm-http
         qbm-pgsql
         qbm-redis
-        qbm-websocket
 )
 
 target_include_directories(taskmanager PRIVATE
@@ -65,8 +65,10 @@ target_include_directories(taskmanager PRIVATE
 
 # Compile-time constant: absolute path to the static files directory.
 # The binary falls back to relative paths at runtime if this path is absent.
+# Each example copies into its own bin/<example>/resources subdir so parallel
+# builds never race (or clobber each other) on a shared bin/resources directory.
 target_compile_definitions(taskmanager PRIVATE
-    RESOURCES_PATH="${CMAKE_BINARY_DIR}/bin/resources/static"
+    RESOURCES_PATH="${CMAKE_BINARY_DIR}/bin/taskmanager/resources/static"
 )
 
 # ── Resources ─────────────────────────────────────────────────────────────────
@@ -74,7 +76,7 @@ target_compile_definitions(taskmanager PRIVATE
 qb_copy_resources(
     TARGET      taskmanager
     RESOURCES   "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-    DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
+    DESTINATION "${CMAKE_BINARY_DIR}/bin/taskmanager/resources"
 )
 
 qb_status_message("QB TaskManager configured")

@@ -218,9 +218,9 @@ public:
         registerEvent<PrintStatisticsMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "BrokerActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(SubscribeMessage& msg) {
@@ -393,14 +393,14 @@ private:
     
 public:
     MessagePublisher(ActorId broker_id, std::string name) 
-        : _broker_id(broker_id), _name(std::move(name)) {
+        : _name(std::move(name)), _broker_id(broker_id) {
         setupDefaultContent();
         registerEvent<StepMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "MessagePublisher '" << _name << "' initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(StepMessage& msg) {
@@ -556,9 +556,9 @@ public:
         registerEvent<PrintHistoryMessage>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "SubscriberActor '" << _name << "' initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(MessageReceivedMessage& msg) {
@@ -659,14 +659,14 @@ public:
         registerEvent<DelayedActionMessage>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "DemoController initialized with ID: " << id() << std::endl;
         // Register callback to start demo after initialization
         registerCallback(*this);
-        return true;
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         runDemo();
     }
     
@@ -802,7 +802,7 @@ public:
             printSeparator("STEP 3: MESSAGE HISTORY");
         }
         
-        if (step < _subscriber_ids.size()) {
+        if (static_cast<std::size_t>(step) < _subscriber_ids.size()) {
             push<PrintHistoryMessage>(_subscriber_ids[step]);
             push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PRINT_HISTORY, step + 1);
         } else {

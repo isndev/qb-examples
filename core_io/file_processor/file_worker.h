@@ -76,13 +76,13 @@ public:
     /**
      * @brief Actor initialization method
      */
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "FileWorker " << id() << " initialized on core " << id().index() << std::endl;
-        
+
         // Signal that this worker is available
         notifyAvailable();
-        
-        return true;
+
+        co_return true;
     }
     
     /**

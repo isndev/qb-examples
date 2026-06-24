@@ -46,7 +46,6 @@
 #include "Protocol.h"
 #include <memory>
 #include <string_view>
-#include <atomic>
 
 namespace broker {
 
@@ -64,7 +63,12 @@ namespace broker {
  */
 class MessageContainer {
 private:
-    // Using std::shared_ptr with atomic operations for thread-safe reference counting
+    // Plain shared_ptr — the reference count inside shared_ptr is already atomic.
+    // In the qb actor model each actor runs single-threaded on its core; messages
+    // are transferred between cores through qb's pipe mechanism, which handles
+    // memory visibility.  No raw pointer to _message is ever raced between threads,
+    // so the deprecated std::atomic_load/store free-function wrappers were
+    // unnecessary and have been removed.
     std::shared_ptr<broker::Message> _message;
 
 public:
@@ -72,99 +76,100 @@ public:
      * @brief Default constructor
      */
     MessageContainer() = default;
-    
+
     /**
-     * @brief Copy constructor with atomic reference counting
-     * 
-     * Uses atomic operations to maintain thread-safe reference counting
-     * when sharing message data between actors on different CPU cores.
-     * This ensures proper memory cleanup when the last reference is destroyed.
-     * 
+     * @brief Copy constructor — shares ownership of the underlying message
+     *
+     * std::shared_ptr's copy increments the reference count atomically, so
+     * sharing the same message across actors on different cores is safe without
+     * additional synchronisation.
+     *
      * @param other The container to share data with
      */
-    MessageContainer(const MessageContainer& other) 
-        : _message(std::atomic_load(&other._message)) {}
-    
+    MessageContainer(const MessageContainer& other) = default;
+
     /**
-     * @brief Copy assignment with atomic reference counting
-     * 
+     * @brief Copy assignment
+     *
      * @param other The container to share data with
      * @return Reference to this container
      */
-    MessageContainer& operator=(const MessageContainer& other) {
-        if (this != &other) {
-            std::atomic_store(&_message, std::atomic_load(&other._message));
-        }
-        return *this;
-    }
-    
+    MessageContainer& operator=(const MessageContainer& other) = default;
+
+    /**
+     * @brief Move constructor
+     */
+    MessageContainer(MessageContainer&& other) noexcept = default;
+
+    /**
+     * @brief Move assignment
+     */
+    MessageContainer& operator=(MessageContainer&& other) noexcept = default;
+
     /**
      * @brief Constructs from an existing message
-     * 
+     *
      * Takes ownership of the message data, allowing string_view
      * references to safely point to the message contents.
-     * 
+     *
      * @param msg The message to take ownership of
      */
     explicit MessageContainer(broker::Message&& msg)
         : _message(std::make_shared<broker::Message>(std::move(msg))) {}
-        
+
     /**
      * @brief Constructs a new message from type and payload
-     * 
+     *
      * Creates a new message and takes ownership, optimized for
      * move semantics with large payloads.
-     * 
+     *
      * @param type The message type
      * @param payload The message payload
      */
     MessageContainer(broker::MessageType type, std::string payload)
         : _message(std::make_shared<broker::Message>(type, std::move(payload))) {}
-    
+
     /**
      * @brief Gets the message type
      * @return Message type enum value
      */
-    broker::MessageType type() const { 
-        auto msg = std::atomic_load(&_message);
-        return msg ? msg->type : broker::MessageType::ERROR;
+    broker::MessageType type() const {
+        return _message ? _message->type : broker::MessageType::ERROR;
     }
-    
+
     /**
      * @brief Gets the message payload as string_view
-     * 
+     *
      * Returns a view into the owned message payload, avoiding
      * copies while maintaining safe lifetime management.
-     * 
+     *
      * @return View of the message payload
      */
     std::string_view payload() const {
-        auto msg = std::atomic_load(&_message);
-        return msg ? std::string_view(msg->payload) : std::string_view{};
+        return _message ? std::string_view(_message->payload) : std::string_view{};
     }
-    
+
     /**
      * @brief Access the underlying message
-     * 
+     *
      * Provides access to the raw message for serialization
      * or other operations requiring the complete message.
-     * 
+     *
      * @return Const reference to the message
      */
     const broker::Message& message() const {
         static const broker::Message empty_msg{};
-        auto msg = std::atomic_load(&_message);
-        return msg ? *msg : empty_msg;
+        return _message ? *_message : empty_msg;
     }
-    
+
     /**
      * @brief Checks if the container holds a valid message
      * @return true if container has a message
      */
-    bool valid() const { 
-        return std::atomic_load(&_message) != nullptr; 
+    bool valid() const {
+        return _message != nullptr;
     }
-    
+
     /**
      * @brief Implicit conversion to bool for validity checks
      * @return true if container has a valid message

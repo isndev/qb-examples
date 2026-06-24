@@ -39,6 +39,7 @@
  */
 
 #include "watcher.h"
+#include <chrono>
 #include <iostream>
 
 namespace file_monitor {
@@ -90,7 +91,7 @@ void DirectoryMonitor::on(qb::io::async::event::file const& event) {
     }
 }
 
-void DirectoryMonitor::startWatching(const std::string& path, double interval) {
+void DirectoryMonitor::startWatching(const std::string& path, qb::duration interval) {
     start(path, interval);
 }
 
@@ -109,9 +110,9 @@ DirectoryWatcher::DirectoryWatcher() {
     registerEvent<qb::KillEvent>(*this);
 }
 
-bool DirectoryWatcher::onInit() {
+qb::io::async::task<bool> DirectoryWatcher::onInit() {
     qb::io::cout() << "DirectoryWatcher initialized on core " << id().index() << std::endl;
-    return true;
+    co_return true;
 }
 
 void DirectoryWatcher::on(WatchDirectoryRequest& request) {
@@ -144,18 +145,18 @@ void DirectoryWatcher::on(WatchDirectoryRequest& request) {
     // Scan the directory and set up watchers asynchronously
     qb::io::async::callback([this, normalized_path, watch, request]() {
         bool success = setupDirectoryWatch(normalized_path, watch, request.recursive);
-        
+
         // Send response to requestor
         push<WatchDirectoryResponse>(
-            request.requestor, 
-            normalized_path, 
-            success, 
+            request.requestor,
+            normalized_path,
+            success,
             success ? "" : "Failed to set up directory watch"
         );
-        
+
         // Update statistics
         _stats.directories_watched = _watched_directories.size();
-        
+
         int total_files = 0;
         for (const auto& pair : _watched_directories) {
             total_files += countWatchedFiles(pair.second);
@@ -263,7 +264,7 @@ bool DirectoryWatcher::setupDirectoryWatch(const std::string& path,
         );
         
         // Start watching the directory
-        watch->watcher->startWatching(path, 0.5); // Check every 500ms
+        watch->watcher->startWatching(path, std::chrono::milliseconds(500)); // Check every 500ms
         
         // Process subdirectories if recursive
         if (recursive) {

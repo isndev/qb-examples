@@ -57,9 +57,6 @@ namespace {
     // Configuration constants
     constexpr unsigned short SERVER_PORT = 8888;
     constexpr const char* SERVER_HOST = "127.0.0.1";
-    constexpr int CONNECTION_TIMEOUT_MS = 5000;
-    constexpr int RESPONSE_TIMEOUT_MS = 1000;
-    
     // Shared state
     std::atomic<int> g_message_count{0};
     std::atomic<bool> g_client_connected{false};

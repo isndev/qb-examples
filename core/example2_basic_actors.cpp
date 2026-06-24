@@ -71,9 +71,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ReceiverActor " << id() << ": Initialized and waiting for messages\n";
-        return true;
+        co_return true;
     }
     
     // Handler for the message event
@@ -125,14 +125,14 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "SenderActor " << _name << " " << id() << ": Initialized\n";
         // Register a callback to start sending messages - will be called for each core loop
         registerCallback(*this);
-        return true;
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         if (_sent_count < _max_messages) {
             _sent_count++;
             std::string message = "Message from " + _name + " #" + std::to_string(_sent_count);

@@ -1,62 +1,51 @@
 /**
  * @file actors/websocket_handler.h
- * @brief WebSocketHandler – WebSocket session pool + Redis Pub/Sub subscriber.
+ * @brief WebSocketHandler – WebSocket session pool + coroutine Redis Pub/Sub.
  *
  * ## Responsibility
  * WebSocketHandler is **not** a QB Actor; it is an inner component owned by
- * TaskManager and runs on the same VirtualCore.  It has two roles:
+ * TaskManager and runs on the same VirtualCore. Two roles:
  *
- * 1. **Session pool** (`io_handler<WebSocketHandler, WsSession>`):
- *    Manages the lifetime of every WsSession.  Sessions are registered via
- *    `upgrade_connection()` and automatically removed on disconnect.
+ * 1. **Session pool** (`io_handler<WsSession>`): owns every WsSession; sessions
+ *    are registered via `upgrade_connection()` and removed on disconnect.
  *
- * 2. **Redis subscriber** (`redis::tcp::consumer<WebSocketHandler>`):
- *    Maintains a long-lived subscription to the `tasks:events` Redis channel.
- *    Every message received is deserialised and broadcast to all WS clients.
+ * 2. **Coroutine Redis subscriber** (`qb::redis::tcp::co_consumer`): a long-lived
+ *    subscription to `tasks:events`. Instead of a callback `on(message&&)`, the
+ *    owner drives a coroutine loop — `while (auto m = co_await receive()) …` —
+ *    and broadcasts each payload to all WS clients.
  *
  * ## Data flow
  * ```
- * Redis PUBLISH tasks:events  ──►  on(redis::message&&)
- *                                         │
- *                                  broadcast_to_all(json)
- *                                         │
- *                              ┌──────────┴──────────┐
- *                         WsSession 1          WsSession N
- *                       send_json(data)      send_json(data)
+ * Redis PUBLISH tasks:events ─► co_await consume_loop() ─► broadcast_to_all(json)
+ *                                                         ├─ WsSession 1 … N
  * ```
  *
- * ## HTTP → WebSocket upgrade sequence
- * ```
- * TaskManager::handle_ws_upgrade
- *   └─ extractSession(http_session_id)     ← steals the TCP socket
- *       └─ upgrade_connection(sock, req, resp)
- *           ├─ registerSession(sock)        ← creates WsSession
- *           └─ switch_protocol<ws>()       ← performs handshake → 101 response
- * ```
+ * ## Lifecycle
+ * `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the owner
+ * then spawns `consume_loop()` as an actor-scoped coroutine. `shutdown()` closes
+ * the subscription so the loop ends (its `receive()` yields `std::nullopt`).
  */
 #pragma once
 
+#include <qb/io/async.h>
 #include <redis/redis.h>
 #include <http/http.h>
-#include <ws/ws.h>
+#include <http/ws.h>
 #include <qb/json.h>
 #include "ws_session.h"
 
 namespace taskmanager {
 namespace actors {
 
-class TaskManager; // back-reference for access to TaskManager state if needed
+class TaskManager; // back-reference (state access if needed)
 
 /**
- * @brief Inner component that owns all WS sessions and the Redis SUB connection.
+ * @brief Inner component: owns all WS sessions and the coroutine Redis SUB.
  *
- * Constructed by TaskManager; its lifetime is tied to the owning actor.
- * `init()` **must** be called from `TaskManager::onInit()` before any WebSocket
- * connections are accepted.
+ * Constructed by TaskManager; lifetime tied to the owning actor.
  */
 class WebSocketHandler
-    : public qb::io::use<WebSocketHandler>::tcp::io_handler<WsSession>
-    , public qb::redis::tcp::consumer<WebSocketHandler> {
+    : public qb::io::use<WebSocketHandler>::tcp::io_handler<WsSession> {
 public:
     /**
      * @param manager    Back-reference to the owning TaskManager.
@@ -64,42 +53,37 @@ public:
      */
     WebSocketHandler(TaskManager &manager, qb::io::uri redis_uri);
 
+    // ── Coroutine lifecycle ──────────────────────────────────────────────────
+
+    /** Connect the subscriber and subscribe to `tasks:events`. */
+    qb::io::async::task<bool> connect_subscriber();
+
     /**
-     * @brief Connect to Redis and subscribe to `tasks:events`.
-     * @return false if the Redis connection or subscription fails.
+     * @brief Drain published messages forever, broadcasting each to WS clients.
+     * @details Runs until the subscription closes (`shutdown()` / disconnect),
+     *          at which point `receive()` yields `std::nullopt` and the loop ends.
      */
-    bool init();
+    qb::io::async::task<void> consume_loop();
 
-    // ── qb-io / qb-redis callbacks ───────────────────────────────────────────
+    /** Close the subscriber so `consume_loop()` returns (idempotent). */
+    void shutdown();
 
-    /** Called by io_handler when a new WsSession becomes active. */
+    // ── qb-io callback ───────────────────────────────────────────────────────
+
+    /** Called by io_handler when a new WsSession becomes active (logging). */
     void on(WsSession &session);
-
-    /** Called by the Redis consumer when a Pub/Sub message arrives. */
-    void on(qb::redis::message &&msg);
 
     // ── Public API ───────────────────────────────────────────────────────────
 
     /**
-     * @brief Perform the HTTP → WebSocket protocol upgrade.
-     *
-     * Registers a new WsSession from the extracted TCP socket, performs the
-     * WebSocket handshake, and writes the 101 response directly on the socket.
-     *
-     * @param sock     Extracted TCP socket (ownership transferred).
-     * @param request  Original HTTP upgrade request.
-     * @param response HTTP response object to fill (101 Switching Protocols).
-     * @return true on success; false if the handshake fails (session is
-     *         immediately disconnected in that case).
+     * @brief Perform the HTTP → WebSocket protocol upgrade on @p sock.
+     * @return true on success; on a bad handshake the session is disconnected.
      */
-    bool upgrade_connection(qb::io::tcp::socket     &&sock,
-                            const qb::http::Request  &request,
-                            qb::http::Response       &response);
+    bool upgrade_connection(qb::io::tcp::socket    &&sock,
+                            const qb::http::Request &request,
+                            qb::http::Response      &response);
 
-    /**
-     * @brief Send @p data as a JSON text frame to **every** connected WS client.
-     * @param data  Serialisable JSON value.
-     */
+    /** Send @p data as a JSON text frame to every connected WS client. */
     void broadcast_to_all(const qb::json &data);
 
     /** Number of currently connected WebSocket clients. */
@@ -108,8 +92,9 @@ public:
     }
 
 private:
-    TaskManager  &_manager;
-    qb::io::uri   _redis_uri;
+    TaskManager                &_manager;
+    qb::io::uri                 _redis_uri;
+    qb::redis::tcp::co_consumer _sub; ///< coroutine Pub/Sub subscriber
 };
 
 } // namespace actors

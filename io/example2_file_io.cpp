@@ -73,15 +73,6 @@ namespace {
         qb::io::cout() << "\n=== " << title << " ===\n";
     }
     
-    // Helper function to print operation results
-    void printResult(const std::string& operation, bool success, const std::string& details = "") {
-        qb::io::cout() << operation << ": " << (success ? "Success" : "Failed");
-        if (!details.empty()) {
-            qb::io::cout() << " - " << details;
-        }
-        //qb::io::cout() << std::endl;
-    }
-    
     // Utility function to get current timestamp
     std::string getCurrentTimestamp() {
         auto now = std::chrono::system_clock::now();

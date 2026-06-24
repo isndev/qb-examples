@@ -13,7 +13,7 @@
 #pragma once
 
 #include <qb/json.h>
-#include <qb/system/timestamp.h>
+#include <qb/system/time.h>
 #include <pgsql/pgsql.h>
 #include <cstdint>
 #include <string>

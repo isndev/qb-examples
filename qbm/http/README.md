@@ -86,7 +86,7 @@ Below is a list of the available examples and the key features they showcase:
     *   Defining `qb::http::Controller` subclasses (`UserController`, `ProductController`).
     *   Grouping related routes within a controller.
     *   Controller-specific middleware (`Controller::use(...)`).
-    *   Using member functions as route handlers via `MEMBER_HANDLER`.
+    *   Using member functions as route handlers via the unified verb API (`this->get(path, this, &MyController::method)`).
     *   Mounting controllers onto the router (`router().controller<C>(...)`).
 *   **Key Endpoints**:
     *   `GET /api/v1/users`, `POST /api/v1/users`, etc. (CRUD for users)

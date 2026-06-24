@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include <qb/json.h>
 #include <pgsql/pgsql.h>
+#include <qb/json.h>
 #include <string>
 
 namespace auction_house {
@@ -33,14 +33,9 @@ struct User {
         created_at = row["created_at"].as<std::string>();
     }
 
-    [[nodiscard]] qb::json to_json() const {
-        return qb::json{
-            {"id",         id},
-            {"username",   username},
-            {"email",      email},
-            {"balance",    balance},
-            {"created_at", created_at}
-        };
+    [[nodiscard]] qb::json
+    to_json() const {
+        return qb::json{{"id", id}, {"username", username}, {"email", email}, {"balance", balance}, {"created_at", created_at}};
     }
 };
 
@@ -55,15 +50,11 @@ struct UserStats {
     int32_t     auctions_won{0};
     double      total_spent{0.0};
 
-    [[nodiscard]] qb::json to_json() const {
-        return qb::json{
-            {"user_id",         user_id},
-            {"username",        username},
-            {"total_bids",      total_bids},
-            {"active_auctions", active_auctions},
-            {"auctions_won",    auctions_won},
-            {"total_spent",     total_spent}
-        };
+    [[nodiscard]] qb::json
+    to_json() const {
+        return qb::json{{"user_id", user_id},           {"username", username},
+                        {"total_bids", total_bids},     {"active_auctions", active_auctions},
+                        {"auctions_won", auctions_won}, {"total_spent", total_spent}};
     }
 };
 

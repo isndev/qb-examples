@@ -37,21 +37,21 @@ public:
     
     void initialize_routes() override {
         // Controller-specific middleware
-        use([this](auto ctx, auto next) {
-            std::cout << "[UserController] Processing request: " 
+        use([](auto ctx, auto next) {
+            std::cout << "[UserController] Processing request: "
                       << std::to_string(ctx->request().method()) << " " << ctx->request().uri().path() << std::endl;
-            
+
             // Add controller identification header
             ctx->response().add_header("X-Controller", "UserController");
             next();
         }, "name");
         
         // Define routes for this controller
-        get("/", MEMBER_HANDLER(&UserController::list_users));
-        get("/:id", MEMBER_HANDLER(&UserController::get_user));
-        post("/", MEMBER_HANDLER(&UserController::create_user));
-        put("/:id", MEMBER_HANDLER(&UserController::update_user));
-        del("/:id", MEMBER_HANDLER(&UserController::delete_user));
+        get("/", this, &UserController::list_users);
+        get("/:id", this, &UserController::get_user);
+        post("/", this, &UserController::create_user);
+        put("/:id", this, &UserController::update_user);
+        del("/:id", this, &UserController::delete_user);
     }
     
     void list_users(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
@@ -191,21 +191,21 @@ public:
     
     void initialize_routes() override {
         // Controller-specific middleware
-        use([this](auto ctx, auto next) {
-            std::cout << "[ProductController] Processing request: " 
+        use([](auto ctx, auto next) {
+            std::cout << "[ProductController] Processing request: "
                       << std::to_string(ctx->request().method()) << " " << ctx->request().uri().path() << std::endl;
-            
+
             ctx->response().add_header("X-Controller", "ProductController");
-            
+
             next();
         });
         
-        get("/", MEMBER_HANDLER(&ProductController::list_products));
-        get("/:id", MEMBER_HANDLER(&ProductController::get_product));
-        get("/category/:category", MEMBER_HANDLER(&ProductController::get_by_category));
-        post("/", MEMBER_HANDLER(&ProductController::create_product));
-        put("/:id", MEMBER_HANDLER(&ProductController::update_product));
-        del("/:id", MEMBER_HANDLER(&ProductController::delete_product));
+        get("/", this, &ProductController::list_products);
+        get("/:id", this, &ProductController::get_product);
+        get("/category/:category", this, &ProductController::get_by_category);
+        post("/", this, &ProductController::create_product);
+        put("/:id", this, &ProductController::update_product);
+        del("/:id", this, &ProductController::delete_product);
     }
     
     void list_products(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
@@ -356,15 +356,15 @@ class ControllerServerActor : public qb::Actor, public qb::http::Server<> {
 public:
     ControllerServerActor() = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing Controller Pattern Server Actor..." << std::endl;
-        
+
         setup_global_middleware();
         setup_controllers();
-        
+
         // Compile the router
         router().compile();
-        
+
         // Start listening on port 8080
         if (listen({"tcp://0.0.0.0:8080"})) {
             start();
@@ -373,10 +373,10 @@ public:
             std::cout << "Press Ctrl+C to stop the server" << std::endl;
         } else {
             std::cerr << "Failed to start listening server" << std::endl;
-            return false;
+            co_return false;
         }
-        
-        return true;
+
+        co_return true;
     }
     
 private:
@@ -396,8 +396,8 @@ private:
         });
         
         // Mount controllers at specific paths
-        router().controller<UserController>("/api/users");
-        router().controller<ProductController>("/api/products");
+        (void)router().controller<UserController>("/api/users");
+        (void)router().controller<ProductController>("/api/products");
     }
     
     void handle_api_info(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {

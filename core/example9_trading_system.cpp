@@ -56,22 +56,18 @@
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
+#include <chrono>
 
 namespace {
     // Global settings
     const int NUM_CLIENTS = 10;
     const int NUM_SYMBOLS = 3;
     const int SIMULATION_DURATION_SECONDS = 10;
-    const int ORDERS_PER_SECOND_PER_CLIENT = 5;
-    
     // Performance tracking
     std::atomic<uint64_t> g_total_orders{0};
     std::atomic<uint64_t> g_total_trades{0};
     std::atomic<uint64_t> g_total_order_messages{0};
     std::atomic<uint64_t> g_total_market_data_messages{0};
-    
-    // System-wide timestamp for simulation time tracking
-    std::atomic<uint64_t> g_current_timestamp{0};
     
     // Helper function to get current timestamp in microseconds
     uint64_t getCurrentTimestamp() {
@@ -153,7 +149,7 @@ struct Order {
     uint64_t timestamp;
     
     // Constructeur par défaut
-    Order() : price(0.0), quantity(0), side(Side::BUY), timestamp(getCurrentTimestamp()), order_id(generateOrderId()) {}
+    Order() : order_id(generateOrderId()), side(Side::BUY), price(0.0), quantity(0), timestamp(getCurrentTimestamp()) {}
     
     // Constructor for market orders
     Order(const std::string& client, const std::string& sym, Side s, int qty)
@@ -647,9 +643,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ClientActor " << _client_id << " initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -688,7 +684,7 @@ private:
             if (!_is_active) return;
             generateRandomOrder();
             scheduleNextOrder();  // Schedule the next order
-        }, delay_dist(_rng));
+        }, std::chrono::duration<double>(delay_dist(_rng)));
     }
     
     void generateRandomOrder() {
@@ -740,9 +736,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "OrderEntryActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(NewOrderMessage& msg) {
@@ -828,9 +824,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "MatchingEngineActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -908,12 +904,6 @@ public:
 private:
     // Process a trade
     void executeTrade(const Trade& trade) {
-        // For the buy side
-        auto& buy_book = _order_books[trade.symbol];
-        
-        // For the sell side
-        auto& sell_book = _order_books[trade.symbol];
-        
         // Create and send execution notifications
         auto buyer = getSenderFromOrderId(trade.buy_order_id);
         if (buyer) {
@@ -984,9 +974,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "MarketDataActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(MarketDataMessage& msg) {
@@ -1048,11 +1038,11 @@ public:
         registerEvent<InitializeMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "SupervisorActor initialized with ID: " << id() << std::endl;
 
         push<InitializeMessage>(id());
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -1077,7 +1067,7 @@ public:
             if (_is_active) {
                 shutdownSystem();
             }
-        }, SIMULATION_DURATION_SECONDS);
+        }, std::chrono::seconds(SIMULATION_DURATION_SECONDS));
     }
     
     void on(StatisticsMessage& msg) {
@@ -1131,7 +1121,7 @@ private:
             
             // Schedule next report
             schedulePerformanceReport();
-        }, 1.0); // Report every 1 second
+        }, std::chrono::seconds(1)); // Report every 1 second
     }
     
     void shutdownSystem() {
@@ -1162,7 +1152,7 @@ private:
         // Finally, kill self after a short delay
         qb::io::async::callback([this]() {
             broadcast<qb::KillEvent>();
-        }, 0.5);
+        }, std::chrono::milliseconds(500));
     }
 };
 
@@ -1207,7 +1197,7 @@ int main() {
     }
     
     // Create supervisor actor (core 0)
-    auto supervisor_id = engine.addActor<SupervisorActor>(
+    engine.addActor<SupervisorActor>(
         0, matching_engine_id, order_entry_id, market_data_id, client_ids
     );
     

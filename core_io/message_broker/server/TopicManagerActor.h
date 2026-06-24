@@ -117,7 +117,7 @@ public:
      * 
      * @return true if initialization successful
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Handles topic subscription requests with zero-copy optimization

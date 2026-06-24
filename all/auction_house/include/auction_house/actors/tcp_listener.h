@@ -29,8 +29,9 @@
 namespace auction_house {
 namespace actors {
 
-class TcpListener : public qb::Actor
-                  , public qb::io::use<TcpListener>::tcp::acceptor {
+class TcpListener
+    : public qb::Actor
+    , public qb::io::use<TcpListener>::tcp::acceptor {
 public:
     /**
      * @param uri           Listening address, e.g. `tcp://0.0.0.0:8080`.
@@ -40,29 +41,31 @@ public:
         : _uri(std::move(uri))
         , _targets(std::move(targets)) {}
 
-    bool onInit() final {
+    qb::io::async::task<bool>
+    onInit() override {
         if (_targets.empty()) {
             qb::io::cerr() << "[TcpListener] no AuctionManagers configured\n";
-            return false;
+            co_return false;
         }
         if (!listen(_uri)) {
             qb::io::cerr() << "[TcpListener] failed to listen on " << _uri.source() << '\n';
-            return false;
+            co_return false;
         }
-        qb::io::cout() << "[TcpListener] listening on " << _uri.source()
-                       << "  (" << _targets.size() << " workers)\n";
+        qb::io::cout() << "[TcpListener] listening on " << _uri.source() << "  (" << _targets.size() << " workers)\n";
         start();
-        return true;
+        co_return true;
     }
 
     /** Called by qb-io for every accepted TCP connection. */
-    void on(accepted_socket_type &&sock) {
+    void
+    on(accepted_socket_type &&sock) {
         auto &evt  = push<events::NewConnectionEvent>(_targets[_rr++ % _targets.size()]);
         evt.socket = std::move(sock);
     }
 
     /** Acceptor lost its socket – propagate shutdown to the whole engine. */
-    void on(qb::io::async::event::disconnected const &) {
+    void
+    on(qb::io::async::event::disconnected const &) {
         qb::io::cerr() << "[TcpListener] acceptor disconnected – shutting down\n";
         broadcast<qb::KillEvent>();
     }

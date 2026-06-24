@@ -35,6 +35,7 @@
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <iostream>
+#include <chrono>
 
 // Define a simple event
 struct SimpleEvent : public qb::Event {
@@ -45,12 +46,12 @@ struct SimpleEvent : public qb::Event {
 // Define a simple actor
 class SimpleActor : public qb::Actor {
 public:
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         // Register the event handler
         registerEvent<SimpleEvent>(*this);
-        
+
         qb::io::cout() << "SimpleActor: Initialized" << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(SimpleEvent const& event) {
@@ -73,15 +74,15 @@ private:
 public:
     explicit SenderActor(qb::ActorId target_id) : _target_id(target_id) {}
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         // Register the callback
         registerCallback(*this);
-        
+
         qb::io::cout() << "SenderActor: Initialized" << std::endl;
-        return true;
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         // Send a SimpleEvent to the target
         qb::io::cout() << "SenderActor: Sending SimpleEvent with value " << _count << std::endl;
         push<SimpleEvent>(_target_id, _count++);

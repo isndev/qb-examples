@@ -82,7 +82,7 @@ public:
      * 
      * @return true if successfully listening, false on configuration or network errors
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Handles new TCP connections

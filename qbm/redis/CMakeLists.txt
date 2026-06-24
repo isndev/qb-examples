@@ -40,6 +40,7 @@ set(QB_REDIS_EXAMPLES
     example6_transaction_example
     example7_stream_processor
     example8_complex_actor_system
+    coro_example
 )
 
 # Build each Redis example

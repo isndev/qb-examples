@@ -41,7 +41,7 @@ foreach(EXAMPLE_NAME ${QB_WS_EXAMPLES})
     qb_add_executable(
         NAME ${EXAMPLE_NAME}
         SOURCES ${EXAMPLE_NAME}.cpp
-        DEPENDS qbm-websocket
+        DEPENDS qbm-http
     )
 endforeach()
 

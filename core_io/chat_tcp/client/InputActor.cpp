@@ -27,18 +27,18 @@
 InputActor::InputActor(qb::ActorId client_id)
     : _client_id(client_id) {}
 
-bool InputActor::onInit() {
+qb::io::async::task<bool> InputActor::onInit() {
     // Register for non-blocking input handling
     registerCallback(*this);
-    
+
     // Display initialization and usage information
     qb::io::cout() << "InputActor initialized with ID: " << id() << std::endl;
     qb::io::cout() << "Enter messages (or 'quit' to exit):" << std::endl;
-    
-    return true;
+
+    co_return true;
 }
 
-void InputActor::onCallback() {
+void InputActor::on(qb::LoopEvent const&) {
     std::string line;
 
     // Read user input non-blockingly

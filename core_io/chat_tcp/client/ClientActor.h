@@ -34,6 +34,7 @@
 #include "../shared/Protocol.h"
 #include "../shared/Events.h"
 #include <atomic>
+#include <chrono>
 
 /**
  * @brief Core client actor managing network communication and message handling
@@ -66,9 +67,9 @@ private:
     std::atomic<bool> _should_reconnect{true}; ///< Controls reconnection behavior
     
     /// Maximum time to wait for connection establishment
-    static constexpr double CONNECT_TIMEOUT = 5.0;
+    static constexpr auto CONNECT_TIMEOUT = std::chrono::seconds(5);
     /// Delay between reconnection attempts
-    static constexpr double RECONNECT_DELAY = 5.0;
+    static constexpr auto RECONNECT_DELAY = std::chrono::seconds(5);
 
 public:
     /**
@@ -95,7 +96,7 @@ public:
      * 
      * @return true if initialization succeeds
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Processes incoming protocol messages

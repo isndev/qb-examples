@@ -61,22 +61,22 @@ AcceptActor::AcceptActor(qb::io::uri listen_at, qb::ActorIdList pool)
  *    - Handles bind failures
  *    - Reports initialization status
  */
-bool AcceptActor::onInit() {
+qb::io::async::task<bool> AcceptActor::onInit() {
     // Validate server pool
     if (_server_pool.empty()) {
         qb::io::cerr() << "Cannot init AcceptActor with empty server pool" << std::endl;
-        return false;
+        co_return false;
     }
 
     // Set up TCP listener
     if (transport().listen(_listen_at)) {
         qb::io::cerr() << "Cannot listen on " << _listen_at.source() << std::endl;
-        return false;
+        co_return false;
     }
 
     qb::io::cout() << "AcceptActor listening on " << _listen_at.source() << std::endl;
     start();  // Start accepting connections
-    return true;
+    co_return true;
 }
 
 /**

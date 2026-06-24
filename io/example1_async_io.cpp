@@ -116,7 +116,7 @@ private:
     
 public:
     explicit FileProcessor(const std::string& filename, int max_ops = MAX_OPERATIONS)
-        : with_timeout(TIMER_INTERVAL), // 1 second timeout
+        : with_timeout(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(TIMER_INTERVAL))), // 1 second timeout
           _filename(filename),
           _max_operations(max_ops) {
         printSectionHeader("File Processor Initialized");
@@ -244,7 +244,7 @@ private:
     
 public:
     explicit TimerDemonstration(int max_ticks = 10)
-        : with_timeout(0.5), // 500ms timeout
+        : with_timeout(std::chrono::milliseconds(500)), // 500ms timeout
           _max_ticks(max_ticks) {
         printSectionHeader("Timer Demonstration Initialized");
         qb::io::cout() << "Timer will tick " << _max_ticks << " times every 500ms" << std::endl;

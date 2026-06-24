@@ -13,57 +13,57 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const WS_RECONNECT_MS  = 2500;
-const MAX_RECONNECTS   = 8;
-const HEARTBEAT_MS     = 25000;
-const TOAST_DURATION   = 4500;
-const MAX_LOG_ENTRIES  = 80;
+const WS_RECONNECT_MS = 2500;
+const MAX_RECONNECTS = 8;
+const HEARTBEAT_MS = 25000;
+const TOAST_DURATION = 4500;
+const MAX_LOG_ENTRIES = 80;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let lots        = new Map();   // id → lot object
-let users       = [];          // array of user objects
+let lots = new Map();   // id → lot object
+let users = [];          // array of user objects
 let currentUser = null;        // { id, username, balance, email }
 
 let activeCategory = 'all';
-let activeSort     = 'ending';
+let activeSort = 'ending';
 
-let selectedLotId   = null;    // lot open in drawer
-let countdownTimer  = null;    // setInterval handle for drawer countdown
+let selectedLotId = null;    // lot open in drawer
+let countdownTimer = null;    // setInterval handle for drawer countdown
 
-let ws              = null;
-let wsReconnects    = 0;
-let heartbeatTimer  = null;
-let reconnectTimer  = null;
+let ws = null;
+let wsReconnects = 0;
+let heartbeatTimer = null;
+let reconnectTimer = null;
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
 const $ = id => document.getElementById(id);
 
 const els = {
-    wsBadge:        $('ws-badge'),
-    cacheBadge:     $('cache-badge'),
-    totalCount:     $('total-count'),
-    userSelect:     $('user-select'),
-    userBalance:    $('user-balance'),
-    lotsGrid:       $('lots-grid'),
-    eventsLog:      $('events-log'),
-    drawerOverlay:  $('drawer-overlay'),
-    drawer:         $('drawer'),
+    wsBadge: $('ws-badge'),
+    cacheBadge: $('cache-badge'),
+    totalCount: $('total-count'),
+    userSelect: $('user-select'),
+    userBalance: $('user-balance'),
+    lotsGrid: $('lots-grid'),
+    eventsLog: $('events-log'),
+    drawerOverlay: $('drawer-overlay'),
+    drawer: $('drawer'),
     drawerCategory: $('drawer-category'),
-    drawerTitle:    $('drawer-title'),
-    drawerDesc:     $('drawer-description'),
-    drawerCountdown:$('drawer-countdown'),
+    drawerTitle: $('drawer-title'),
+    drawerDesc: $('drawer-description'),
+    drawerCountdown: $('drawer-countdown'),
     drawerStartPrice: $('drawer-start-price'),
-    drawerBidsCount:$('drawer-bids-count'),
-    drawerPrice:    $('drawer-price'),
-    bidFormBlock:   $('bid-form-block'),
+    drawerBidsCount: $('drawer-bids-count'),
+    drawerPrice: $('drawer-price'),
+    bidFormBlock: $('bid-form-block'),
     bidEndedNotice: $('bid-ended-notice'),
-    bidAmount:      $('bid-amount'),
-    placeBidBtn:    $('place-bid-btn'),
-    bidResult:      $('bid-result'),
-    bidList:        $('bid-list'),
-    bidHistoryTotal:$('bid-history-total'),
+    bidAmount: $('bid-amount'),
+    placeBidBtn: $('place-bid-btn'),
+    bidResult: $('bid-result'),
+    bidList: $('bid-list'),
+    bidHistoryTotal: $('bid-history-total'),
     toastContainer: $('toast-container'),
 };
 
@@ -79,17 +79,17 @@ async function init() {
 
 async function apiFetch(url, options = {}) {
     const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         ...options,
     });
     const body = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, data: body, headers: res.headers };
+    return {ok: res.ok, status: res.status, data: body, headers: res.headers};
 }
 
 // ─── Load Users ───────────────────────────────────────────────────────────────
 
 async function loadUsers() {
-    const { ok, data } = await apiFetch('/api/users');
+    const {ok, data} = await apiFetch('/api/users');
     if (!ok || !data?.users?.length) return;
 
     users = data.users;
@@ -110,7 +110,7 @@ function selectUser(user) {
 // ─── Load Lots ────────────────────────────────────────────────────────────────
 
 async function loadLots() {
-    const { ok, data, headers } = await apiFetch('/api/lots');
+    const {ok, data, headers} = await apiFetch('/api/lots');
     if (!ok || !data?.lots) return;
 
     // Cache badge
@@ -136,9 +136,15 @@ function getFilteredSortedLots() {
     }
 
     switch (activeSort) {
-        case 'ending':    arr.sort((a, b) => a.end_time - b.end_time); break;
-        case 'price-asc': arr.sort((a, b) => a.current_price - b.current_price); break;
-        case 'price-desc':arr.sort((a, b) => b.current_price - a.current_price); break;
+        case 'ending':
+            arr.sort((a, b) => a.end_time - b.end_time);
+            break;
+        case 'price-asc':
+            arr.sort((a, b) => a.current_price - b.current_price);
+            break;
+        case 'price-desc':
+            arr.sort((a, b) => b.current_price - a.current_price);
+            break;
     }
 
     return arr;
@@ -168,10 +174,10 @@ function renderGrid() {
 
 function lotCardHTML(lot) {
     const secondsLeft = computeTimeLeft(lot);
-    const isEnded     = secondsLeft <= 0;
-    const isUrgent    = secondsLeft > 0 && secondsLeft <= 300;
-    const isSelected  = lot.id === selectedLotId;
-    const timeStr     = isEnded ? 'Ended' : formatTimeShort(secondsLeft);
+    const isEnded = secondsLeft <= 0;
+    const isUrgent = secondsLeft > 0 && secondsLeft <= 300;
+    const isSelected = lot.id === selectedLotId;
+    const timeStr = isEnded ? 'Ended' : formatTimeShort(secondsLeft);
 
     return `
         <div class="lot-card ${isSelected ? 'selected' : ''} ${isUrgent ? 'ending-soon' : ''} ${isEnded ? 'ended' : ''}"
@@ -204,17 +210,17 @@ function openDrawer(lotId) {
     });
 
     const secondsLeft = computeTimeLeft(lot);
-    const isEnded     = secondsLeft <= 0;
+    const isEnded = secondsLeft <= 0;
 
     // Fill header
     els.drawerCategory.textContent = lot.category.toUpperCase();
-    els.drawerTitle.textContent    = lot.title;
-    els.drawerDesc.textContent     = lot.description;
+    els.drawerTitle.textContent = lot.title;
+    els.drawerDesc.textContent = lot.description;
 
     // Fill meta
-    els.drawerStartPrice.textContent  = `$${Number(lot.start_price).toLocaleString()}`;
-    els.drawerBidsCount.textContent   = `${lot.bid_count || 0} bids`;
-    els.drawerPrice.textContent       = `$${Number(lot.current_price).toLocaleString()}`;
+    els.drawerStartPrice.textContent = `$${Number(lot.start_price).toLocaleString()}`;
+    els.drawerBidsCount.textContent = `${lot.bid_count || 0} bids`;
+    els.drawerPrice.textContent = `$${Number(lot.current_price).toLocaleString()}`;
 
     // Show/hide bid form
     if (isEnded) {
@@ -239,7 +245,7 @@ function openDrawer(lotId) {
     loadBidHistory(lotId);
 
     // Subscribe to lot via WS
-    wsSend({ type: 'subscribe_lot', lot_id: lotId });
+    wsSend({type: 'subscribe_lot', lot_id: lotId});
 
     // Open drawer
     els.drawerOverlay.classList.add('open');
@@ -266,13 +272,19 @@ function startCountdown(lot) {
     updateCountdownDisplay(lot);
     countdownTimer = setInterval(() => {
         const current = lots.get(lot.id);
-        if (!current) { stopCountdown(); return; }
+        if (!current) {
+            stopCountdown();
+            return;
+        }
         updateCountdownDisplay(current);
     }, 1000);
 }
 
 function stopCountdown() {
-    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
 }
 
 function updateCountdownDisplay(lot) {
@@ -299,19 +311,21 @@ function formatCountdown(secs) {
 
 function formatTimeShort(secs) {
     if (secs <= 0) return 'Ended';
-    if (secs < 60)    return `${secs}s`;
-    if (secs < 3600)  return `${Math.floor(secs / 60)}m`;
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
     return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
 }
 
-function pad(n) { return String(n).padStart(2, '0'); }
+function pad(n) {
+    return String(n).padStart(2, '0');
+}
 
 // ─── Bid History ─────────────────────────────────────────────────────────────
 
 async function loadBidHistory(lotId) {
     els.bidList.innerHTML = '<div class="bid-empty">Loading…</div>';
 
-    const { ok, data } = await apiFetch(`/api/lots/${lotId}/bids`);
+    const {ok, data} = await apiFetch(`/api/lots/${lotId}/bids`);
     if (!ok || selectedLotId !== lotId) return;
 
     const bids = data?.bids || [];
@@ -353,8 +367,8 @@ function prependBid(bid) {
 
 function bidRowHTML(bid, isNew) {
     const username = bid.bidder_username || bid.bidder || 'Anonymous';
-    const initial  = username.charAt(0).toUpperCase();
-    const timeStr  = bid.bid_time ? formatBidTime(bid.bid_time) : 'just now';
+    const initial = username.charAt(0).toUpperCase();
+    const timeStr = bid.bid_time ? formatBidTime(bid.bid_time) : 'just now';
     return `
         <div class="bid-row${isNew ? ' new-bid' : ''}">
             <div class="bid-row-left">
@@ -373,11 +387,13 @@ function formatBidTime(timeStr) {
     try {
         const d = new Date(timeStr);
         const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-        if (diff < 5)    return 'just now';
-        if (diff < 60)   return `${diff}s ago`;
+        if (diff < 5) return 'just now';
+        if (diff < 60) return `${diff}s ago`;
         if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch { return timeStr; }
+        return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    } catch {
+        return timeStr;
+    }
 }
 
 // ─── Place Bid ────────────────────────────────────────────────────────────────
@@ -386,7 +402,7 @@ async function placeBid() {
     if (!selectedLotId || !currentUser) return;
 
     const amount = parseFloat(els.bidAmount.value);
-    const lot    = lots.get(selectedLotId);
+    const lot = lots.get(selectedLotId);
 
     if (!amount || amount <= 0) {
         showBidResult('Enter a valid amount.', 'error');
@@ -400,12 +416,12 @@ async function placeBid() {
     els.placeBidBtn.disabled = true;
     els.placeBidBtn.textContent = 'Placing…';
 
-    const { ok, status, data } = await apiFetch(`/api/lots/${selectedLotId}/bids`, {
+    const {ok, status, data} = await apiFetch(`/api/lots/${selectedLotId}/bids`, {
         method: 'POST',
-        body: JSON.stringify({ amount, bidder_id: currentUser.id }),
+        body: JSON.stringify({amount, bidder_id: currentUser.id}),
     });
 
-    els.placeBidBtn.disabled  = false;
+    els.placeBidBtn.disabled = false;
     els.placeBidBtn.textContent = 'Place Bid';
 
     if (ok && data?.success) {
@@ -451,7 +467,9 @@ function updateLotPrice(lotId, newPrice, broadcast) {
             priceEl.textContent = `$${Number(newPrice).toLocaleString()}`;
             // Flash highlight
             priceEl.style.color = '#34d399';
-            setTimeout(() => { priceEl.style.color = ''; }, 1500);
+            setTimeout(() => {
+                priceEl.style.color = '';
+            }, 1500);
         }
     }
 
@@ -467,7 +485,7 @@ function updateLotPrice(lotId, newPrice, broadcast) {
 
 function showBidResult(msg, type) {
     els.bidResult.textContent = msg;
-    els.bidResult.className   = `bid-result ${type}`;
+    els.bidResult.className = `bid-result ${type}`;
     els.bidResult.classList.remove('hidden');
     setTimeout(() => els.bidResult.classList.add('hidden'), 6000);
 }
@@ -490,13 +508,14 @@ function connectWebSocket() {
         startHeartbeat();
 
         // Re-subscribe to open lot
-        if (selectedLotId) wsSend({ type: 'subscribe_lot', lot_id: selectedLotId });
+        if (selectedLotId) wsSend({type: 'subscribe_lot', lot_id: selectedLotId});
     };
 
     ws.onmessage = (e) => {
         try {
             handleWsMessage(JSON.parse(e.data));
-        } catch { /* ignore malformed */ }
+        } catch { /* ignore malformed */
+        }
     };
 
     ws.onclose = () => {
@@ -505,7 +524,8 @@ function connectWebSocket() {
         scheduleReconnect();
     };
 
-    ws.onerror = () => { /* onclose handles it */ };
+    ws.onerror = () => { /* onclose handles it */
+    };
 }
 
 function handleWsMessage(data) {
@@ -553,7 +573,7 @@ function onLotUpdate(data) {
     // Live activity
     const bidder = data.bidder || 'Someone';
     addEvent('💰', `New bid on "${truncate(lot.title, 28)}"`,
-             `${bidder} → $${Number(newPrice).toLocaleString()}`);
+        `${bidder} → $${Number(newPrice).toLocaleString()}`);
 
     // Notification for open drawer
     if (selectedLotId === data.lot_id) {
@@ -593,7 +613,7 @@ function setWsStatus(connected) {
 }
 
 function startHeartbeat() {
-    heartbeatTimer = setInterval(() => wsSend({ type: 'ping' }), HEARTBEAT_MS);
+    heartbeatTimer = setInterval(() => wsSend({type: 'ping'}), HEARTBEAT_MS);
 }
 
 function stopHeartbeat() {
@@ -614,8 +634,8 @@ function scheduleReconnect() {
 // ─── Live Events Sidebar ─────────────────────────────────────────────────────
 
 function addEvent(icon, title, detail) {
-    const now    = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
 
     const item = document.createElement('div');
     item.className = 'event-item';
@@ -640,10 +660,13 @@ function addEvent(icon, title, detail) {
 
 function showCacheBadge(cacheValue) {
     const v = cacheValue.trim().toUpperCase();
-    if (!v) { els.cacheBadge.classList.add('hidden'); return; }
+    if (!v) {
+        els.cacheBadge.classList.add('hidden');
+        return;
+    }
 
-    els.cacheBadge.textContent       = v === 'HIT' ? '⚡ CACHE HIT' : '🔄 CACHE MISS';
-    els.cacheBadge.className         = `cache-badge ${v === 'HIT' ? 'hit' : 'miss'}`;
+    els.cacheBadge.textContent = v === 'HIT' ? '⚡ CACHE HIT' : '🔄 CACHE MISS';
+    els.cacheBadge.className = `cache-badge ${v === 'HIT' ? 'hit' : 'miss'}`;
     els.cacheBadge.classList.remove('hidden');
 
     // Log cache event
@@ -685,7 +708,7 @@ function setupEventListeners() {
 
     // User select
     els.userSelect.addEventListener('change', () => {
-        const id   = parseInt(els.userSelect.value);
+        const id = parseInt(els.userSelect.value);
         const user = users.find(u => u.id === id);
         if (user) selectUser(user);
     });

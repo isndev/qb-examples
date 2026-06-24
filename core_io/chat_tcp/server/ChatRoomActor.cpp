@@ -43,12 +43,12 @@
  * 
  * @return true if initialization succeeds, false otherwise
  */
-bool ChatRoomActor::onInit() {
+qb::io::async::task<bool> ChatRoomActor::onInit() {
     registerEvent<AuthEvent>(*this);
     registerEvent<ChatEvent>(*this);
     registerEvent<DisconnectEvent>(*this);
     qb::io::cout() << "ChatRoomActor initialized with ID: " << id() << std::endl;
-    return true;
+    co_return true;
 }
 
 /**

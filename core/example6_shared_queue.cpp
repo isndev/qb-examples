@@ -133,11 +133,11 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "Producer " << id() << ": Initialized\n";
         // Start generating work items
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::PRODUCE_ITEM);
-        return true;
+        co_return true;
     }
     
     void on(DelayedActionMsg& msg) {
@@ -181,11 +181,11 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "Consumer " << _consumer_id << " (" << id() << "): Initialized\n";
         // Start processing work items
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::PROCESS_NEXT);
-        return true;
+        co_return true;
     }
     
     void on(DelayedActionMsg& msg) {
@@ -238,11 +238,11 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "Supervisor " << id() << ": Initialized\n";
         // Schedule periodic queue monitoring
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::CHECK_STATS, 1000);
-        return true;
+        co_return true;
     }
     
     void on(DelayedActionMsg& msg) {
@@ -306,7 +306,7 @@ int main() {
     auto shared_queue = std::make_shared<SharedQueue<WorkItemMsg>>();
     
     // Create the producer
-    auto producer_id = engine.addActor<Producer>(0, shared_queue);
+    engine.addActor<Producer>(0, shared_queue);
     
     // Create multiple consumers
     std::vector<qb::ActorId> consumer_ids;

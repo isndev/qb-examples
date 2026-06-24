@@ -62,8 +62,10 @@
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <qb/string.h>
 #include <qb/json.h>
+#include <chrono>
 
 // Redis Configuration
 #define REDIS_URI "tcp://localhost:6379"
@@ -154,53 +156,47 @@ public:
     
     ~SensorProducerActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "SensorProducer [" << _sensor_id << "] initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events
         registerEvent<ShutdownEvent>(*this);
-        
+
         // Register for callbacks
         registerCallback(*this);
-        
-        try {
-            // Connect to Redis - use the connect() method of the Redis client
-            if (!_redis.connect()) {
-                qb::io::cerr() << "SensorProducer [" << _sensor_id 
-                     << "] failed to connect to Redis" << std::endl;
-                return false;
-            }
-            
-            _connected = true;
-            qb::io::cout() << "SensorProducer [" << _sensor_id 
-                 << "] connected to Redis" << std::endl;
-                
-            // Initialize the stream with a special entry to make sure it exists
-            std::vector<std::pair<std::string, std::string>> init_entry = {
-                {"sensor_id", _sensor_id.c_str()},
-                {"type", "initialization"},
-                {"timestamp", std::to_string(std::time(nullptr))}
-            };
-            
-            // Using xadd without the third parameter (auto-generated ID)
-            auto stream_id = _redis.xadd(SENSOR_STREAM, init_entry);
-            
-            // Trim the stream to keep it small (maximum 1000 entries)
-            _redis.xtrim(SENSOR_STREAM, 1000);
-            
-            qb::io::cout() << "SensorProducer [" << _sensor_id << "] initialized stream with ID: " 
-                 << stream_id.to_string() << std::endl;
-            
-            return true;
+
+        // Connect to Redis - co_await the connection
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "SensorProducer [" << _sensor_id
+                 << "] failed to connect to Redis" << std::endl;
+            co_return false;
         }
-        catch (const std::exception& e) {
-            qb::io::cerr() << "SensorProducer Redis error: " << e.what() << std::endl;
-            return false;
-        }
+
+        _connected = true;
+        qb::io::cout() << "SensorProducer [" << _sensor_id
+             << "] connected to Redis" << std::endl;
+
+        // Initialize the stream with a special entry to make sure it exists
+        std::vector<std::pair<std::string, std::string>> init_entry = {
+            {"sensor_id", _sensor_id.c_str()},
+            {"type", "initialization"},
+            {"timestamp", std::to_string(std::time(nullptr))}
+        };
+
+        // Using xadd without the third parameter (auto-generated ID)
+        auto stream_id = co_await _redis.xadd(SENSOR_STREAM, init_entry);
+
+        // Trim the stream to keep it small (maximum 1000 entries)
+        [[maybe_unused]] auto trimmed = co_await _redis.xtrim(SENSOR_STREAM, 1000);
+
+        qb::io::cout() << "SensorProducer [" << _sensor_id << "] initialized stream with ID: "
+             << stream_id.result().to_string() << std::endl;
+
+        co_return true;
     }
-    
+
     // Callback to produce data periodically
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         if (!_connected || !is_alive() || _readings_sent >= _target_readings) {
             if (_readings_sent >= _target_readings) {
                 qb::io::cout() << "SensorProducer [" << _sensor_id << "] completed target readings" << std::endl;
@@ -211,50 +207,48 @@ public:
             }
             return;
         }
-        
-        produce_single_reading();
+
+        // Spawn a coroutine to perform the async stream write
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            co_await produce_single_reading();
+        });
     }
-    
+
     // Generate and send a single data point
-    void produce_single_reading() {
+    qb::io::async::task<void> produce_single_reading() {
         if (!_connected || !is_alive() || _readings_sent >= _target_readings) {
-            return;
+            co_return;
         }
-  
-        try {
-            // Generate random sensor data
-            double temperature = generate_random(15.0, 40.0);  // Celsius
-            double humidity = generate_random(30.0, 90.0);     // Percent
-            double pressure = generate_random(980.0, 1030.0);  // hPa
-            
-            // Create sensor data
-            std::vector<std::pair<std::string, std::string>> sensor_data = {
-                {"sensor_id", _sensor_id.c_str()},
-                {"temperature", std::to_string(temperature)},
-                {"humidity", std::to_string(humidity)},
-                {"pressure", std::to_string(pressure)},
-                {"timestamp", std::to_string(std::time(nullptr))}
-            };
-            
-            // Using xadd without the third parameter (auto-generated ID)
-            auto id = _redis.xadd(SENSOR_STREAM, sensor_data);
-            
-            qb::io::cout() << "SensorProducer [" << _sensor_id 
-                 << "] added reading " << (_readings_sent + 1) << "/" << _target_readings 
-                 << " to stream with ID: " << id.to_string() << std::endl;
-            
-            _readings_sent++;
-            
-            // Notify coordinator about reading (for monitoring only)
-            push<SensorReadingEvent>(g_coordinator_id, 
-                                   _sensor_id.c_str(), 
-                                   temperature, 
-                                   humidity, 
-                                   pressure);
-        }
-        catch (const std::exception& e) {
-            qb::io::cerr() << "Error producing data: " << e.what() << std::endl;
-        }
+
+        // Generate random sensor data
+        double temperature = generate_random(15.0, 40.0);  // Celsius
+        double humidity = generate_random(30.0, 90.0);     // Percent
+        double pressure = generate_random(980.0, 1030.0);  // hPa
+
+        // Create sensor data
+        std::vector<std::pair<std::string, std::string>> sensor_data = {
+            {"sensor_id", _sensor_id.c_str()},
+            {"temperature", std::to_string(temperature)},
+            {"humidity", std::to_string(humidity)},
+            {"pressure", std::to_string(pressure)},
+            {"timestamp", std::to_string(std::time(nullptr))}
+        };
+
+        // Using xadd without the third parameter (auto-generated ID)
+        auto id = co_await _redis.xadd(SENSOR_STREAM, sensor_data);
+
+        qb::io::cout() << "SensorProducer [" << _sensor_id
+             << "] added reading " << (_readings_sent + 1) << "/" << _target_readings
+             << " to stream with ID: " << id.result().to_string() << std::endl;
+
+        _readings_sent++;
+
+        // Notify coordinator about reading (for monitoring only)
+        push<SensorReadingEvent>(g_coordinator_id,
+                               _sensor_id.c_str(),
+                               temperature,
+                               humidity,
+                               pressure);
     }
     
     void on(const ShutdownEvent&) {
@@ -295,45 +289,34 @@ public:
     
     ~CoordinatorActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "CoordinatorActor initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events
         registerEvent<SensorReadingEvent>(*this);
         registerEvent<AlertEvent>(*this);
         registerEvent<ProcessingCompleteEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
-        
-        try {
-            // Connect to Redis
-            if (!_redis.connect()) {
-                qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
-                return false;
-            }
-            
-            _connected = true;
-            qb::io::cout() << "Coordinator connected to Redis" << std::endl;
-            
-            // Clean up any existing stream data
-            try {
-                _redis.del(SENSOR_STREAM);
-                qb::io::cout() << "Coordinator deleted existing stream" << std::endl;
-            }
-            catch (const std::exception&) {
-                // Stream might not exist, which is fine
-            }
-            
-            // Store our ID globally for other actors to use
-            g_coordinator_id = id();
-            qb::io::cout() << "Set global coordinator ID: " << g_coordinator_id << std::endl;
-            
-            return true;
+
+        // Connect to Redis
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
+            co_return false;
         }
-        catch (const std::exception& e) {
-            qb::io::cerr() << "Coordinator initialization error: " << e.what() << std::endl;
-            return false;
-        }
+
+        _connected = true;
+        qb::io::cout() << "Coordinator connected to Redis" << std::endl;
+
+        // Clean up any existing stream data
+        [[maybe_unused]] auto del_r = co_await _redis.del(SENSOR_STREAM);
+        qb::io::cout() << "Coordinator deleted existing stream" << std::endl;
+
+        // Store our ID globally for other actors to use
+        g_coordinator_id = id();
+        qb::io::cout() << "Set global coordinator ID: " << g_coordinator_id << std::endl;
+
+        co_return true;
     }
     
     // Only monitoring data flow, not forwarding events
@@ -362,7 +345,7 @@ public:
                             push<ShutdownEvent>(qb::BroadcastId(i)); // Broadcast à tous les acteurs sur le core i
                         }
                     }
-                }, 2.0); // Wait 2 seconds before notifying consumers
+                }, std::chrono::seconds(2)); // Wait 2 seconds before notifying consumers
             }
         }
     }
@@ -391,9 +374,9 @@ public:
             if (!_shutdown_initiated) {
                 _shutdown_initiated = true;
                 display_statistics();
-                qb::io::async::callback([this]() {
+                qb::io::async::callback([]() {
                     qb::Main::stop();
-                }, 1.0);
+                }, std::chrono::seconds(1));
             }
         }
     }
@@ -450,78 +433,75 @@ private:
     const int MAX_EMPTY_RESULTS = 5; // Threshold for completion check
 
 public:
-    StreamConsumerActor(std::string group_name, std::string consumer_name, 
-                      double alert_threshold = 35.0) 
-        : _group_name(group_name), 
+    StreamConsumerActor(std::string group_name, std::string consumer_name,
+                      double alert_threshold = 35.0)
+        : _redis(qb::io::uri(REDIS_URI)),
+          _group_name(group_name),
           _consumer_name(consumer_name),
-          _alert_threshold(alert_threshold),
-          _redis(qb::io::uri(REDIS_URI))
+          _alert_threshold(alert_threshold)
     {
         // Redis client is initialized in the constructor using member initializer
     }
     
     ~StreamConsumerActor() noexcept override = default;
     
-    bool onInit() override {
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] in group [" 
+    qb::io::async::task<bool> onInit() override {
+        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] in group ["
              << _group_name << "] initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events from coordinator
         registerEvent<ShutdownEvent>(*this);
-        
+
         // Register for callback
         registerCallback(*this);
-        
-        try {
-            // Connect to Redis
-            if (!_redis.connect()) {
-                qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to connect to Redis" << std::endl;
-                return false;
-            }
-            
-            _connected = true;
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] connected to Redis" << std::endl;
-            
-            // Create the consumer group
-            if (create_consumer_group()) {
-                qb::io::cout() << "StreamConsumer [" << _consumer_name << "] created/joined consumer group" << std::endl;
-            } else {
-                qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to create consumer group" << std::endl;
-                return false;
-            }
-            
-            return true;
+
+        // Connect to Redis
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to connect to Redis" << std::endl;
+            co_return false;
         }
-        catch (const std::exception& e) {
-            qb::io::cerr() << "StreamConsumer initialization error: " << e.what() << std::endl;
-            return false;
+
+        _connected = true;
+        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] connected to Redis" << std::endl;
+
+        // Create the consumer group
+        if (co_await create_consumer_group()) {
+            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] created/joined consumer group" << std::endl;
+        } else {
+            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to create consumer group" << std::endl;
+            co_return false;
         }
+
+        co_return true;
     }
-    
-    // Required onCallback implementation for ICallback
-    void onCallback() override {
+
+    // Required periodic-callback implementation for ICallback
+    void on(qb::LoopEvent const&) override {
         if (!_connected || !is_alive() || _shutdown_ready) {
             return;
         }
-        
-        // Read and process messages from the stream
-        poll_stream_for_messages();
-        
-        // Log status
-        if (_processed_count > 0 && _processed_count % 10 == 0) {
-            qb::io::cout() << "StreamConsumer [" << _consumer_name 
-                 << "] active, processed " << _processed_count 
-                 << " messages (GLOBAL: " << GLOBAL_COUNTER << ")" << std::endl;
-        }
+
+        // Spawn a coroutine to read and process messages from the stream
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            co_await poll_stream_for_messages();
+
+            // Log status
+            if (_processed_count > 0 && _processed_count % 10 == 0) {
+                qb::io::cout() << "StreamConsumer [" << _consumer_name
+                     << "] active, processed " << _processed_count
+                     << " messages (GLOBAL: " << GLOBAL_COUNTER << ")" << std::endl;
+            }
+        });
     }
-    
+
     // Poll for new messages from Redis Stream
-    void poll_stream_for_messages() {
+    qb::io::async::task<void> poll_stream_for_messages() {
         try {
             // Using xreadgroup with the appropriate parameters
-            auto results = _redis.xreadgroup(SENSOR_STREAM, _group_name.c_str(), 
+            auto results_r = co_await _redis.xreadgroup(SENSOR_STREAM, _group_name.c_str(),
                                          _consumer_name.c_str(), ">", 1000, 100);
-            
+            const auto& results = results_r.result();
+
             // If results are empty, increment the counter
             if (results.empty() || results.is_null()) {
                 _empty_results_count++;
@@ -533,7 +513,7 @@ public:
                     push<ProcessingCompleteEvent>(g_coordinator_id, _consumer_name.c_str(), _processed_count);
                     push<ShutdownEvent>(id());
                 }
-                return;
+                co_return;
             }
             
             // Reset empty counter since we got messages
@@ -618,7 +598,7 @@ public:
                                         process_extracted_data(message_id, sensor_id, temperature, humidity, pressure);
                                         
                                         // Acknowledge the message using xack
-                                        _redis.xack(SENSOR_STREAM, _group_name.c_str(), message_id);
+                                        [[maybe_unused]] auto ack_r = co_await _redis.xack(SENSOR_STREAM, _group_name.c_str(), message_id);
                                     }
                                 }
                             }
@@ -678,53 +658,46 @@ public:
             << " (GLOBAL_COUNTER: " << GLOBAL_COUNTER << ")" << std::endl;
     }
     
-    bool create_consumer_group() {
+    qb::io::async::task<bool> create_consumer_group() {
         if (_group_created) {
-            return true;
+            co_return true;
         }
-        
-        try {
-            // Check if stream exists with xlen
-            auto stream_length = _redis.xlen(SENSOR_STREAM);
-            bool stream_exists = (stream_length > 0);
-            
-            if (!stream_exists) {
-                // Prepare initialization entry for the stream if it doesn't exist
-                std::vector<std::pair<std::string, std::string>> init_fields = {
-                    {"init", "true"},
-                    {"timestamp", std::to_string(std::time(nullptr))},
-                    {"source", "consumer"},
-                    {"consumer_name", _consumer_name.c_str()}
-                };
-                
-                // Add initialization entry to the stream using xadd
-                _redis.xadd(SENSOR_STREAM, init_fields);
-                qb::io::cout() << "StreamConsumer [" << _consumer_name 
-                    << "] initialized stream" << std::endl;
-            }
-            
-            // Create the consumer group starting from the beginning of the stream
-            // (with mkstream=true to create the stream if it doesn't exist)
-            _redis.xgroup_create(SENSOR_STREAM, _group_name.c_str(), "0", true);
-            qb::io::cout() << "StreamConsumer [" << _consumer_name 
-                << "] created group " << _group_name << std::endl;
-            
+
+        // Check if stream exists with xlen
+        auto stream_length_r = co_await _redis.xlen(SENSOR_STREAM);
+        bool stream_exists = (stream_length_r.ok() && stream_length_r.result() > 0);
+
+        if (!stream_exists) {
+            // Prepare initialization entry for the stream if it doesn't exist
+            std::vector<std::pair<std::string, std::string>> init_fields = {
+                {"init", "true"},
+                {"timestamp", std::to_string(std::time(nullptr))},
+                {"source", "consumer"},
+                {"consumer_name", _consumer_name.c_str()}
+            };
+
+            // Add initialization entry to the stream using xadd
+            [[maybe_unused]] auto add_r = co_await _redis.xadd(SENSOR_STREAM, init_fields);
+            qb::io::cout() << "StreamConsumer [" << _consumer_name
+                << "] initialized stream" << std::endl;
+        }
+
+        // Create the consumer group starting from the beginning of the stream
+        // (with mkstream=true to create the stream if it doesn't exist)
+        auto group_r = co_await _redis.xgroup_create(SENSOR_STREAM, _group_name.c_str(), "0", true);
+        if (!group_r.ok()) {
+            // If group already exists (BUSYGROUP), this is fine
+            qb::io::cout() << "StreamConsumer [" << _consumer_name
+                << "] group already exists, considering it as created" << std::endl;
             _group_created = true;
-            return true;
+            co_return true;
         }
-        catch (const std::exception& e) {
-            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] error in create_consumer_group: " 
-                << e.what() << std::endl;
-            
-            // If group already exists, this is fine
-            if (std::string(e.what()).find("BUSYGROUP") != std::string::npos) {
-                qb::io::cout() << "StreamConsumer [" << _consumer_name 
-                    << "] group already exists, considering it as created" << std::endl;
-                _group_created = true;
-                return true;
-            }
-            return false;
-        }
+
+        qb::io::cout() << "StreamConsumer [" << _consumer_name
+            << "] created group " << _group_name << std::endl;
+
+        _group_created = true;
+        co_return true;
     }
     
     void on(const ShutdownEvent&) {
@@ -740,10 +713,10 @@ public:
         
         // Delay to ensure last messages are processed
         qb::io::async::callback([this]() {
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] final count: " 
+            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] final count: "
                  << _processed_count << " messages" << std::endl;
             kill();
-        }, 0.5);
+        }, std::chrono::milliseconds(500));
     }
 };
 

@@ -22,7 +22,8 @@ class AuctionManager;
  */
 class HttpSession : public qb::http::use<HttpSession>::session<AuctionManager> {
 public:
-    explicit HttpSession(AuctionManager &mgr) : session(mgr) {}
+    explicit HttpSession(AuctionManager &mgr)
+        : session(mgr) {}
 };
 
 } // namespace actors

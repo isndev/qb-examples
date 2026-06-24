@@ -99,20 +99,20 @@ public:
     /**
      * @brief Initialize the actor
      */
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ClientActor initialized on core " << id().index() << std::endl;
-        
+
         // Ensure the test directory exists
         if (!fs::exists(_test_directory)) {
             fs::create_directories(_test_directory);
         }
-        
+
         // Start monitoring after a short delay
         qb::io::async::callback([this]() {
             startMonitoring();
-        }, 0.5);
-        
-        return true;
+        }, std::chrono::milliseconds(500));
+
+        co_return true;
     }
     
     /**
@@ -185,7 +185,7 @@ private:
                 qb::io::cout() << "Test duration completed, shutting down..." << std::endl;
                 broadcast<qb::KillEvent>();
             }
-        }, _test_duration_seconds);
+        }, std::chrono::seconds(_test_duration_seconds));
     }
     
     /**
@@ -222,7 +222,7 @@ private:
         std::string filename = _test_directory + "/test_file_" + std::to_string(index) + ".txt";
         
         // Modify the file asynchronously
-        qb::io::async::callback([this, filename, index]() {
+        qb::io::async::callback([this, filename]() {
             try {
                 if (fs::exists(filename)) {
                     qb::io::sys::file file;
@@ -287,10 +287,10 @@ private:
         }
         
         // Schedule the next operation
-        double delay = 0.5 + (std::rand() % 1000) / 1000.0; // 0.5-1.5 seconds
+        double delay_s = 0.5 + (std::rand() % 1000) / 1000.0; // 0.5-1.5 seconds
         qb::io::async::callback([this]() {
             scheduleRandomModifications();
-        }, delay);
+        }, std::chrono::duration<double>(delay_s));
     }
     
     /**
@@ -342,10 +342,10 @@ int main(int argc, char** argv) {
         auto watcher_id = engine.addActor<file_monitor::DirectoryWatcher>(0);
         
         // Create the file processor on core 1
-        auto processor_id = engine.addActor<file_monitor::FileProcessor>(1, test_dir);
-        
+        engine.addActor<file_monitor::FileProcessor>(1, test_dir);
+
         // Create the client on core 0
-        auto client_id = engine.addActor<ClientActor>(0, watcher_id, test_dir, duration);
+        engine.addActor<ClientActor>(0, watcher_id, test_dir, duration);
         
         // Start the system
         engine.start();

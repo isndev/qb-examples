@@ -19,7 +19,7 @@
  */
 #pragma once
 
-#include <ws/ws.h>
+#include <http/ws.h>
 #include <qb/json.h>
 
 namespace taskmanager {
@@ -31,7 +31,7 @@ class WebSocketHandler;
 /**
  * @brief WebSocket session bound to a WebSocketHandler.
  *
- * Uses the qb-websocket protocol adapter.  Inbound frames are delivered
+ * Uses the qb::http::ws protocol adapter.  Inbound frames are delivered
  * through `on(ws_protocol::message&&)`.  Outbound data is sent via
  * `send_json()` (called by WebSocketHandler when broadcasting events).
  */

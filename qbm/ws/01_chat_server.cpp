@@ -21,9 +21,9 @@
 #include <functional>
 #include <qb/main.h>
 #include <qb/actor.h>
-#include <qb/system/timestamp.h>
+#include <qb/system/time.h>
 #include <http/http.h>
-#include <ws/ws.h>
+#include <http/ws.h>
 #include <http/middleware/static_files.h>
 #include <http/middleware/cors.h>
 #include <http/middleware/logging.h>
@@ -314,21 +314,21 @@ public:
     explicit HttpServer(const std::string& static_root, uint16_t port, qb::ActorId chat_server_id) 
         : _static_root(static_root), _port(port), _chat_server_id(chat_server_id) {}
 
-    bool onInit() override {        
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Starting HTTP Server..." << std::endl;
-        
+
         ensure_static_directory_exists();
         setup_middleware();
         setup_routes();
-        
+
         router().compile();
-        
+
         if (!start_listening()) {
-            return false;
+            co_return false;
         }
-        
+
         std::cout << "HTTP Server running on http://localhost:" << _port << std::endl;
-        return true;
+        co_return true;
     }
 
     void on(HttpSession& session) {
@@ -405,7 +405,7 @@ private:
     }
 
     void setup_main_routes() {
-        router().get("/", [this](auto ctx) {
+        router().get("/", [](auto ctx) {
             ctx->redirect("/static/index.html");
         });
     }
@@ -439,7 +439,7 @@ private:
             {"name", "QB WebSocket Chat Server"},
             {"version", "2.0.0"},
             {"framework", "QB Actor Framework"},
-            {"module", "qbm-websocket"},
+            {"module", "qbm-http (qb::http::ws)"},
             {"architecture", "Separated HTTP/WebSocket Servers"},
             {"features", {
                 "websocket_chat",
@@ -528,30 +528,36 @@ private:
 public:
     explicit ChatServer() = default;
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         registerEvent<TransferToWebSocketEvent>(*this);
         std::cout << "Starting WebSocket Chat Server..." << std::endl;
-        return true;
+        co_return true;
     }
 
     void on(TransferToWebSocketEvent& event) {
         std::cout << "[WS] Received session transfer from HTTP server" << std::endl;
         
-        auto& chat_session = registerSession(std::move(event.data->transport));
-        
+        // registerSession returns nullptr when the session limit is reached
+        // (the incoming socket is closed for us in that case).
+        auto* chat_session = registerSession(std::move(event.data->transport));
+        if (!chat_session) {
+            std::cerr << "[WS] Session limit reached, rejecting WebSocket upgrade." << std::endl;
+            return;
+        }
+
         // The switch_protocol call attempts the WebSocket handshake.
         // It returns true on success and populates the response object.
-        if (chat_session.switch_protocol<ChatSession::ws_protocol>(chat_session, event.data->request, event.data->response)) {
+        if (chat_session->switch_protocol<ChatSession::ws_protocol>(*chat_session, event.data->request, event.data->response)) {
             // Handshake successful, send the 101 response to finalize.
-            chat_session << event.data->response;
-            
+            *chat_session << event.data->response;
+
             ++_connected_users;
             std::cout << "[WS] WebSocket protocol switch successful" << std::endl;
             std::cout << "[WS] User connected. Total WebSocket users: " << _connected_users << std::endl;
         } else {
             // The handshake failed (e.g., it wasn't a valid WebSocket request).
             std::cerr << "[WS] WebSocket handshake failed, disconnecting." << std::endl;
-            chat_session.disconnect();
+            chat_session->disconnect();
         }
     }
 

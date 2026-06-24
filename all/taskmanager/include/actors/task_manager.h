@@ -1,48 +1,43 @@
 /**
  * @file actors/task_manager.h
- * @brief TaskManager – QB Actor, HTTP io_handler, DB/Redis/WS orchestrator.
+ * @brief TaskManager – QB Actor, HTTP io_handler, DB/Redis/WS orchestrator (coroutine-first).
  *
  * ## Architecture overview
  * ```
  * ┌──────────────────────────────────────────────────────────┐
  * │                      VirtualCore N                       │
- * │                                                          │
  * │  ┌──────────────────────────────────────────────────┐   │
  * │  │                   TaskManager                    │   │
- * │  │  ┌─────────────────────────┐                    │   │
- * │  │  │  io_handler<HttpSession>│  N HTTP sessions   │   │
- * │  │  └─────────────────────────┘                    │   │
- * │  │  ┌──────────────────────────────────────────┐   │   │
- * │  │  │           WebSocketHandler               │   │   │
- * │  │  │  io_handler<WsSession>  M WS sessions   │   │   │
- * │  │  │  redis::consumer        tasks:events SUB│   │   │
- * │  │  └──────────────────────────────────────────┘   │   │
- * │  │  ┌──────────────────────┐                       │   │
- * │  │  │  qb::pg::tcp::database│  async prepared SQL  │   │
- * │  │  └──────────────────────┘                       │   │
- * │  │  ┌──────────────────────┐                       │   │
- * │  │  │  redis::tcp::client  │  cache + PUBLISH      │   │
- * │  │  └──────────────────────┘                       │   │
+ * │  │  io_handler<HttpSession>   N HTTP sessions       │   │
+ * │  │  WebSocketHandler          M WS sessions + SUB   │   │
+ * │  │  qb::pg::tcp::database      co_await SQL          │   │
+ * │  │  qb::redis::tcp::client     co_await cache/PUB    │   │
  * │  └──────────────────────────────────────────────────┘   │
  * └──────────────────────────────────────────────────────────┘
  * ```
  *
- * ## QB Actor lifecycle
- * 1. `onInit()`   → connect DB + Redis, initialise WebSocketHandler,
- *                   configure HTTP router, compile routes.
- * 2. Events       → `NewConnectionEvent` dispatched by TcpListener.
- * 3. Shutdown     → `qb::KillEvent` triggers graceful resource release.
+ * ## Coroutine-first lifecycle (the showcase)
+ * `onInit()` is a **coroutine** (`qb::io::async::task<bool>`): it `co_await`s the
+ * PostgreSQL connection, schema + prepared statements, the Redis client, and the
+ * WebSocket Redis subscriber — *before* the actor activates. While `onInit()` is
+ * suspended the actor is **Activating**: inbound `NewConnectionEvent`s are stashed
+ * and replayed once it is fully ready, so no HTTP request is ever served against a
+ * half-connected backend. This is "discover-before-activate": the actor refuses to
+ * go live until its whole machinery is up (`co_return false` aborts creation).
+ *
+ * Every route handler is a coroutine too (a `task<void>(ctx)` lambda passed
+ * directly to the router): they `co_await` the database and Redis directly — no
+ * callback pyramids, no readiness flags to check (activation already guaranteed it).
  *
  * ## Session cleanup (CRITICAL)
- * `TaskManager::disconnected(qb::uuid)` overrides the base `io_handler`
- * callback.  It **must** forward the call to the base implementation so the
- * session is removed from the internal map and its `shared_ptr` is released.
- * Forgetting to do so causes a 60-second memory leak per session (the
- * session's keep-alive timer keeps firing after the response is sent).
+ * `disconnected(qb::uuid)` overrides the base `io_handler` callback and **must**
+ * forward to the base so the session is erased and its `shared_ptr` released.
+ * Forgetting it leaks the session for the 60-second keep-alive window.
  */
 #pragma once
 
 #include <qb/actor.h>
+#include <qb/io/async.h>
 #include <http/http.h>
 #include <pgsql/pgsql.h>
 #include <redis/redis.h>
@@ -56,13 +51,10 @@ namespace taskmanager {
 namespace actors {
 
 /**
- * @brief Main application actor.
+ * @brief Main application actor — one fully independent instance per VirtualCore.
  *
- * Accepts HTTP connections forwarded by TcpListener, serves the REST API,
- * and manages all DB/Redis/WebSocket resources.
- *
- * One instance runs per VirtualCore.  Each instance is fully independent;
- * no state is shared across cores (QB's shared-nothing model).
+ * Serves the REST API + WebSocket upgrade, owns the PostgreSQL, Redis, and
+ * WebSocket resources. Shared-nothing: no state crosses cores.
  */
 class TaskManager
     : public qb::Actor
@@ -79,34 +71,23 @@ public:
 
     // ── QB Actor interface ───────────────────────────────────────────────────
 
-    bool onInit() final;
+    /** Coroutine init: connect DB + Redis + WS subscriber, then activate. */
+    qb::io::async::task<bool> onInit() override;
 
     // ── QB event handlers ────────────────────────────────────────────────────
 
     /** Accept a new TCP connection dispatched by TcpListener (round-robin). */
     void on(NewConnectionEvent &ev);
 
-    /**
-     * @brief Handle OS signal (SIGINT / SIGTERM) for graceful shutdown.
-     *
-     * Triggered when `qb::Main::registerSignal()` is active.  The QB engine
-     * broadcasts a `qb::SignalEvent` to every actor on the receiving core.
-     */
+    /** Handle OS signal (SIGINT / SIGTERM) for graceful shutdown. */
     void on(qb::SignalEvent const &ev);
 
-    /** Graceful shutdown: close DB + Redis before killing the actor. */
+    /** Graceful shutdown: tear down the WS subscriber + DB/Redis, then kill. */
     void on(qb::KillEvent const &);
 
     // ── qb-http io_handler callback ──────────────────────────────────────────
 
-    /**
-     * @brief Called when an HttpSession disconnects.
-     *
-     * Logs the disconnection then **must** call the base `io_handler`
-     * implementation to erase the session from the internal sessions map and
-     * release its `shared_ptr`.  Omitting the base call causes indefinite
-     * session leaks (the 60-second timeout fires on an already-sent response).
-     */
+    /** Called when an HttpSession disconnects — logs then forwards to the base. */
     void disconnected(qb::uuid session_id);
 
 private:
@@ -114,48 +95,39 @@ private:
 
     using ctx_t = std::shared_ptr<qb::http::Context<HttpSession>>;
 
-    // ── Initialisation helpers ───────────────────────────────────────────────
+    // ── Coroutine initialisation helpers ─────────────────────────────────────
 
-    /** Connect to PostgreSQL and create schema + prepared statements. */
-    void init_database();
+    /** Create the `tasks` table and prepare every named SQL statement. */
+    qb::io::async::task<bool> prepare_schema();
 
-    /** Prepare all SQL statements in a single transaction. */
-    bool prepare_statements();
-
-    /** Connect to the Redis instance used for caching / publishing. */
-    void init_redis();
-
-    /** Initialise WebSocketHandler (Redis subscriber + session pool). */
-    void init_websocket_handler();
-
-    /** Register all HTTP routes and attach middleware. */
+    /** Register all HTTP routes (coroutine handlers) and attach middleware. */
     void setup_routes();
 
-    // ── Route handlers ───────────────────────────────────────────────────────
+    /** Graceful resource teardown (idempotent), shared by signal + kill paths. */
+    void shutdown_resources();
 
-    void handle_health    (ctx_t ctx);
-    void handle_ws_upgrade(ctx_t ctx);
+    // ── Coroutine route handlers ─────────────────────────────────────────────
 
-    // Tasks CRUD
-    void handle_list_tasks  (ctx_t ctx);
-    void handle_get_task    (ctx_t ctx);
-    void handle_create_task (ctx_t ctx);
-    void handle_update_task (ctx_t ctx);
-    void handle_delete_task (ctx_t ctx);
+    qb::io::async::task<void> handle_health    (ctx_t ctx);
+    qb::io::async::task<void> handle_ws_upgrade (ctx_t ctx);
+    qb::io::async::task<void> handle_list_tasks (ctx_t ctx);
+    qb::io::async::task<void> handle_get_task   (ctx_t ctx);
+    qb::io::async::task<void> handle_create_task(ctx_t ctx);
+    qb::io::async::task<void> handle_update_task(ctx_t ctx);
+    qb::io::async::task<void> handle_delete_task(ctx_t ctx);
 
     // ── Members ──────────────────────────────────────────────────────────────
 
-    qb::io::uri  _pg_uri;
-    qb::io::uri  _redis_uri;
-    std::string  _static_root;
+    qb::io::uri _pg_uri;
+    qb::io::uri _redis_uri;
+    std::string _static_root;
 
     std::unique_ptr<qb::pg::tcp::database> _db;      ///< PostgreSQL connection.
-    qb::redis::tcp::client                 _redis;   ///< Redis cache client.
+    qb::redis::tcp::client                 _redis;   ///< Redis cache + PUBLISH client.
     WebSocketHandler                       _ws_handler;
 
-    bool _db_ready{false};
+    bool _db_ready{false};    ///< reported by /health (true once activated)
     bool _redis_ready{false};
-    bool _ws_ready{false};
 };
 
 } // namespace actors
