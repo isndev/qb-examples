@@ -62,6 +62,7 @@
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
+#include <chrono>
 
 
 namespace {
@@ -349,9 +350,9 @@ public:
         registerEvent<ShutdownMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "TaskGeneratorActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -381,7 +382,7 @@ private:
                 generateTask();
                 scheduleTaskGeneration();
             }
-        }, seconds_per_task);
+        }, std::chrono::duration<double>(seconds_per_task));
     }
     
     void generateTask() {
@@ -456,9 +457,9 @@ public:
         _worker_ids = worker_ids;
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "TaskSchedulerActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -551,7 +552,6 @@ private:
         for (const auto& worker_id : _worker_ids) {
             if (_task_queue.empty()) break;
             
-            auto& metrics = _worker_metrics[worker_id];
             bool worker_is_available = isWorkerAvailable(worker_id);
             
             if (worker_is_available) {
@@ -605,7 +605,7 @@ private:
             
             assessLoadBalance();
             scheduleLoadAssessment();
-        }, 1.0); // Check every 1 second
+        }, std::chrono::seconds(1)); // Check every 1 second
     }
     
     void assessLoadBalance() {
@@ -655,9 +655,9 @@ public:
         registerEvent<ShutdownMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "WorkerNodeActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -697,9 +697,9 @@ public:
         
         qb::io::async::callback([this]() {
             if (!_is_active) return;
-            
+
             completeCurrentTask();
-        }, processing_time);
+        }, std::chrono::duration<double>(processing_time));
     }
     
     void on(TaskCancellationMessage& msg) {
@@ -808,7 +808,7 @@ private:
             if (_is_active) {
                 scheduleHeartbeat();
             }
-        }, 1.0); // Heartbeat every 1 second
+        }, std::chrono::seconds(1)); // Heartbeat every 1 second
     }
     
     void scheduleMetricsUpdate() {
@@ -834,7 +834,7 @@ private:
             if (_is_active) {
                 scheduleMetricsUpdate();
             }
-        }, 2.0); // Update metrics every 2 seconds
+        }, std::chrono::seconds(2)); // Update metrics every 2 seconds
     }
 };
 
@@ -854,9 +854,9 @@ public:
         registerEvent<ShutdownMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ResultCollectorActor initialized with ID: " << id() << std::endl;
-        return true;
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -929,13 +929,13 @@ public:
         registerEvent<ShutdownMessage>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "SystemMonitorActor initialized with ID: " << id() << std::endl;
-        
+
         // Start the system
         push<InitializeMessage>(id());
-        
-        return true;
+
+        co_return true;
     }
     
     void on(InitializeMessage&) {
@@ -969,7 +969,7 @@ public:
             if (_is_active) {
                 shutdownSystem();
             }
-        }, SIMULATION_DURATION_SECONDS);
+        }, std::chrono::seconds(SIMULATION_DURATION_SECONDS));
     }
     
     void on(SystemStatsMessage& msg) {
@@ -1024,7 +1024,7 @@ private:
             
             // Schedule next report
             schedulePerformanceReport();
-        }, 2.0); // Report every 2 seconds
+        }, std::chrono::seconds(2)); // Report every 2 seconds
     }
     
     void shutdownSystem() {
@@ -1059,7 +1059,7 @@ private:
         // Kill self after a short delay
         qb::io::async::callback([this]() {
             broadcast<ShutdownMessage>();
-        }, 0.5);
+        }, std::chrono::milliseconds(500));
     }
 };
 
@@ -1096,7 +1096,7 @@ int main() {
         auto generator_id = engine.addActor<TaskGeneratorActor>(0, scheduler_id);
         
         // Step 5: Create SystemMonitor (Core 0)
-        auto monitor_id = engine.addActor<SystemMonitorActor>(
+        engine.addActor<SystemMonitorActor>(
             0, generator_id, scheduler_id, collector_id, worker_ids
         );
         

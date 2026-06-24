@@ -14,31 +14,34 @@
  * Then open: http://localhost:8080
  */
 
-#include <qb/main.h>
-#include <qb/actor.h>
-#include <qb/io.h>
-#include <qb/system/timestamp.h>
-#include <pgsql/pgsql.h>
 #include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <iostream>
+#include <pgsql/pgsql.h>
+#include <qb/actor.h>
+#include <qb/io.h>
+#include <qb/io/async.h>
+#include <qb/main.h>
+#include <qb/system/time.h>
 
-#include "auction_house/actors/tcp_listener.h"
 #include "auction_house/actors/auction_manager.h"
+#include "auction_house/actors/tcp_listener.h"
 
 /**
- * @brief Initialize database schema using execute_file() in a transaction.
+ * @brief Bootstrap the database schema by running init_db.sql once, at startup.
  *
- * Runs init_db.sql which creates tables, indexes, and sample data.
- * Uses begin() + await() for synchronous execution within a transaction.
- * Safe to call multiple times - uses CREATE IF NOT EXISTS.
+ * Pre-engine setup: there is no actor loop yet, so we drive a coroutine to
+ * completion synchronously with `qb::io::async::run_sync`. init_db.sql is
+ * idempotent (CREATE IF NOT EXISTS + ON CONFLICT seed), so running it on every
+ * start is safe. Workers later just connect and prepare statements.
  *
- * @param pg_uri PostgreSQL connection URI
- * @param init_db_path Path to init_db.sql file
- * @return true on success, false if file not found or execution failed
+ * @param pg_uri PostgreSQL connection URI.
+ * @param init_db_path Path to init_db.sql.
+ * @return true on success, false if the file is missing or execution failed.
  */
-bool init_db(const qb::io::uri& pg_uri, const std::filesystem::path& init_db_path) {
+bool
+init_db(const qb::io::uri &pg_uri, const std::filesystem::path &init_db_path) {
     if (!std::filesystem::exists(init_db_path)) {
         qb::io::cerr() << "[Main] init_db.sql not found at: " << init_db_path << "\n";
         return false;
@@ -46,64 +49,46 @@ bool init_db(const qb::io::uri& pg_uri, const std::filesystem::path& init_db_pat
 
     qb::io::cout() << "[Main] Initializing database from: " << init_db_path << "\n";
 
-    // Create temporary database client for initialization
-    qb::pg::tcp::database db(pg_uri.source());
-    if (!db.connect()) {
-        qb::io::cerr() << "[Main] Failed to connect to database for initialization\n";
-        return false;
-    }
+    qb::io::async::init(); // this thread needs an event loop to pump run_sync()
 
-    // Execute SQL file within a transaction using await()
-    // This blocks until the operation completes and returns the result
-    bool success = false;
-
-    auto result = db.begin([&init_db_path, &success](qb::pg::transaction& tr) {
-        tr.execute_file(init_db_path,
-            [&success](qb::pg::transaction&, qb::pg::resultset&&) {
-                success = true;
-                qb::io::cout() << "[Main] Database initialized successfully\n";
-            },
-            [](qb::pg::error::db_error const& err) {
-                // Schema may already exist - this is OK
-                qb::io::cout() << "[Main] init_db.sql: " << err.what() << "\n";
-            }
-        );
-    }).await();
+    qb::pg::tcp::database db;
+    const bool            ok = qb::io::async::run_sync([&db, &pg_uri, &init_db_path]() -> qb::io::async::task<bool> {
+        if (!co_await db.connect(pg_uri.source())) {
+            qb::io::cerr() << "[Main] DB connect failed for initialization\n";
+            co_return false;
+        }
+        auto r = co_await db.execute_file(init_db_path);
+        if (r.ok())
+            qb::io::cout() << "[Main] Database initialized successfully\n";
+        else
+            qb::io::cout() << "[Main] init_db.sql: " << r.error().what() << "\n";
+        co_return r.ok();
+    }());
 
     db.disconnect();
-    return result() && success;
+    return ok;
 }
 
-int main(int argc, char* argv[]) {
+int
+main(int argc, char *argv[]) {
     // Configuration
-    constexpr uint16_t PORT = 8080;
-    constexpr uint32_t NUM_WORKERS = 3;
+    constexpr uint16_t PORT          = 8080;
+    constexpr uint32_t NUM_WORKERS   = 3;
     constexpr uint32_t LISTENER_CORE = 0;
 
     // Database configuration (can be overridden via env)
-    const char* pg_host = std::getenv("PG_HOST") ? std::getenv("PG_HOST") : "localhost";
-    const char* pg_user = std::getenv("PG_USER") ? std::getenv("PG_USER") : "auction_user";
-    const char* pg_pass = std::getenv("PG_PASS") ? std::getenv("PG_PASS") : "auction_pass";
-    const char* pg_db = std::getenv("PG_DB") ? std::getenv("PG_DB") : "auction_house";
+    const char *pg_host = std::getenv("PG_HOST") ? std::getenv("PG_HOST") : "localhost";
+    const char *pg_user = std::getenv("PG_USER") ? std::getenv("PG_USER") : "auction_user";
+    const char *pg_pass = std::getenv("PG_PASS") ? std::getenv("PG_PASS") : "auction_pass";
+    const char *pg_db   = std::getenv("PG_DB") ? std::getenv("PG_DB") : "auction_house";
 
-    const qb::io::uri listen_uri{
-        "tcp://0.0.0.0:" + std::to_string(PORT)
-    };
-    const qb::io::uri pg_uri{
-        std::string("tcp://") + pg_user + ":" + pg_pass + "@" + pg_host + ":5432[" + pg_db + "]"
-    };
-    const qb::io::uri redis_uri{
-        "tcp://localhost:6379"
-    };
+    const qb::io::uri listen_uri{"tcp://0.0.0.0:" + std::to_string(PORT)};
+    const qb::io::uri pg_uri{std::string("tcp://") + pg_user + ":" + pg_pass + "@" + pg_host + ":5432[" + pg_db + "]"};
+    const qb::io::uri redis_uri{"tcp://localhost:6379"};
 
     // Find static resources
     std::string static_root = RESOURCES_PATH;
-    for (const char* candidate : {
-         RESOURCES_PATH,
-         "./resources/static",
-         "../resources/static",
-         "../../resources/static"
-    }) {
+    for (const char *candidate : {RESOURCES_PATH, "./resources/static", "../resources/static", "../../resources/static"}) {
         if (std::filesystem::exists(candidate)) {
             static_root = candidate;
             break;
@@ -114,12 +99,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::path init_db_path = INIT_DB_PATH;
     if (!std::filesystem::exists(init_db_path)) {
         // Try fallback paths
-        for (const char* candidate : {
-            INIT_DB_PATH,
-            "./resources/init_db.sql",
-            "../resources/init_db.sql",
-            "../../resources/init_db.sql"
-        }) {
+        for (const char *candidate : {INIT_DB_PATH, "./resources/init_db.sql", "../resources/init_db.sql", "../../resources/init_db.sql"}) {
             if (std::filesystem::exists(candidate)) {
                 init_db_path = candidate;
                 break;
@@ -161,11 +141,9 @@ int main(int argc, char* argv[]) {
     for (uint32_t i = 0; i < NUM_WORKERS; ++i) {
         // Distribute workers across cores 1, 2, 3
         const uint32_t core = 1 + (i % 3);
-        engine.core(core).setLatency(std::chrono::nanoseconds(500'000));  // 500µs for workers
+        engine.core(core).setLatency(std::chrono::nanoseconds(500'000)); // 500µs for workers
 
-        auto id = engine.addActor<auction_house::actors::AuctionManager>(
-            core, pg_uri, redis_uri, static_root
-        );
+        auto id = engine.addActor<auction_house::actors::AuctionManager>(core, pg_uri, redis_uri, static_root);
 
         if (!id.is_valid()) {
             qb::io::cerr() << "Failed to create AuctionManager on core " << core << "\n";
@@ -173,23 +151,21 @@ int main(int argc, char* argv[]) {
         }
 
         worker_ids.push_back(id);
-        qb::io::cout() << "[Main] Worker " << (i + 1) << "/" << NUM_WORKERS
-                      << " created on core " << core << " (actor " << static_cast<std::uint32_t>(id) << ")\n";
+        qb::io::cout() << "[Main] Worker " << (i + 1) << "/" << NUM_WORKERS << " created on core " << core << " (actor "
+                       << static_cast<std::uint32_t>(id) << ")\n";
     }
 
     // Create TCP listener on dedicated core
-    engine.core(LISTENER_CORE).setLatency(qb::duration::zero());  // 0µs for hot loop
-    auto listener_id = engine.addActor<auction_house::actors::TcpListener>(
-        LISTENER_CORE, listen_uri, worker_ids
-    );
+    engine.core(LISTENER_CORE).setLatency(qb::duration::zero()); // 0µs for hot loop
+    auto listener_id = engine.addActor<auction_house::actors::TcpListener>(LISTENER_CORE, listen_uri, worker_ids);
 
     if (!listener_id.is_valid()) {
         qb::io::cerr() << "Failed to create TcpListener\n";
         return 1;
     }
 
-    qb::io::cout() << "[Main] TcpListener created on core " << LISTENER_CORE
-                  << " (actor " << static_cast<std::uint32_t>(listener_id) << ")\n\n";
+    qb::io::cout() << "[Main] TcpListener created on core " << LISTENER_CORE << " (actor " << static_cast<std::uint32_t>(listener_id)
+                   << ")\n\n";
 
     qb::io::cout() << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     qb::io::cout() << "Server running at http://localhost:" << PORT << "\n";

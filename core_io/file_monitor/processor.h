@@ -33,6 +33,7 @@
 #pragma once
 
 #include <qb/actor.h>
+#include <qb/io/async.h>
 #include <string>
 #include <unordered_map>
 #include <filesystem>
@@ -71,7 +72,7 @@ public:
     /**
      * @brief Initialize the actor
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
     
     /**
      * @brief Event handlers

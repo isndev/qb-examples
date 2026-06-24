@@ -30,6 +30,7 @@
  */
 
 #include "ClientActor.h"
+#include <chrono>
 #include <iostream>
 #include <sstream>
 
@@ -52,11 +53,11 @@ ClientActor::ClientActor(qb::ActorId input_actor, qb::io::uri server_uri)
  * 2. Initiates server connection
  * 3. Prepares message processing
  */
-bool ClientActor::onInit() {
+qb::io::async::task<bool> ClientActor::onInit() {
     qb::io::cout() << "ClientActor initialized with ID: " << id() << std::endl;
     registerEvent<BrokerInputEvent>(*this);
     connect();
-    return true;
+    co_return true;
 }
 
 /**
@@ -110,7 +111,7 @@ void ClientActor::on(qb::io::async::event::disconnected const&) {
         qb::io::async::callback([this]() {
             qb::io::cout() << "Attempting to reconnect..." << std::endl;
             connect();
-        }, RECONNECT_DELAY);
+        }, std::chrono::duration<double>(RECONNECT_DELAY));
     }
 }
 
@@ -134,7 +135,8 @@ void ClientActor::connect() {
                 onConnectionFailed();
             }
         },
-        CONNECT_TIMEOUT
+        std::chrono::duration_cast<qb::duration>(
+            std::chrono::duration<double>(CONNECT_TIMEOUT))
     );
 }
 
@@ -177,7 +179,7 @@ void ClientActor::onConnectionFailed() {
         qb::io::async::callback([this]() {
             qb::io::cout() << "Retrying connection..." << std::endl;
             connect();
-        }, RECONNECT_DELAY);
+        }, std::chrono::duration<double>(RECONNECT_DELAY));
     }
 }
 

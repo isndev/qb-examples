@@ -49,6 +49,7 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+using namespace std::chrono_literals;
 
 #include "file_manager.h"
 #include "file_worker.h"
@@ -77,20 +78,20 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ClientActor initialized with ID " << id() << " on core " << id().index() << std::endl;
-        
+
         // Ensure the test directory exists
         if (!fs::exists(_test_directory)) {
             fs::create_directories(_test_directory);
         }
-        
+
         // Start tests after a short delay
         qb::io::async::callback([this]() {
             startTests();
-        }, 0.5);
-        
-        return true;
+        }, 500ms);
+
+        co_return true;
     }
     
     void on(ReadFileResponse& response) {
@@ -193,7 +194,7 @@ private:
             qb::io::async::callback([this]() {
                 // Broadcast the Kill event
                 broadcast<qb::KillEvent>();
-            }, 1.0);
+            }, 1s);
         }
     }
 };
@@ -226,7 +227,7 @@ int main(int argc, char** argv) {
         }
         
         // Create the client on core 0
-        auto client_id = engine.addActor<ClientActor>(0, manager_id, test_dir);
+        engine.addActor<ClientActor>(0, manager_id, test_dir);
         
         // Start the system
         engine.start();

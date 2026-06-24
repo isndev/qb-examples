@@ -47,13 +47,13 @@
  * 
  * @return true if initialization succeeds, false otherwise
  */
-bool TopicManagerActor::onInit() {
+qb::io::async::task<bool> TopicManagerActor::onInit() {
     registerEvent<SubscribeEvent>(*this);
     registerEvent<UnsubscribeEvent>(*this);
     registerEvent<PublishEvent>(*this);
     registerEvent<DisconnectEvent>(*this);
     qb::io::cout() << "TopicManagerActor initialized with ID: " << id() << std::endl;
-    return true;
+    co_return true;
 }
 
 /**
@@ -254,7 +254,7 @@ void TopicManagerActor::on(DisconnectEvent& evt) {
 void TopicManagerActor::sendToSession(qb::uuid session_id, qb::ActorId server_id, 
                                       broker::MessageType type, const std::string& payload) {
     // Create event with optimized message handling
-    auto& evt = push<SendMessageEvent>(server_id, session_id, type, payload);
+    push<SendMessageEvent>(server_id, session_id, type, payload);
 }
 
 /**
@@ -271,7 +271,7 @@ void TopicManagerActor::sendToSession(qb::uuid session_id, qb::ActorId server_id
                                      const broker::MessageContainer& shared_message) {
     // Create event that references the shared message container
     // The underlying message data will be atomically shared
-    auto& evt = push<SendMessageEvent>(server_id, session_id, shared_message);
+    push<SendMessageEvent>(server_id, session_id, shared_message);
 }
 
 /**

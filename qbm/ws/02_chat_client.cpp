@@ -29,7 +29,7 @@
 #include <qb/io/system/file.h>
 #include <qb/io/transport/file.h>
 #include <qb/io/protocol/text.h>
-#include <ws/ws.h>
+#include <http/ws.h>
 #include <qb/json.h>
 
 // Forward declarations
@@ -136,21 +136,21 @@ public:
     explicit WebSocketClientActor(qb::ActorId cmdline_id) 
         : _cmdline_actor_id(cmdline_id), _ws_key(qb::http::ws::generateKey()) {}
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "[CLIENT] WebSocket client actor started" << std::endl;
-        
+
         // Register events
         registerEvent<UserInputEvent>(*this);
         registerEvent<UsernameChangeEvent>(*this);
         registerEvent<ConnectEvent>(*this);
         registerEvent<DisconnectEvent>(*this);
-        
+
         // Inform CommandLine actor of our ID
         if (_cmdline_actor_id.is_valid()) {
             push<SetWebSocketActorEvent>(_cmdline_actor_id, this->id());
         }
-        
-        return true;
+
+        co_return true;
     }
 
     // Handle user input from command line
@@ -428,15 +428,15 @@ public:
         _websocket_actor_id = websocket_id;
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "=== QB WebSocket Chat Client ===\n";
         std::cout << "Type /help for available commands\n";
         std::cout << "Type /connect ws://localhost:8080/ws to connect to server\n\n";
-        
+
         // Register events
         registerEvent<DisplayMessageEvent>(*this);
         registerEvent<SetWebSocketActorEvent>(*this);
-        
+
         // Start input handling thread
         _input_thread = std::thread([this]() {
             std::string line;
@@ -447,11 +447,11 @@ public:
             }
             g_input_queue.shutdown();
         });
-        
+
         // Start periodic checking for input with a small delay
         schedule_input_check();
-        
-        return true;
+
+        co_return true;
     }
 
     void on(const DisplayMessageEvent& event) {
@@ -478,7 +478,7 @@ private:
             if (is_alive()) {
                 schedule_input_check();
             }
-        }, 0.05);
+        }, std::chrono::milliseconds(50));
     }
 
     void handle_input(const std::string& input) {
@@ -513,7 +513,7 @@ private:
                 if (is_alive()) {
                     broadcast<qb::KillEvent>();
                 }
-            }, 0.5);  // Small delay to let disconnect finish
+            }, std::chrono::milliseconds(500));  // Small delay to let disconnect finish
         } else if (command.substr(0, 9) == "/connect ") {
             std::string url = command.substr(9);
             if (!url.empty() && _websocket_actor_id.is_valid()) {

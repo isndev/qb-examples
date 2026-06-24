@@ -24,7 +24,7 @@
 
 #include <qb/main.h>
 #include <qb/io.h>
-#include <qb/system/timestamp.h>
+#include <qb/system/time.h>
 #include <chrono>
 #include <filesystem>
 

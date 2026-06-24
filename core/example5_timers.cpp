@@ -99,9 +99,9 @@ public:
         registerEvent<qb::KillEvent>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "TimerManager " << id() << ": Initialized\n";
-        return true;
+        co_return true;
     }
     
     void on(StartTimerMsg& msg) {
@@ -203,20 +203,20 @@ public:
         registerEvent<TimerFiredMsg>(*this);
     }
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "Application starting...\n";
-        
+
         // Start a fast timer that repeats 5 times
         push<StartTimerMsg>(_timer_manager_id, 500ms, 5, "fast_timer");
-        
+
         // Start a slow timer that repeats indefinitely (repeat_count = 0)
         push<StartTimerMsg>(_timer_manager_id, 2000ms, 0, "slow_timer");
-        
+
         // Schedule the first application step with a longer delay
         // to allow for observing timers in action
         push<DelayedActionMsg>(id(), DelayedActionMsg::Action::APP_STEP_1, 5000);
-        
-        return true;
+
+        co_return true;
     }
     
     // Forward timer events to console for better visualization

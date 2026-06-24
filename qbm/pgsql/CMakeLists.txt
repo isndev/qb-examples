@@ -35,9 +35,8 @@ set(QB_PGSQL_EXAMPLES
     example1_basic_query
     example2_prepared_statements
     example3_transaction_management
-    # Uncomment when implemented:
-    # example4_data_types
-    # example5_error_handling
+    example4_data_types
+    example5_error_handling
 )
 
 # Build each PostgreSQL example

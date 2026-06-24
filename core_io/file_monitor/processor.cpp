@@ -51,9 +51,9 @@ FileProcessor::FileProcessor(const std::string& base_path)
     registerEvent<qb::KillEvent>(*this);
 }
 
-bool FileProcessor::onInit() {
+qb::io::async::task<bool> FileProcessor::onInit() {
     qb::io::cout() << "FileProcessor initialized on core " << id().index() << std::endl;
-    return true;
+    co_return true;
 }
 
 void FileProcessor::on(FileEvent& event) {

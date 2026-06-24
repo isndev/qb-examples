@@ -23,6 +23,73 @@
 
 using qb::json;
 
+// Absolute in-tree resources path, baked by CMake so the example works from any
+// working directory. Empty when built outside that CMake target.
+#ifndef HTTP2_RESOURCES_DIR
+#define HTTP2_RESOURCES_DIR ""
+#endif
+
+// Locate the directory that actually contains index.html. Tried in order:
+//   1. $HTTP2_STATIC_ROOT (explicit override)
+//   2. ./resources/http2   (when launched from the build bin/ dir)
+//   3. the CMake-baked in-tree path (always present in a source checkout)
+// This avoids the "Index file not found" 404 the example showed when run from a
+// directory without ./resources/http2.
+static std::string
+resolve_static_root() {
+    namespace fs = std::filesystem;
+    std::vector<std::string> candidates;
+    if (const char *env = std::getenv("HTTP2_STATIC_ROOT"); env && *env)
+        candidates.emplace_back(env);
+    candidates.emplace_back("./resources/http2");
+    if (std::string baked = HTTP2_RESOURCES_DIR; !baked.empty())
+        candidates.emplace_back(std::move(baked));
+
+    for (const auto &c : candidates) {
+        std::error_code ec;
+        if (fs::exists(fs::path(c) / "index.html", ec)) {
+            std::cout << "Static root resolved to: " << c << std::endl;
+            return c;
+        }
+    }
+    std::cerr << "WARNING: could not find resources/http2/index.html in any known "
+                 "location. Set HTTP2_STATIC_ROOT or run from a dir containing "
+                 "resources/http2." << std::endl;
+    return candidates.back();
+}
+
+// Parse a decimal integer from an untrusted path/query param and require it to
+// fall within [lo, hi]. Returns false (without throwing) on any non-numeric,
+// out-of-range, or trailing-garbage input so handlers can answer 400 instead of
+// letting std::stoi throw into the framework (which surfaced as a 500).
+static bool
+parse_bounded_int(const std::string &s, int lo, int hi, int &out) {
+    if (s.empty())
+        return false;
+    try {
+        std::size_t pos = 0;
+        const long  v   = std::stol(s, &pos);
+        if (pos != s.size() || v < lo || v > hi)
+            return false;
+        out = static_cast<int>(v);
+        return true;
+    } catch (const std::exception &) {
+        return false;
+    }
+}
+
+// Reply 400 Bad Request with a small JSON error body and complete the context.
+template <typename Ctx>
+static void
+send_bad_request(Ctx &ctx, const char *message) {
+    qb::json err;
+    err["error"] = message;
+    ctx->response().status() = qb::http::Status::BAD_REQUEST;
+    ctx->response().add_header("Content-Type", "application/json");
+    ctx->response().body() = err;
+    ctx->complete();
+}
+
 /**
  * @class Http2StaticSession
  * @brief HTTP/2 session handling client connections
@@ -48,18 +115,18 @@ public:
     explicit Http2StaticServer(const std::string& static_root = "./resources/http2")
         : _static_root(static_root), _cert_file("./server.crt"), _key_file("./server.key") {}
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "HTTP/2 server actor created successfully" << std::endl;
         std::cout << "Initializing HTTP/2 Static File Server..." << std::endl;
-        
+
         if (!setup_directories_and_ssl()) {
-            return false;
+            co_return false;
         }
-        
+
         setup_middleware();
         setup_routes();
-        
-        return setup_and_start_server();
+
+        co_return setup_and_start_server();
     }
 
 private:
@@ -151,8 +218,12 @@ private:
                 ctx->response().add_header("Content-Type", "text/html; charset=utf-8");
                 ctx->complete();
             } else {
+                // Always set a Content-Type: with X-Content-Type-Options: nosniff
+                // (from the security middleware) a typeless body makes the browser
+                // download the response instead of displaying it.
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
-                ctx->response().body() = "Index file not found";
+                ctx->response().add_header("Content-Type", "text/plain; charset=utf-8");
+                ctx->response().body() = "Index file not found (static root: " + _static_root + ")";
                 ctx->complete();
             }
         });
@@ -185,7 +256,7 @@ private:
             response["description"] = "Multiple requests over single connection";
             response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-            response["request_id"] = ctx->request().query("request", 0, "unknown");
+            response["request_id"] = ctx->request().query_or("request", "unknown");
             response["stream_id"] = rand() % 1000 + 1;
             response["benefits"] = qb::json::array({
                 "Reduced latency", "Better resource utilization", "Improved page load times"
@@ -229,7 +300,7 @@ private:
             response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             
-            std::string resource = ctx->request().query("resource", 0, "");
+            std::string resource = ctx->request().query("resource");
             if (!resource.empty()) {
                 response["pushed_resource"] = resource;
                 response["size_bytes"] = resource.length() * 100;
@@ -241,29 +312,40 @@ private:
         });
 
         api_group->get("/performance/:iterations", [](auto ctx) {
-            std::string iterations_str = ctx->path_param("iterations");
-            int iterations = std::stoi(iterations_str);
-            
+            // path/query params are attacker-controlled: a non-numeric or huge value
+            // must yield 400, never an uncaught std::stoi exception (which became a 500).
+            int iterations = 0, current = 1;
+            if (!parse_bounded_int(ctx->path_param("iterations"), 1, 1'000'000, iterations) ||
+                !parse_bounded_int(ctx->request().query_or("iteration", "1"), 1, 1'000'000, current)) {
+                send_bad_request(ctx, "iterations and iteration must be integers in [1, 1000000]");
+                return;
+            }
+
             qb::json response;
             response["feature"] = "Performance Testing";
             response["total_iterations"] = iterations;
-            response["current_iteration"] = std::stoi(ctx->request().query("iteration", 0, "1"));
+            response["current_iteration"] = current;
             response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             response["latency_ms"] = rand() % 50 + 10;
             response["throughput_rps"] = 1000 + rand() % 500;
-            
+
             ctx->response().body() = response;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->complete();
         });
 
         api_group->get("/data/:size", [](auto ctx) {
-            std::string size_str = ctx->path_param("size");
-            int size_kb = std::stoi(size_str);
-            
-            std::string data(size_kb * 1024, 'A');
-            
+            // Bound the size to avoid both an uncaught std::stoi throw and an
+            // unbounded allocation (e.g. /api/data/999999999).
+            int size_kb = 0;
+            if (!parse_bounded_int(ctx->path_param("size"), 0, 1024, size_kb)) {
+                send_bad_request(ctx, "size must be an integer in [0, 1024] (KB)");
+                return;
+            }
+
+            std::string data(static_cast<size_t>(size_kb) * 1024, 'A');
+
             qb::json response;
             response["feature"] = "Bulk Data Transfer";
             response["requested_size_kb"] = size_kb;
@@ -271,7 +353,7 @@ private:
             response["data"] = data.substr(0, 100) + "...";
             response["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-            
+
             ctx->response().body() = response;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->complete();
@@ -368,7 +450,7 @@ int main() {
     qb::Main engine;
     
     try {
-        engine.addActor<Http2StaticServer>(0);
+        engine.addActor<Http2StaticServer>(0, resolve_static_root());
         engine.start(false);
         engine.join();
         

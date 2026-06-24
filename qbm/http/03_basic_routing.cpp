@@ -29,18 +29,18 @@ private:
 public:
     RoutingServerActor() = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing Routing Server Actor..." << std::endl;
-        
+
         // Initialize some sample data
         initialize_sample_data();
-        
+
         // Set up routes
         setup_routes();
-        
+
         // Compile the router
         router().compile();
-        
+
         // Start listening on port 8080
         if (listen({"tcp://0.0.0.0:8080"})) {
             start();
@@ -49,10 +49,10 @@ public:
             std::cout << "Press Ctrl+C to stop the server" << std::endl;
         } else {
             std::cerr << "Failed to start listening server" << std::endl;
-            return false;
+            co_return false;
         }
-        
-        return true;
+
+        co_return true;
     }
     
 private:
@@ -291,7 +291,6 @@ private:
     }
     
     void handle_search(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        auto& query_params = ctx->request().queries();
         std::string search_term = ctx->request().query("q");
         
         ctx->response().status() = qb::http::Status::OK;

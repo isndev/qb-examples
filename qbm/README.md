@@ -12,11 +12,11 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
 *   **Content**: Examples cover basic servers, routing, middleware, controllers, asynchronous handlers, REST API construction, static file serving, JWT authentication, request validation, and more.
 *   [**View HTTP Module Examples &raquo;**](./http/README.md)
 
-### 2. WebSocket Module (`./ws/`)
+### 2. WebSocket Examples (`./ws/`)
 
-*   **Focus**: Advanced WebSocket implementations with separated server architectures and real-time communication.
+*   **Focus**: Advanced WebSocket implementations with separated server architectures and real-time communication. WebSocket is not a standalone module — it ships inside qbm-http as `qb::http::ws` (header `<http/ws.h>`), so these examples depend on `qbm-http`.
 *   **Content**: Features a complete chat system demonstrating socket extraction, actor-based responsibility separation, clean message dispatch systems, and both web browser and command-line clients. Showcases implicit multithreading via QB VirtualCores and event-driven inter-actor communication.
-*   [**View WebSocket Module Examples &raquo;**](./ws/README.md)
+*   [**View WebSocket Examples &raquo;**](./ws/README.md)
 
 ### 3. PostgreSQL Module (`./pgsql/`)
 

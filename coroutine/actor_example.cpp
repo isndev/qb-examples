@@ -56,13 +56,13 @@ class CoroWorker : public qb::Actor {
     int processed_count_ = 0;
 
 public:
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "CoroWorker initialized with ID: " << id() << "\n";
 
         registerEvent<StartProcessing>(*this);
         registerEvent<ProcessingComplete>(*this);
 
-        return true;
+        co_return true;
     }
 
     // Synchronous event handler - this is where we receive requests
@@ -76,10 +76,9 @@ public:
         int req_id = req.request_id;
         std::string data = req.data;
         uint64_t start = start_time;
-        qb::ActorId sender = req.sender;
 
-        // Launch async coroutine in isolated context
-        spawn_async([this, req_id, data, start, sender](auto ctx) -> qb::io::async::task<void> {
+        // Launch async coroutine scoped to this actor's lifetime
+        spawn([req_id, data, start](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             // This runs in isolated context - we can only use ctx interface
             // NO direct access to Actor members here!
 
@@ -89,7 +88,7 @@ public:
             uint64_t elapsed = ctx.time() - start;
 
             // Return result via event (only way to communicate back)
-            ctx.push<ProcessingComplete>(req_id, result, elapsed);
+            ctx.template push<ProcessingComplete>(req_id, result, elapsed);
 
             std::cout << "[Coroutine] Request " << req_id << " completed in "
                       << elapsed / 1'000'000 << "ms\n";
@@ -115,10 +114,33 @@ public:
         // reply(ev);  // Uncomment if we want to send back to caller
     }
 
-    void on(qb::KillEvent&) override {
+    void on(qb::KillEvent const& ev) {
         std::cout << "[Actor " << id() << "] Shutting down. Total processed: "
                   << processed_count_ << "\n";
         kill();
+    }
+};
+
+// Driver actor that sends test requests to CoroWorker
+class TestDriver : public qb::Actor {
+    qb::ActorId _worker_id;
+
+public:
+    explicit TestDriver(qb::ActorId worker_id)
+        : _worker_id(worker_id) {}
+
+    qb::io::async::task<bool> onInit() override {
+        std::cout << "TestDriver initialized\n";
+        // Send a few test requests immediately
+        std::cout << "\nSending test requests...\n\n";
+        for (int i = 1; i <= 3; ++i) {
+            push<StartProcessing>(_worker_id, i, "TestData-" + std::to_string(i));
+        }
+        // Wait 1 second then broadcast shutdown (enough time for 100ms processing × 3)
+        co_await context().sleep(std::chrono::seconds(1));
+        std::cout << "\nInitiating shutdown...\n";
+        broadcast<qb::KillEvent>();
+        co_return true;
     }
 };
 
@@ -127,44 +149,19 @@ int main(int argc, char* argv[]) {
     std::cout << "=== QB Actor + Coroutine Example ===\n\n";
 
     // Create the main engine
-    qb::Main main;
+    qb::Main engine;
 
-    // Configure one core
-    auto& core = main.core(0);
+    // Add our coroutine worker actor on core 0
+    auto worker_id = engine.addActor<CoroWorker>(0);
 
-    // Add our coroutine worker actor
-    auto worker_id = core.add<CoroWorker>();
-
-    // Add a test driver that sends requests
-    core.add<qb::Actor>([worker_id](qb::Actor& self) {
-        bool onInit() override {
-            registerEvent<qb::StartEvent>(*this);
-            return true;
-        }
-
-        void on(qb::StartEvent&) {
-            // Send a few test requests
-            std::cout << "\nSending test requests...\n\n";
-
-            for (int i = 1; i <= 3; ++i) {
-                push<StartProcessing>(worker_id, i, "TestData-" + std::to_string(i));
-            }
-
-            // Schedule shutdown after processing completes
-            qb::io::async::callback([this]() {
-                std::cout << "\nInitiating shutdown...\n";
-                broadcast<qb::KillEvent>();
-            }, 1.0);  // 1 second delay
-        }
-    });
+    // Add the test driver on core 0, passing the worker's id
+    engine.addActor<TestDriver>(0, worker_id);
 
     // Start the engine
     std::cout << "Starting QB engine...\n\n";
 
-    if (!main.start()) {
-        std::cerr << "Failed to start QB engine\n";
-        return 1;
-    }
+    engine.start();
+    engine.join();
 
     std::cout << "\n=== Example completed! ===\n";
 

@@ -68,16 +68,16 @@ private:
     bool _running = false;
     
 public:
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         // Register event handlers
         registerEvent<StartWorkEvent>(*this);
         registerEvent<StatusRequestEvent>(*this);
         registerEvent<ShutdownRequestEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
-        
+
         qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Initialized, waiting for start signal\n";
-        return true;
+        co_return true;
     }
     
     void on(StartWorkEvent const&) {
@@ -131,13 +131,13 @@ public:
         kill();
     }
     
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         // This is called periodically while the callback is registered
         _processed_count++;
-        
+
         qb::io::cout() << "[" << getCurrentTimeString() << "] Worker " << id()
                   << ": Processing item #" << _processed_count << "\n";
-        
+
         // Simulate some work
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -154,23 +154,23 @@ public:
     explicit SupervisorActor(std::vector<qb::ActorId> worker_ids) 
         : _worker_ids(std::move(worker_ids)) {}
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         // Register event handlers
         registerEvent<StatusResponseEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
         registerCallback(*this);
-        
+
         qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Initialized, managing "
                   << _worker_ids.size() << " workers\n";
-        
+
         // Start all workers
         for (const auto& worker_id : _worker_ids) {
             qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Starting worker "
                       << worker_id << "\n";
             push<StartWorkEvent>(worker_id);
         }
-        
-        return true;
+
+        co_return true;
     }
     
     void on(StatusResponseEvent const& event) {
@@ -191,7 +191,7 @@ public:
         kill();
     }
     
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         // Periodically check worker status
         qb::io::cout() << "[" << getCurrentTimeString() << "] Supervisor: Checking status of all workers\n";
         

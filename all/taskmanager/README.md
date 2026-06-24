@@ -1,7 +1,22 @@
-# QB TaskManager – Expert Architecture Example
+# QB TaskManager – Expert Architecture Example (coroutine-first)
 
 A production-grade reference project demonstrating the **QB project convention**
-for building multi-actor, full-stack applications on the QB framework.
+for building multi-actor, full-stack applications on the QB framework — written
+**end-to-end with C++20 coroutines**.
+
+Everything that touches the network is a coroutine:
+
+- **`onInit()` is a coroutine** (`qb::io::async::task<bool>`). Each TaskManager
+  `co_await`s its PostgreSQL connection, schema + prepared statements, Redis
+  client, and WebSocket Redis subscriber *before activating*. While init is
+  suspended the actor is **Activating**: inbound connections are stashed and
+  replayed once it is fully ready — *discover-before-activate*. A failed backend
+  makes `onInit` `co_return false`, so the actor never goes live half-connected.
+- **Every route handler is a coroutine** (a `task<void>(ctx)` lambda passed
+  directly to the router): it `co_await`s the database and Redis directly — no
+  callback pyramids, no readiness flags (activation already guaranteed them).
+- **Redis Pub/Sub is a coroutine loop** (`qb::redis::tcp::co_consumer`):
+  `while (auto m = co_await receive()) broadcast(...)`.
 
 ---
 
@@ -97,7 +112,7 @@ POST /tasks
   └─ DB INSERT → RETURNING id
       └─ redis.del("tasks:list")              ← cache invalidation
           └─ redis.publish("tasks:events", …) ← pub/sub
-              └─ WebSocketHandler::on(redis::message)
+              └─ co_await consumer.receive()   ← WebSocketHandler::consume_loop()
                   └─ broadcast_to_all(json)
                       └─ WsSession::send_json  × N clients
 ```
@@ -125,8 +140,9 @@ POST /tasks
 
 ### `WebSocketHandler`  _(inner component, not an actor)_
 - Inherits `qb::io::use<T>::tcp::io_handler<WsSession>` (session pool)
-- Inherits `qb::redis::tcp::consumer<T>` (Redis SUB connection)
-- `init()` must be called from `TaskManager::onInit()`
+- Owns a `qb::redis::tcp::co_consumer` (coroutine Redis SUB)
+- `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the actor
+  then spawns `consume_loop()` (scoped — cancelled on kill)
 
 ### `WsSession`  _(declaration + impl)_
 - Thin CRTP wrapper: `qb::io::use<WsSession>::tcp::client<WebSocketHandler>`
@@ -179,49 +195,56 @@ void TaskManager::disconnected(qb::uuid session_id) {
 }
 ```
 
-### 4 – Async DB + cache pattern
+### 4 – Coroutine DB + cache pattern
+
+No callbacks: the handler `co_await`s Redis, then the DB on a miss, then writes
+the response. Linear, exception-safe, readable.
 
 ```cpp
-void TaskManager::handle_list_tasks(ctx_t ctx) {
-    // 1. Try Redis cache
-    auto cached = _redis.get("tasks:list");
-    if (cached.has_value()) {
-        ctx->json(qb::json::parse(*cached));
-        return;
+qb::io::async::task<void> TaskManager::handle_list_tasks(ctx_t ctx) {
+    // 1. Redis cache
+    auto cached = co_await _redis.get("tasks:list");
+    if (cached.ok() && cached.result().has_value() && !cached.result()->empty()) {
+        ctx->response().add_header("X-Cache", "HIT");
+        ctx->json(qb::json::parse(*cached.result()));
+        co_return;
     }
 
-    // 2. Cache miss → async DB query
-    _db->execute("select_all_tasks", {},
-        [this, ctx](qb::pg::transaction &, qb::pg::resultset &&res) {
-            auto json = models::TaskList(res).to_json();
-            _redis.setex("tasks:list", 60, json.dump());   // cache for 60 s
-            ctx->json(json);
-        },
-        [ctx](qb::pg::error::db_error const &err) {
-            ctx->internal_server_error(err.what());
-        });
+    // 2. Cache miss → DB, then cache for 60 s
+    auto res = co_await _db->execute("select_all_tasks", qb::pg::params{});
+    if (!res.ok()) { ctx->internal_server_error(res.error().what()); co_return; }
+
+    auto json = models::TaskList(res.result(), false).to_json();
+    co_await _redis.setex("tasks:list", 60LL, json.dump());
+    ctx->response().add_header("X-Cache", "MISS");
+    ctx->json(json);
+    co_return;
 }
 ```
 
-### 5 – Event-driven cache invalidation
+### 5 – Event-driven cache invalidation (coroutine)
 
 ```cpp
 // After any mutation:
-_redis.del("tasks:list");                          // invalidate cache
-_redis.publish("tasks:events", event_json.dump()); // notify WS clients
+co_await _redis.del("tasks:list");                          // invalidate cache
+co_await _redis.publish("tasks:events", event_json.dump()); // notify WS clients
 ```
 
 ---
 
 ## Build
 
+The rest of `examples/` is mid-port, so this example is wired behind an opt-in
+flag that builds **only** taskmanager (and its qbm dependencies):
+
 ```bash
 # From the workspace root
-cmake --build build/debug/default --target taskmanager -j4
+cmake --preset dev -DQB_BUILD_TASKMANAGER=ON
+cmake --build build/presets/dev --target taskmanager -j4
 ```
 
-The binary is placed in `build/debug/default/bin/taskmanager`.  The static
-files are automatically copied to `build/debug/default/bin/resources/static/`.
+The binary is placed in `build/presets/dev/examples/all/taskmanager/taskmanager`.
+The static files are copied to `build/presets/dev/bin/resources/static/`.
 
 ### Prerequisites
 

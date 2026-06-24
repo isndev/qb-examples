@@ -88,7 +88,7 @@ public:
      * 
      * @return true if initialization successful, false otherwise
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Handles new client connections

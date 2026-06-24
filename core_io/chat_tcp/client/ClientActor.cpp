@@ -52,11 +52,11 @@ ClientActor::ClientActor(std::string username, qb::ActorId input_actor, qb::io::
  * 2. Initiates server connection
  * 3. Prepares message processing
  */
-bool ClientActor::onInit() {
+qb::io::async::task<bool> ClientActor::onInit() {
     qb::io::cout() << "ClientActor initialized with ID: " << id() << std::endl;
     registerEvent<ChatInputEvent>(*this);
     connect();
-    return true;
+    co_return true;
 }
 
 /**
@@ -137,7 +137,7 @@ void ClientActor::connect() {
                 onConnectionFailed();
             }
         },
-        CONNECT_TIMEOUT
+        std::chrono::duration_cast<qb::duration>(CONNECT_TIMEOUT)
     );
 }
 
@@ -184,7 +184,7 @@ void ClientActor::onConnectionFailed() {
         qb::io::async::callback([this]() {
             qb::io::cout() << "Retrying connection..." << std::endl;
             connect();
-        }, RECONNECT_DELAY);
+        }, RECONNECT_DELAY);  // RECONNECT_DELAY is already std::chrono::seconds
     }
 }
 

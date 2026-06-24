@@ -80,34 +80,34 @@ public:
                               const std::string& upload_dir = "./uploads") 
         : _static_root(static_root), _upload_dir(upload_dir) {}
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Starting Static File Server..." << std::endl;
-        
+
         // Create necessary directories
         create_directories();
-        
+
         // Create sample static files
         create_sample_files();
-        
+
         // Setup middleware and routes in correct order
         setup_standard_middleware();      // Add logging, timing, etc. first
         setup_static_file_middleware();   // Then add static files middleware
         setup_api_routes();              // Finally add API routes
-        
+
         // Compile the router
         router().compile();
-        
+
         // Start listening
         listen({"tcp://0.0.0.0:8080"});
         start();
-        
+
         std::cout << "Static File Server running on http://localhost:8080" << std::endl;
         std::cout << "Static files served from: " << _static_root << std::endl;
         std::cout << "Upload directory: " << _upload_dir << std::endl;
-        
+
         print_available_endpoints();
-        
-        return true;
+
+        co_return true;
     }
 
 private:

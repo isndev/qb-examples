@@ -24,9 +24,9 @@ class HelloWorldServer : public qb::Actor
 public:
     HelloWorldServer() = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing Hello World HTTP Server Actor..." << std::endl;
-        
+
         // Set up routes
         router().get("/", [](auto ctx) {
             ctx->response().status() = qb::http::Status::OK;
@@ -34,17 +34,17 @@ public:
             ctx->response().body() = "Hello, World!\nWelcome to QB HTTP Framework!";
             ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
         });
-        
+
         router().get("/hello", [](auto ctx) {
             ctx->response().status() = qb::http::Status::OK;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = R"({"message": "Hello from QB!", "framework": "qb-http", "version": "1.0"})";
             ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
         });
-        
+
         // Compile the router
         router().compile();
-        
+
         // Start listening on port 8080
         if (listen({"tcp://0.0.0.0:8080"})) {
             start();
@@ -55,10 +55,10 @@ public:
             std::cout << "Press Ctrl+C to stop the server" << std::endl;
         } else {
             std::cerr << "Failed to start listening server" << std::endl;
-            return false;
+            co_return false;
         }
-        
-        return true;
+
+        co_return true;
     }
     
     void on(const qb::KillEvent& event) noexcept {

@@ -60,7 +60,9 @@
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <qb/json.h>
+#include <chrono>
 #undef ERROR
 #undef DELETE
 
@@ -180,68 +182,58 @@ private:
     
 public:
     WorkerActor(std::string worker_id, std::string queue_key, int max_jobs = 1000)
-        : _worker_id(worker_id), 
-          _queue_key(queue_key), 
-          _max_jobs(max_jobs),
-          _redis(qb::io::uri(REDIS_URI))
+        : _redis(qb::io::uri(REDIS_URI)),
+          _worker_id(worker_id),
+          _queue_key(queue_key),
+          _max_jobs(max_jobs)
     {
         // Redis client is initialized in the constructor using member initializer
     }
     
     ~WorkerActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "WorkerActor [" << _worker_id << "] initialized on core " << getIndex() << std::endl;
-        
+
         // Register for callbacks and events
         registerCallback(*this);
         registerEvent<ShutdownEvent>(*this);
-        
+
         // Store coordinator ID for reporting
         _coordinator_id = std::to_string(g_coordinator_id);
-        
+
         // Connect to Redis
-        try {
-            if (!_redis.connect()) {
-                qb::io::cerr() << "WorkerActor [" << _worker_id << "] failed to connect to Redis" << std::endl;
-                return false;
-            }
-            _connected = true;
-            qb::io::cout() << "WorkerActor [" << _worker_id << "] connected to Redis" << std::endl;
-            
-            // Register with coordinator
-            push<WorkerRegistrationEvent>(g_coordinator_id, _worker_id.c_str());
-            
-            // Log initialization
-            log_action("Worker initialized");
-            
-            return true;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "WorkerActor [" << _worker_id << "] Redis error: " << e.what() << std::endl;
-            return false;
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "WorkerActor [" << _worker_id << "] failed to connect to Redis" << std::endl;
+            co_return false;
         }
+        _connected = true;
+        qb::io::cout() << "WorkerActor [" << _worker_id << "] connected to Redis" << std::endl;
+
+        // Register with coordinator
+        push<WorkerRegistrationEvent>(g_coordinator_id, _worker_id.c_str());
+
+        // Log initialization
+        co_await log_action("Worker initialized");
+
+        co_return true;
     }
-    
+
     // Log an action to Redis streams
-    void log_action(const std::string& action) {
-        try {
-            // Create log entry
-            std::vector<std::pair<std::string, std::string>> log_entry = {
-                {"worker_id", _worker_id},
-                {"action", action},
-                {"timestamp", std::to_string(std::time(nullptr))}
-            };
-            
-            // Add to log stream, using "*" for auto-generated ID
-            _redis.xadd("system:logs", log_entry);
-        } catch (const std::exception& e) {
-            // Just print but don't fail on logging errors
-            qb::io::cerr() << "Error logging to Redis: " << e.what() << std::endl;
-        }
+    qb::io::async::task<void> log_action(const std::string& action) {
+        // Create log entry
+        std::vector<std::pair<std::string, std::string>> log_entry = {
+            {"worker_id", _worker_id.c_str()},
+            {"action", action},
+            {"timestamp", std::to_string(std::time(nullptr))}
+        };
+
+        // Add to log stream, using "*" for auto-generated ID
+        [[maybe_unused]] auto log_r = co_await _redis.xadd("system:logs", log_entry);
     }
-    
+
     // Poll for jobs in the queue
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         if (!_connected || _jobs_processed >= _max_jobs) {
             if (_jobs_processed >= _max_jobs) {
                 qb::io::cout() << "WorkerActor [" << _worker_id << "] reached max jobs, shutting down" << std::endl;
@@ -249,19 +241,20 @@ public:
             }
             return;
         }
-        
-        try {
+
+        // Spawn a coroutine to perform the blocking pop + processing asynchronously
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             // Try to get one job with a 1-second timeout (moderate timeout)
             qb::io::cout() << "WorkerActor [" << _worker_id << "] polling for jobs..." << std::endl;
-            auto result = _redis.brpop({_queue_key}, 1);
-            
+            auto result_r = co_await _redis.brpop({_queue_key.c_str()}, 1);
+
             // Check if we got a job
-            if (result.has_value()) {
+            if (result_r.ok() && result_r.result().has_value()) {
                 qb::io::cout() << "WorkerActor [" << _worker_id << "] DEQUEUED a job" << std::endl;
-                const auto& key_val_pair = *result;
+                const auto& key_val_pair = *result_r.result();
                 const auto& job_data = key_val_pair.second;
                 if (!job_data.empty()) {
-                    process_job(job_data);
+                    co_await process_job(job_data);
                 } else {
                     qb::io::cout() << "WorkerActor [" << _worker_id << "] received EMPTY job data" << std::endl;
                 }
@@ -269,16 +262,11 @@ public:
                 // No jobs available in the timeout period
                 qb::io::cout() << "WorkerActor [" << _worker_id << "] no jobs available" << std::endl;
             }
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "WorkerActor [" << _worker_id << "] error polling queue: " << e.what() << std::endl;
-            
-            // Short sleep to avoid tight looping on errors
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+        });
     }
-    
+
     // Process a job from the queue
-    void process_job(const std::string& job_data) {
+    qb::io::async::task<void> process_job(const std::string& job_data) {
         // Improved logging to debug parsing issues
         qb::io::cout() << "WorkerActor [" << _worker_id << "] processing job: " << job_data << std::endl;
         
@@ -297,21 +285,21 @@ public:
                 } else {
                     // Malformed: No second separator
                     qb::io::cerr() << "WorkerActor [" << _worker_id << "] missing second separator in job data" << std::endl;
-                    return;
+                    co_return;
                 }
             } else {
                 // Malformed: No separator
                 qb::io::cerr() << "WorkerActor [" << _worker_id << "] missing separator in job data" << std::endl;
-                return;
+                co_return;
             }
-            
+
             if (job_id.empty() || job_type.empty()) {
                 qb::io::cerr() << "WorkerActor [" << _worker_id << "] received invalid job data: empty job_id or job_type" << std::endl;
-                return;
+                co_return;
             }
         } catch (const std::exception& e) {
             qb::io::cerr() << "WorkerActor [" << _worker_id << "] error parsing job data: " << e.what() << std::endl;
-            return;
+            co_return;
         }
         
         // Log detailed info for debugging
@@ -319,43 +307,37 @@ public:
              << ", type=" << job_type << ", data=" << data << std::endl;
         
         // First check if the result is in cache
-        try {
-            auto cached_result = _redis.get("cache:job:" + job_id);
-            if (cached_result.has_value()) {
-                qb::io::cout() << "WorkerActor [" << _worker_id << "] using cached result for " << job_id << std::endl;
-                
-                // Store result in Redis hash
-                _redis.hset("job:results", job_id, *cached_result);
-                
-                // Update job status
-                _redis.hset("job:status", job_id, "completed");
-                
-                // Increment metric counter
-                try {
-                    std::string script = "local counter = redis.call('HINCRBY', 'worker:metrics', ARGV[1], 1); return counter";
-                    auto counter_result = _redis.eval<long long>(script, {}, {_worker_id.c_str()});
-                } catch (const std::exception& e) {
-                    qb::io::cerr() << "Error incrementing metrics: " << e.what() << std::endl;
-                }
-                
-                // Log the job completion (from cache)
-                log_action("Completed job " + job_id + " (cached)");
-                
-                // Send completion event to coordinator
-                push<JobCompletedEvent>(g_coordinator_id, job_id, true, *cached_result);
-                
-                _jobs_processed++;
-                return;
-            }
-        } catch (const std::exception& e) {
-            // Ignore cache errors and proceed with normal processing
-            qb::io::cerr() << "Cache check error: " << e.what() << std::endl;
+        auto cached_r = co_await _redis.get("cache:job:" + job_id);
+        if (cached_r.ok() && cached_r.result().has_value()) {
+            const std::string& cached_result = *cached_r.result();
+            qb::io::cout() << "WorkerActor [" << _worker_id << "] using cached result for " << job_id << std::endl;
+
+            // Store result in Redis hash
+            [[maybe_unused]] auto hs1 = co_await _redis.hset("job:results", job_id, cached_result);
+
+            // Update job status
+            [[maybe_unused]] auto hs2 = co_await _redis.hset("job:status", job_id, "completed");
+
+            // Increment metric counter with a Lua script
+            std::string script = "local counter = redis.call('HINCRBY', 'worker:metrics', ARGV[1], 1); return counter";
+            [[maybe_unused]] auto counter_result = co_await _redis.eval<long long>(script, {}, {_worker_id.c_str()});
+
+            // Log the job completion (from cache)
+            co_await log_action("Completed job " + job_id + " (cached)");
+
+            // Send completion event to coordinator
+            push<JobCompletedEvent>(g_coordinator_id, job_id, true, cached_result);
+
+            _jobs_processed++;
+            co_return;
         }
         
-        // Simulate processing time based on job type - MINIMIZED TIME FOR EXAMPLE
+        // Simulate processing time based on job type - MINIMIZED TIME FOR EXAMPLE.
+        // Non-blocking: co_await sleeps on the event loop instead of blocking the core thread
+        // (a blocking sleep here would stall every other actor sharing this core).
         std::uniform_real_distribution<> dist(0.001, 0.01); // 1-10ms for faster processing
         double processing_time = dist(_rng);
-        std::this_thread::sleep_for(std::chrono::duration<double>(processing_time));
+        co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(processing_time)));
         
         // Generate result based on job type
         bool success = true;
@@ -381,53 +363,46 @@ public:
             result = "Processed: " + data;
         }
         
-        try {
-            // Store result in Redis hash
-            _redis.hset("job:results", job_id, result);
-        
-            // Update job status
-            _redis.hset("job:status", job_id, success ? "completed" : "failed");
-            
-            // Cache the result for future use
-            _redis.setex("cache:job:" + job_id, 60, result); // Cache for 60 seconds
-        
-            // Increment metric counter with Lua script
-            try {
-                std::string script = "local counter = redis.call('HINCRBY', 'worker:metrics', ARGV[1], 1); return counter";
-                auto counter_result = _redis.eval<long long>(script, {}, {_worker_id.c_str()});
-            } catch (const std::exception& e) {
-                qb::io::cerr() << "Error incrementing metrics: " << e.what() << std::endl;
-            }
-            
-            // Publish result notification
-            _redis.publish("job:completed", job_id + "|" + (success ? "success" : "failed") + "|" + result);
-            
-            // Log the job completion
-            log_action("Completed job " + job_id);
-            
-            // Send completion event to coordinator
-            push<JobCompletedEvent>(g_coordinator_id, job_id, success, result);
-            
-            _jobs_processed++;
-            
-            qb::io::cout() << "WorkerActor [" << _worker_id << "] completed job " << job_id 
-                  << " (total: " << _jobs_processed << "/" << _max_jobs << ")" << std::endl;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "WorkerActor [" << _worker_id << "] error processing job result: " << e.what() << std::endl;
-        }
+        // Store result in Redis hash
+        [[maybe_unused]] auto rh1 = co_await _redis.hset("job:results", job_id, result);
+
+        // Update job status
+        [[maybe_unused]] auto rh2 = co_await _redis.hset("job:status", job_id, success ? "completed" : "failed");
+
+        // Cache the result for future use
+        [[maybe_unused]] auto cse = co_await _redis.setex("cache:job:" + job_id, 60, result); // Cache for 60 seconds
+
+        // Increment metric counter with Lua script
+        std::string script = "local counter = redis.call('HINCRBY', 'worker:metrics', ARGV[1], 1); return counter";
+        [[maybe_unused]] auto counter_result = co_await _redis.eval<long long>(script, {}, {_worker_id.c_str()});
+
+        // Publish result notification
+        [[maybe_unused]] auto pub_r = co_await _redis.publish("job:completed", job_id + "|" + (success ? "success" : "failed") + "|" + result);
+
+        // Log the job completion
+        co_await log_action("Completed job " + job_id);
+
+        // Send completion event to coordinator
+        push<JobCompletedEvent>(g_coordinator_id, job_id, success, result);
+
+        _jobs_processed++;
+
+        qb::io::cout() << "WorkerActor [" << _worker_id << "] completed job " << job_id
+              << " (total: " << _jobs_processed << "/" << _max_jobs << ")" << std::endl;
     }
     
     void on(const ShutdownEvent&) {
-        qb::io::cout() << "WorkerActor [" << _worker_id << "] shutting down after processing " 
+        qb::io::cout() << "WorkerActor [" << _worker_id << "] shutting down after processing "
              << _jobs_processed << " jobs" << std::endl;
-        
+
         // Unregister callback
         unregisterCallback(*this);
-        
-        // Log shutdown
-        log_action("Worker shutting down");
-        
-        kill();
+
+        // Log shutdown, then terminate
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            co_await log_action("Worker shutting down");
+            kill();
+        });
     }
 };
 
@@ -443,80 +418,78 @@ private:
     double _callback_period = 1.0;
     
 public:
-    CacheManagerActor(int ttl_seconds = 300) 
-        : _ttl_seconds(ttl_seconds),
-          _redis(qb::io::uri(REDIS_URI))
+    CacheManagerActor(int ttl_seconds = 300)
+        : _redis(qb::io::uri(REDIS_URI)),
+          _ttl_seconds(ttl_seconds)
     {
         // Redis client is initialized in the constructor using member initializer
     }
     
     ~CacheManagerActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "CacheManagerActor initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events
         registerEvent<CacheEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
-        
+
         // Register for callbacks
         registerCallback(*this);
-        
+
         // Connect to Redis
-        try {
-            if (!_redis.connect()) {
-                qb::io::cerr() << "CacheManagerActor failed to connect to Redis" << std::endl;
-                return false;
-            }
-            _connected = true;
-            qb::io::cout() << "CacheManagerActor connected to Redis" << std::endl;
-            
-            // Subscribe to cache invalidation notifications - simplified approach
-            _redis.publish("cache:invalidations", "subscribed");
-            qb::io::cout() << "CacheManager initialized subscription to cache:invalidations channel" << std::endl;
-            
-            return true;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "CacheManagerActor Redis error: " << e.what() << std::endl;
-            return false;
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "CacheManagerActor failed to connect to Redis" << std::endl;
+            co_return false;
         }
+        _connected = true;
+        qb::io::cout() << "CacheManagerActor connected to Redis" << std::endl;
+
+        // Subscribe to cache invalidation notifications - simplified approach
+        [[maybe_unused]] auto pub_r = co_await _redis.publish("cache:invalidations", "subscribed");
+        qb::io::cout() << "CacheManager initialized subscription to cache:invalidations channel" << std::endl;
+
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         // This callback would handle redis subscription messages
         // For simplicity, we don't implement full subscription handling here
     }
-    
+
     void on(const CacheEvent& event) {
         if (!_connected) return;
-        
-        try {
-            std::string full_key = "cache:" + event.key;
-            
-            switch (event.action) {
+
+        // Spawn a coroutine to perform the async cache operation
+        CacheEvent::Action action = event.action;
+        std::string key   = event.key;
+        std::string value = event.value;
+
+        spawn([this, action, key, value](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            std::string full_key = "cache:" + key;
+
+            switch (action) {
                 case CacheEvent::Action::SET: {
                     // Set cache with expiration
-                    _redis.setex(full_key, _ttl_seconds, event.value);
-                
+                    [[maybe_unused]] auto se = co_await _redis.setex(full_key, _ttl_seconds, value);
+
                     // Publish notification about cache update
-                    _redis.publish("cache:updates", full_key);
+                    [[maybe_unused]] auto pu = co_await _redis.publish("cache:updates", full_key);
                     break;
                 }
                 case CacheEvent::Action::DELETE: {
                     // Delete the key
-                    _redis.del(full_key);
-                
+                    [[maybe_unused]] auto de = co_await _redis.del(full_key);
+
                     // Publish notification about cache invalidation
-                    _redis.publish("cache:invalidations", full_key);
+                    [[maybe_unused]] auto pi = co_await _redis.publish("cache:invalidations", full_key);
                     break;
                 }
                 case CacheEvent::Action::GET:
                     // This would be handled directly by the requesting actor
                     break;
             }
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "CacheManagerActor error: " << e.what() << std::endl;
-        }
+        });
     }
     
     void on(const ShutdownEvent&) {
@@ -554,57 +527,60 @@ public:
     
     ~LogAggregatorActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "LogAggregatorActor initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events and callbacks
         registerEvent<LogEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
         registerCallback(*this);
-        
+
         // Connect to Redis
-        try {
-            // Connect to Redis
-            if (!_redis.connect()) {
-                qb::io::cerr() << "LogAggregatorActor failed to connect to Redis" << std::endl;
-                return false;
-            }
-            
-            _connected = true;
-            qb::io::cout() << "LogAggregatorActor connected to Redis" << std::endl;
-            
-            // Initialize the log stream with a special entry
-            std::vector<std::pair<std::string, std::string>> init_entry = {
-                {"source", "system"},
-                {"level", "INFO"},
-                {"message", "Log system initialized"},
-                {"timestamp", std::to_string(std::time(nullptr))}
-            };
-            
-            // Add initialization entry to the stream - exactly like example7
-            auto stream_id = _redis.xadd(_log_stream_key, init_entry);
-            
-            qb::io::cout() << "LogAggregatorActor initialized log stream with ID: " 
-                 << stream_id.to_string() << std::endl;
-            
-            return true;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "LogAggregatorActor initialization error: " << e.what() << std::endl;
-            return false;
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "LogAggregatorActor failed to connect to Redis" << std::endl;
+            co_return false;
         }
+
+        _connected = true;
+        qb::io::cout() << "LogAggregatorActor connected to Redis" << std::endl;
+
+        // Initialize the log stream with a special entry
+        std::vector<std::pair<std::string, std::string>> init_entry = {
+            {"source", "system"},
+            {"level", "INFO"},
+            {"message", "Log system initialized"},
+            {"timestamp", std::to_string(std::time(nullptr))}
+        };
+
+        // Add initialization entry to the stream - exactly like example7
+        auto stream_id = co_await _redis.xadd(_log_stream_key, init_entry);
+
+        qb::io::cout() << "LogAggregatorActor initialized log stream with ID: "
+             << stream_id.result().to_string() << std::endl;
+
+        co_return true;
     }
-    
+
     // Poll for new log entries and process them
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         if (!_connected) return;
-        
+
+        // Spawn a coroutine to read and process new log entries
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            co_await poll_logs();
+        });
+    }
+
+    // Coroutine that reads new entries from the log stream and displays them
+    qb::io::async::task<void> poll_logs() {
         try {
             // Read from the log stream exactly like example7
-            auto results = _redis.xread({_log_stream_key}, {_last_id}, 10);
-            
+            auto results_r = co_await _redis.xread({_log_stream_key}, {_last_id}, 10);
+            const auto& results = results_r.result();
+
             // If results are empty, nothing to do
             if (results.empty() || results.is_null()) {
-                return;
+                co_return;
             }
             
             // Debug output
@@ -705,48 +681,49 @@ public:
     
     void on(const LogEvent& event) {
         if (!_connected) return;
-        
-        try {
+
+        // Spawn a coroutine to append the log entry to the stream
+        std::string component = event.component;
+        std::string level     = level_to_string(event.level);
+        std::string message   = event.message;
+
+        spawn([this, component, level, message](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             // Create log entry fields exactly like in example7
             std::vector<std::pair<std::string, std::string>> log_entry = {
-                {"component", event.component},
-                {"level", level_to_string(event.level)},
-                {"message", event.message},
+                {"component", component},
+                {"level", level},
+                {"message", message},
                 {"timestamp", std::to_string(std::time(nullptr))}
             };
-            
+
             // Add to log stream - pattern from example7
-            auto id = _redis.xadd(_log_stream_key, log_entry);
-            
-            qb::io::cout() << "LogAggregatorActor: Added log to stream with ID: " 
-                 << id.to_string() << std::endl;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "LogAggregatorActor error adding to stream: " << e.what() << std::endl;
-        }
+            auto id = co_await _redis.xadd(_log_stream_key, log_entry);
+
+            qb::io::cout() << "LogAggregatorActor: Added log to stream with ID: "
+                 << id.result().to_string() << std::endl;
+        });
     }
-    
+
     void on(const ShutdownEvent&) {
         qb::io::cout() << "LogAggregatorActor shutting down" << std::endl;
-        
-        try {
-            // Add a final log entry
+
+        // Unregister callback
+        unregisterCallback(*this);
+
+        // Append a final log entry, then terminate
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             std::vector<std::pair<std::string, std::string>> log_entry = {
                 {"source", "system"},
                 {"level", "INFO"},
                 {"message", "Log system shutting down"},
                 {"timestamp", std::to_string(std::time(nullptr))}
             };
-            
-            _redis.xadd(_log_stream_key, log_entry);
-        } catch (...) {
-            // Ignore errors during shutdown
-        }
-        
-        // Unregister callback
-        unregisterCallback(*this);
-        
-        // Clean up
-        kill();
+
+            [[maybe_unused]] auto log_r = co_await _redis.xadd(_log_stream_key, log_entry);
+
+            // Clean up
+            kill();
+        });
     }
 };
 
@@ -785,122 +762,108 @@ public:
     
     ~ClientActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "ClientActor [" << _client_id << "] initialized on core " << getIndex() << std::endl;
-        
+
         // Register for callbacks and events
         registerCallback(*this);
         registerEvent<JobCompletedEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
-        
+
         // Connect to Redis
-        try {
-            if (!_redis.connect()) {
-                qb::io::cerr() << "ClientActor [" << _client_id << "] failed to connect to Redis" << std::endl;
-                return false;
-            }
-            _connected = true;
-            qb::io::cout() << "ClientActor [" << _client_id << "] connected to Redis" << std::endl;
-            
-            // Register with coordinator
-            push<ClientRegistrationEvent>(g_coordinator_id, _client_id.c_str());
-            
-            return true;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "ClientActor [" << _client_id << "] Redis error: " << e.what() << std::endl;
-            return false;
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "ClientActor [" << _client_id << "] failed to connect to Redis" << std::endl;
+            co_return false;
         }
+        _connected = true;
+        qb::io::cout() << "ClientActor [" << _client_id << "] connected to Redis" << std::endl;
+
+        // Register with coordinator
+        push<ClientRegistrationEvent>(g_coordinator_id, _client_id.c_str());
+
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         if (_shutting_down) return;
-        
-        // Submit jobs if we haven't reached the total
-        if (_connected && _jobs_submitted < _total_jobs) {
-            submit_job();
-        }
-        
-        // Check for completed jobs
-        check_completed_jobs();
-        
-        // If all jobs are done, we can shut down
-        if (_jobs_submitted >= _total_jobs && _jobs_completed >= _total_jobs) {
-            qb::io::cout() << "ClientActor [" << _client_id << "] completed all jobs, shutting down" << std::endl;
-            shutdown();
-        }
+
+        // Drive submission and completion checks inside a coroutine
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+            // Submit jobs if we haven't reached the total
+            if (_connected && _jobs_submitted < _total_jobs) {
+                co_await submit_job();
+            }
+
+            // Check for completed jobs
+            co_await check_completed_jobs();
+
+            // If all jobs are done, we can shut down
+            if (_jobs_submitted >= _total_jobs && _jobs_completed >= _total_jobs) {
+                qb::io::cout() << "ClientActor [" << _client_id << "] completed all jobs, shutting down" << std::endl;
+                shutdown();
+            }
+        });
     }
-    
+
     // Submit a new job to the queue
-    void submit_job() {
+    qb::io::async::task<void> submit_job() {
         // Select a job type based on frequency
         std::string job_type = select_job_type();
-        
+
         // Generate some random data
         std::string data = generate_job_data(job_type);
-        
+
         // Generate a unique job ID
         std::string job_id = generate_job_id();
-        
-        qb::io::cout() << "ClientActor [" << _client_id << "] submitting job " 
+
+        qb::io::cout() << "ClientActor [" << _client_id << "] submitting job "
              << job_id << " of type " << job_type << std::endl;
-        
-        try {
-            // Create the full job data string
-            std::string full_job_data = job_id + "|" + job_type + "|" + data;
-            
-            // Use RPUSH to add to the end of the queue for FIFO order with BRPOP
-            qb::io::cout() << "ClientActor [" << _client_id << "] ENQUEUEING job: " << job_id << std::endl;
-            _redis.rpush("jobs:queue", full_job_data);
-            
-            // Record job status
-            _redis.hset("job:status", job_id, "pending");
-            
-            // Track this job
-            _pending_jobs.insert(job_id);
-            _jobs_submitted++;
-            
-            // Notify coordinator
-            push<CreateJobEvent>(g_coordinator_id, job_id, job_type, data);
-            
-            // Very small delay between job submissions
-            std::uniform_real_distribution<> dist(0.001, 0.01);
-            std::this_thread::sleep_for(std::chrono::duration<double>(dist(_rng)));
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "ClientActor [" << _client_id << "] error submitting job: " << e.what() << std::endl;
-        }
+
+        // Create the full job data string
+        std::string full_job_data = job_id + "|" + job_type + "|" + data;
+
+        // Use RPUSH to add to the end of the queue for FIFO order with BRPOP
+        qb::io::cout() << "ClientActor [" << _client_id << "] ENQUEUEING job: " << job_id << std::endl;
+        [[maybe_unused]] auto push_r = co_await _redis.rpush("jobs:queue", full_job_data);
+
+        // Record job status
+        [[maybe_unused]] auto status_r = co_await _redis.hset("job:status", job_id, "pending");
+
+        // Track this job
+        _pending_jobs.insert(job_id);
+        _jobs_submitted++;
+
+        // Notify coordinator
+        push<CreateJobEvent>(g_coordinator_id, job_id, job_type, data);
     }
-    
+
     // Check for jobs that have been completed
-    void check_completed_jobs() {
-        if (_pending_jobs.empty()) return;
-        
-        try {
-            // Create a copy to avoid iterator invalidation
-            auto pending_copy = _pending_jobs;
-            
-            for (const auto& job_id : pending_copy) {
-                // Check job status
-                auto status = _redis.hget("job:status", job_id);
-                
-                if (status.has_value()) {
-                    std::string job_status = *status;
-                    
-                    if (job_status == "completed" || job_status == "failed") {
-                        // Job is done, get the result
-                        auto result = _redis.hget("job:results", job_id);
-                        
-                        if (result.has_value()) {
-                            qb::io::cout() << "ClientActor [" << _client_id << "] found completed job " 
-                                 << job_id << ": " << *result << std::endl;
-                            
-                            _pending_jobs.erase(job_id);
-                            _jobs_completed++;
-                        }
+    qb::io::async::task<void> check_completed_jobs() {
+        if (_pending_jobs.empty()) co_return;
+
+        // Create a copy to avoid iterator invalidation
+        auto pending_copy = _pending_jobs;
+
+        for (const auto& job_id : pending_copy) {
+            // Check job status
+            auto status_r = co_await _redis.hget("job:status", job_id);
+
+            if (status_r.ok() && status_r.result().has_value()) {
+                const std::string& job_status = *status_r.result();
+
+                if (job_status == "completed" || job_status == "failed") {
+                    // Job is done, get the result
+                    auto result_r = co_await _redis.hget("job:results", job_id);
+
+                    if (result_r.ok() && result_r.result().has_value()) {
+                        qb::io::cout() << "ClientActor [" << _client_id << "] found completed job "
+                             << job_id << ": " << *result_r.result() << std::endl;
+
+                        _pending_jobs.erase(job_id);
+                        _jobs_completed++;
                     }
                 }
             }
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "ClientActor [" << _client_id << "] error checking completed jobs: " << e.what() << std::endl;
         }
     }
     
@@ -990,9 +953,9 @@ public:
     
     ~CoordinatorActor() noexcept override = default;
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "CoordinatorActor initialized on core " << getIndex() << std::endl;
-        
+
         // Register for events
         registerEvent<CreateJobEvent>(*this);
         registerEvent<JobCompletedEvent>(*this);
@@ -1001,31 +964,26 @@ public:
         registerEvent<ClientRegistrationEvent>(*this);
         registerEvent<ClientShutdownEvent>(*this);
         registerEvent<WorkerRegistrationEvent>(*this);
-        
+
         // Register for callbacks
         registerCallback(*this);
-        
+
         // Store global ID for other actors to access
         g_coordinator_id = id();
-        
+
         // Connect to Redis
-        try {
-            if (!_redis.connect()) {
-                qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
-                return false;
-            }
-            _connected = true;
-            qb::io::cout() << "Coordinator connected to Redis" << std::endl;
-            
-            // Clear previous data
-            _redis.flushdb();
-            qb::io::cout() << "Cleared Redis database for a clean start" << std::endl;
-            
-            return true;
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "Coordinator Redis error: " << e.what() << std::endl;
-            return false;
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
+            co_return false;
         }
+        _connected = true;
+        qb::io::cout() << "Coordinator connected to Redis" << std::endl;
+
+        // Clear previous data
+        [[maybe_unused]] auto flush_r = co_await _redis.flushdb();
+        qb::io::cout() << "Cleared Redis database for a clean start" << std::endl;
+
+        co_return true;
     }
     
     // Handle client registration
@@ -1048,51 +1006,47 @@ public:
         qb::io::cout() << "Coordinator: Worker " << event.worker_id << " registered" << std::endl;
     }
     
-    void onCallback() override {
+    void on(qb::LoopEvent const&) override {
         if (!_connected) return;
-        
+
         // Limit metrics display frequency
         _display_counter++;
         if (_display_counter % 10 == 0) { // Only display every 10th callback
-            // Display system statistics periodically
-            // display_statistics();
-            
             // Check if system should automatically shut down
-            check_auto_shutdown();
+            spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+                co_await check_auto_shutdown();
+            });
         }
-        
+
         // Check if all clients are done, and if so, initiate shutdown
         if (!_shutdown_initiated && _completed_clients >= _expected_clients) {
             initiate_shutdown();
         }
     }
-    
+
     // Check if we should automatically shut down the system
-    void check_auto_shutdown() {
-        try {
-            // Get queue length
-            auto queue_len = _redis.llen("jobs:queue");
-            
-            // Check if system should shut down (no clients and no jobs)
-            if (!_shutdown_initiated && _active_clients.empty() && queue_len == 0) {
-                // Count consecutive times with no activity
-                _no_activity_count++;
-                
-                // After a few consecutive checks with no activity, shut down
-                if (_no_activity_count >= 3) {
-                    qb::io::cout() << "All clients finished, no jobs in queue, shutting down system" << std::endl;
-                    
-                    // Initiate shutdown
-                    initiate_shutdown();
-                }
-            } else {
-                // Reset the counter if there's activity
-                if (!_active_clients.empty() || queue_len > 0) {
-                    _no_activity_count = 0;
-                }
+    qb::io::async::task<void> check_auto_shutdown() {
+        // Get queue length
+        auto queue_r = co_await _redis.llen("jobs:queue");
+        long long queue_len = queue_r.ok() ? queue_r.result() : 0;
+
+        // Check if system should shut down (no clients and no jobs)
+        if (!_shutdown_initiated && _active_clients.empty() && queue_len == 0) {
+            // Count consecutive times with no activity
+            _no_activity_count++;
+
+            // After a few consecutive checks with no activity, shut down
+            if (_no_activity_count >= 3) {
+                qb::io::cout() << "All clients finished, no jobs in queue, shutting down system" << std::endl;
+
+                // Initiate shutdown
+                initiate_shutdown();
             }
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "Error in auto-shutdown check: " << e.what() << std::endl;
+        } else {
+            // Reset the counter if there's activity
+            if (!_active_clients.empty() || queue_len > 0) {
+                _no_activity_count = 0;
+            }
         }
     }
     
@@ -1172,33 +1126,31 @@ public:
         qb::io::cout() << "Shutdown events sent to all actors" << std::endl;
     }
     
-    void display_statistics() {
-        try {
-            // Get queue length
-            auto queue_len = _redis.llen("jobs:queue");
-            
-            // Get worker metrics
-            auto worker_metrics = _redis.hgetall("worker:metrics");
-            qb::io::cout() << "Worker metrics:" << std::endl;
-            
-            for (const auto& [worker, count] : worker_metrics) {
+    qb::io::async::task<void> display_statistics() {
+        // Get queue length
+        auto queue_r = co_await _redis.llen("jobs:queue");
+        long long queue_len = queue_r.ok() ? queue_r.result() : 0;
+
+        // Get worker metrics
+        auto metrics_r = co_await _redis.hgetall("worker:metrics");
+        qb::io::cout() << "Worker metrics:" << std::endl;
+
+        if (metrics_r.ok()) {
+            for (const auto& [worker, count] : metrics_r.result()) {
                 qb::io::cout() << "  " << worker << ": " << count << " jobs" << std::endl;
             }
-            
-            // Get stream info
-            auto stream_len = _redis.xlen("system:logs");
-            qb::io::cout() << "Logs stream length: " << stream_len << " entries" << std::endl;
-                
-            // Get cache keys
-            auto cache_keys = _redis.keys("cache:*");
-            qb::io::cout() << "Cache entries: " << cache_keys.size() << std::endl;
-            
-            // Display queue length
-            qb::io::cout() << "Jobs queue length: " << queue_len << std::endl;
-            
-        } catch (const std::exception& e) {
-            qb::io::cerr() << "Error displaying statistics: " << e.what() << std::endl;
         }
+
+        // Get stream info
+        auto stream_r = co_await _redis.xlen("system:logs");
+        qb::io::cout() << "Logs stream length: " << (stream_r.ok() ? stream_r.result() : 0) << " entries" << std::endl;
+
+        // Get cache keys
+        auto cache_r = co_await _redis.keys("cache:*");
+        qb::io::cout() << "Cache entries: " << (cache_r.ok() ? cache_r.result().size() : 0) << std::endl;
+
+        // Display queue length
+        qb::io::cout() << "Jobs queue length: " << queue_len << std::endl;
     }
 
     // Set the log aggregator ID for sending logs

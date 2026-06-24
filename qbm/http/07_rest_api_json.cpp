@@ -74,7 +74,7 @@ private:
 public:
     RestApiServer() = default;
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing REST API Server with JSON support..." << std::endl;
 
         setup_standard_middleware();
@@ -88,12 +88,12 @@ public:
         // Start listening
         if (!listen({"tcp://0.0.0.0:8080"})) {
             std::cerr << "Failed to bind to port 8080" << std::endl;
-            return false;
+            co_return false;
         }
 
         start();
         print_api_documentation();
-        return true;
+        co_return true;
     }
 
 private:
@@ -323,11 +323,11 @@ private:
 
     void handle_get_books(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         // Support filtering by query parameters using the correct API
-        auto author_filter = ctx->request().query("author", 0, "");
-        auto available_filter = ctx->request().query("available", 0, "");
-        auto category_filter = ctx->request().query("category", 0, "");
-        auto limit_str = ctx->request().query("limit", 0, "");
-        auto offset_str = ctx->request().query("offset", 0, "");
+        auto author_filter = ctx->request().query("author");
+        auto available_filter = ctx->request().query("available");
+        auto category_filter = ctx->request().query("category");
+        auto limit_str = ctx->request().query("limit");
+        auto offset_str = ctx->request().query("offset");
 
         // Parse pagination
         int limit = limit_str.empty() ? 10 : std::stoi(limit_str);
@@ -636,7 +636,7 @@ private:
     }
 
     void handle_search_books(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        auto query = ctx->request().query("q", 0, "");
+        auto query = ctx->request().query("q");
         if (query.empty()) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");

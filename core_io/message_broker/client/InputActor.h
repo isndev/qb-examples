@@ -66,7 +66,7 @@ public:
      * 
      * @return true if initialization succeeds
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /// Ensures clean shutdown
     ~InputActor() = default;
@@ -88,7 +88,7 @@ private:
      * - 'quit' triggers clean shutdown
      * - Other input creates BrokerInputEvent
      */
-    void onCallback() override;
+    void on(qb::LoopEvent const &loop) override;
     
     /**
      * @brief Displays help information

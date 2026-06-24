@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Add some helpful console messages
     console.log('QB WebSocket Chat Client loaded');
-    console.log('Framework: QB Actor Framework with qbm-websocket module');
+    console.log('Framework: QB Actor Framework with qbm-http (qb::http::ws) module');
     console.log('WebSocket endpoint: ws://localhost:8080/ws');
     console.log('');
     console.log('Available commands for testing:');

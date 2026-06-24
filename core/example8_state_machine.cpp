@@ -47,6 +47,7 @@
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
+#include <chrono>
 
 using namespace qb;
 
@@ -245,29 +246,29 @@ public:
         registerEvent<KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "CoffeeMachineActor created with ID: " << id() << std::endl;
-        
+
         // Initialize state
         _current_state = MachineState::IDLE;
         _selected_coffee = CoffeeType::ESPRESSO;
         _payment_received = 0.0;
         _payment_required = 0.0;
-        
+
         // Setup coffee prices
         _coffee_prices[CoffeeType::ESPRESSO] = 1.50;
         _coffee_prices[CoffeeType::AMERICANO] = 2.00;
         _coffee_prices[CoffeeType::LATTE] = 2.50;
         _coffee_prices[CoffeeType::CAPPUCCINO] = 2.75;
         _coffee_prices[CoffeeType::HOT_WATER] = 0.50;
-        
+
         // Setup the state transition table
         setupTransitionTable();
-        
+
         qb::io::cout() << "CoffeeMachineActor started in state: "
                   << stateToString(_current_state) << std::endl;
-        
-        return true;
+
+        co_return true;
     }
     
     void on(InputEventMessage& msg) {
@@ -364,7 +365,7 @@ private:
                             id(),
                             DelayedActionMessage::Action::BREW_COMPLETE
                         );
-                    }, 3.0); // 3 seconds
+                    }, std::chrono::seconds(3)); // 3 seconds
                 }
             };
         
@@ -388,7 +389,7 @@ private:
                         id(),
                         DelayedActionMessage::Action::DISPENSE_COMPLETE
                     );
-                }, 2.0); // 2 seconds
+                }, std::chrono::seconds(2)); // 2 seconds
             };
         
         _transition_table[MachineState::BREWING][InputEvent::ERROR_DETECTED] = 
@@ -432,7 +433,7 @@ private:
                     _transition_table[machine_state].end()) {
                     
                     _transition_table[machine_state][input_event] = 
-                        [this, machine_state, input_event](const InputEventMessage& msg) {
+                        [machine_state, input_event](const InputEventMessage& msg) {
                             // Default is to ignore the event and log it
                             qb::io::cout() << "Ignored event " << eventToString(input_event)
                                       << " in state " << stateToString(machine_state) << std::endl;
@@ -570,22 +571,22 @@ public:
         registerEvent<KillEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "UserInterfaceActor created with ID: " << id() << std::endl;
         qb::io::cout() << "UserInterfaceActor started" << std::endl;
-        
+
         // Subscribe to the coffee machine for state change notifications
         push<SubscribeMessage>(_machine_id, id());
-        
+
         // Start the demo sequence after a short delay
         qb::io::async::callback([this]() {
             push<DelayedActionMessage>(
                 id(),
                 DelayedActionMessage::Action::START_DEMO
             );
-        }, 1.0); // 1 second
-        
-        return true;
+        }, std::chrono::seconds(1)); // 1 second
+
+        co_return true;
     }
     
     void on(StatusResponseMessage& msg) {
@@ -669,7 +670,7 @@ private:
                 DelayedActionMessage::Action::RUN_DEMO_STEP,
                 0
             );
-        }, 0.1); // 100 ms
+        }, std::chrono::milliseconds(100)); // 100 ms
     }
     
     // Run a specific step of the demo
@@ -687,7 +688,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         1
                     );
-                }, 0.5); // 500 ms
+                }, std::chrono::milliseconds(500)); // 500 ms
                 break;
             }
             
@@ -702,8 +703,8 @@ private:
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 0.5); // 500 ms
-                
+                }, std::chrono::milliseconds(500)); // 500 ms
+
                 // Schedule next step
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
@@ -711,7 +712,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         2
                     );
-                }, 1.0); // 1 second
+                }, std::chrono::seconds(1)); // 1 second
                 break;
             }
             
@@ -726,8 +727,8 @@ private:
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 0.5); // 500 ms
-                
+                }, std::chrono::milliseconds(500)); // 500 ms
+
                 // Schedule next step
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
@@ -735,7 +736,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         3
                     );
-                }, 1.0); // 1 second
+                }, std::chrono::seconds(1)); // 1 second
                 break;
             }
             
@@ -752,16 +753,16 @@ private:
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 0.5); // 500 ms
-                
+                }, std::chrono::milliseconds(500)); // 500 ms
+
                 // Check status during brewing
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 2.0); // 2 seconds
-                
+                }, std::chrono::seconds(2)); // 2 seconds
+
                 // Schedule next step (after brewing and dispensing should be complete)
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
@@ -769,7 +770,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         4
                     );
-                }, 6.0); // 6 seconds
+                }, std::chrono::seconds(6)); // 6 seconds
                 break;
             }
             
@@ -785,7 +786,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         5
                     );
-                }, 1.0); // 1 second
+                }, std::chrono::seconds(1)); // 1 second
                 break;
             }
             
@@ -800,8 +801,8 @@ private:
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 0.5); // 500 ms
-                
+                }, std::chrono::milliseconds(500)); // 500 ms
+
                 // Schedule next step
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
@@ -809,7 +810,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         6
                     );
-                }, 1.0); // 1 second
+                }, std::chrono::seconds(1)); // 1 second
                 break;
             }
             
@@ -824,8 +825,8 @@ private:
                         id(),
                         DelayedActionMessage::Action::CHECK_STATUS
                     );
-                }, 0.5); // 500 ms
-                
+                }, std::chrono::milliseconds(500)); // 500 ms
+
                 // Schedule end of demo
                 qb::io::async::callback([this]() {
                     push<DelayedActionMessage>(
@@ -833,7 +834,7 @@ private:
                         DelayedActionMessage::Action::RUN_DEMO_STEP,
                         7
                     );
-                }, 1.0); // 1 second
+                }, std::chrono::seconds(1)); // 1 second
                 break;
             }
             
@@ -859,7 +860,7 @@ int main() {
     auto machine_id = engine.addActor<CoffeeMachineActor>(0);
     
     // Add the user interface actor
-    auto ui_id = engine.addActor<UserInterfaceActor>(0, machine_id);
+    engine.addActor<UserInterfaceActor>(0, machine_id);
     
     // Start the system
     engine.start();

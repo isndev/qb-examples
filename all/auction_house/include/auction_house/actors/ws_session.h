@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include <ws/ws.h>
+#include <http/ws.h>
 #include <qb/json.h>
 
 namespace auction_house {
@@ -25,7 +25,8 @@ class WsSession : public qb::io::use<WsSession>::tcp::client<WebSocketHandler> {
 public:
     using ws_protocol = qb::http::ws::protocol<WsSession>;
 
-    explicit WsSession(WebSocketHandler &handler) : client(handler) {}
+    explicit WsSession(WebSocketHandler &handler)
+        : client(handler) {}
 
     /**
      * @brief Handle inbound WebSocket frame.

@@ -57,11 +57,11 @@ ServerActor::ServerActor(qb::ActorId chatroom_id)
  *    - Initializes internal state
  *    - Enables logging for monitoring
  */
-bool ServerActor::onInit() {
+qb::io::async::task<bool> ServerActor::onInit() {
     registerEvent<NewSessionEvent>(*this);
     registerEvent<SendMessageEvent>(*this);
     qb::io::cout() << "ServerActor initialized with ID: " << id() << std::endl;
-    return true;
+    co_return true;
 }
 
 /**
@@ -78,8 +78,12 @@ bool ServerActor::onInit() {
  */
 void ServerActor::on(NewSessionEvent& evt) {
     // Create and register a new chat session for the incoming connection
-    auto& session = registerSession(std::move(evt.socket));
-    qb::io::cout() << "New session registered: " << session.id() << std::endl;
+    auto* session = registerSession(std::move(evt.socket));
+    if (!session) {
+        qb::io::cout() << "Session rejected (session limit reached)" << std::endl;
+        return;
+    }
+    qb::io::cout() << "New session registered: " << session->id() << std::endl;
 }
 
 /**

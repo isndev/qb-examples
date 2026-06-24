@@ -38,6 +38,7 @@
 
 #include <qb/actor.h>
 #include <qb/io/async.h>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <vector>
@@ -78,7 +79,7 @@ public:
     /**
      * @brief Start watching a directory
      */
-    void startWatching(const std::string& path, double interval = 0.5);
+    void startWatching(const std::string& path, qb::duration interval = std::chrono::milliseconds(500));
     
     /**
      * @brief Stop watching
@@ -118,7 +119,7 @@ public:
     /**
      * @brief Initialize the actor
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
     
     /**
      * @brief Event handlers

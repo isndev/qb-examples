@@ -101,7 +101,7 @@ public:
      * 
      * @return true if initialization successful
      */
-    bool onInit() override;
+    qb::io::async::task<bool> onInit() override;
 
     /**
      * @brief Handles user authentication requests

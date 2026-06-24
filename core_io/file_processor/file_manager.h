@@ -35,6 +35,7 @@
 #pragma once
 
 #include <qb/actor.h>
+#include <qb/io/async.h>
 #include <iostream>
 #include <queue>
 #include <unordered_set>
@@ -79,9 +80,9 @@ public:
     /**
      * @brief Actor initialization method
      */
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "FileManager initialized with ID " << id() << " on core " << id().index() << std::endl;
-        return true;
+        co_return true;
     }
     
     /**

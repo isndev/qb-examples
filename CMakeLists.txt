@@ -36,10 +36,14 @@ endif()
 
 qb_status_message("Building qb framework examples")
 
+# NOTE: examples are being ported to the current qb API one at a time. Only the
+# adapted ones are enabled below; uncomment each category/example as it is ported.
+
 # Add subdirectories for each example category
 add_subdirectory(core)
 add_subdirectory(io)
 add_subdirectory(core_io)
+add_subdirectory(coroutine)
 
 # Add module examples
 add_subdirectory(qbm/redis)

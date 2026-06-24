@@ -95,18 +95,22 @@ public:
 
     void on(TransferToWebSocketEvent& event) {
         // 🎯 RECEIVING TRANSFERRED TRANSPORT
-        auto& chat_session = registerSession(std::move(event.data->transport));
+        // registerSession returns nullptr (and closes the transport) when the
+        // io_handler session limit is reached — null-check before use.
+        auto* chat_session = registerSession(std::move(event.data->transport));
+        if (!chat_session)
+            return;
 
         // 🔄 PROTOCOL SWITCHING
         // switch_protocol attempts the handshake. It returns true on success
         // and populates the response object with the "101 Switching Protocols" reply.
-        if (chat_session.switch_protocol<ChatSession::ws_protocol>(chat_session, event.data->request, event.data->response)) {
+        if (chat_session->switch_protocol<ChatSession::ws_protocol>(*chat_session, event.data->request, event.data->response)) {
             // Handshake successful, send the response to the client to finalize.
-            chat_session << event.data->response;
+            *chat_session << event.data->response;
             ++_connected_users;
         } else {
             // Handshake failed (e.g., not a valid WebSocket request).
-            chat_session.disconnect();
+            chat_session->disconnect();
         }
     }
 };

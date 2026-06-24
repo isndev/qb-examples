@@ -88,9 +88,9 @@ public:
         registerEvent<SystemNotificationEvent>(*this);
     }
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Initialized on core " << getIndex() << std::endl;
-        return true;
+        co_return true;
     }
     
     // Handlers for different event types
@@ -155,16 +155,16 @@ public:
     explicit DispatcherActor(const std::vector<qb::ActorId>& workers)
         : _workers(workers), _num_workers(workers.size()) {}
     
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         qb::io::cout() << "DispatcherActor " << id() << ": Initialized on core " << getIndex()
                   << ", will dispatch to " << _num_workers << " workers" << std::endl;
-        
+
         // Register a callback to start dispatching
         registerCallback(*this);
-        return true;
+        co_return true;
     }
-    
-    void onCallback() override {
+
+    void on(qb::LoopEvent const&) override {
         if (_dispatched_events < _max_events_per_worker * _num_workers * 3) {
             // Round-robin dispatch
             int worker_index = (_dispatched_events / 3) % _num_workers;

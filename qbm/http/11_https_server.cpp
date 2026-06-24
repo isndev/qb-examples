@@ -34,36 +34,36 @@ private:
 public:
     HttpsServer() = default;
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing HTTPS Server..." << std::endl;
-        
+
         // Generate certificates if needed
         if (!ensure_certificates_exist()) {
             std::cerr << "Failed to ensure SSL certificates exist" << std::endl;
-            return false;
+            co_return false;
         }
-        
+
         // Create HTTP redirect server
         _http_redirect_server = std::make_unique<qb::http::Server<>>();
         if (!_http_redirect_server) {
             std::cerr << "Failed to create HTTP redirect server" << std::endl;
-            return false;
+            co_return false;
         }
-        
+
         // Setup HTTPS server
         setup_https_server();
-        
+
         // Setup HTTP redirect server
         setup_http_redirect_server();
-        
+
         // Start both servers
         if (!start_servers()) {
             std::cerr << "Failed to start servers" << std::endl;
-            return false;
+            co_return false;
         }
-        
+
         print_server_info();
-        return true;
+        co_return true;
     }
 
 private:

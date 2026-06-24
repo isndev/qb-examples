@@ -54,31 +54,31 @@ private:
 public:
     JwtAuthServer() = default;
 
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         std::cout << "Initializing JWT Authentication Server..." << std::endl;
-        
+
         // Setup authentication manager
         setup_auth_manager();
-        
+
         // Initialize user database
         initialize_users();
-        
+
         // Setup middleware and routes
         setup_middleware();
         setup_routes();
-        
+
         // Compile router
         router().compile();
-        
+
         // Start listening
         if (!listen({"tcp://0.0.0.0:8080"})) {
             std::cerr << "Failed to bind to port 8080" << std::endl;
-            return false;
+            co_return false;
         }
-        
+
         start();
         print_api_documentation();
-        return true;
+        co_return true;
     }
 
 private:
