@@ -24,11 +24,11 @@
 
 # Shared library for chat components
 qb_add_library(
-    NAME chat_shared
-    SOURCES
+        NAME chat_shared
+        SOURCES
         Protocol.h
         Protocol.cpp
         Events.h
-    DEPENDS qb-core
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS qb-core
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
 ) 

@@ -37,9 +37,9 @@
 
 #include <iostream>
 
+#include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <redis/redis.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -68,18 +68,18 @@ run_hash_operations(bool &running) {
     std::string user_key = "example:user:profile:1001";
 
     // Clean up any existing data
-    (void)(co_await redis.del(user_key));
+    (void) (co_await redis.del(user_key));
 
     // -------- Setting multiple hash fields at once --------
     // Create a user profile using individual HSET calls.
     // hset returns Reply<long long> = number of NEW fields added.
     long long hset_count = 0;
-    hset_count += (co_await redis.hset(user_key, "username",          "johndoe")).result();
-    hset_count += (co_await redis.hset(user_key, "first_name",        "John")).result();
-    hset_count += (co_await redis.hset(user_key, "last_name",         "Doe")).result();
-    hset_count += (co_await redis.hset(user_key, "email",             "john.doe@example.com")).result();
-    hset_count += (co_await redis.hset(user_key, "active",            "1")).result();
-    hset_count += (co_await redis.hset(user_key, "age",               "30")).result();
+    hset_count += (co_await redis.hset(user_key, "username", "johndoe")).result();
+    hset_count += (co_await redis.hset(user_key, "first_name", "John")).result();
+    hset_count += (co_await redis.hset(user_key, "last_name", "Doe")).result();
+    hset_count += (co_await redis.hset(user_key, "email", "john.doe@example.com")).result();
+    hset_count += (co_await redis.hset(user_key, "active", "1")).result();
+    hset_count += (co_await redis.hset(user_key, "age", "30")).result();
     hset_count += (co_await redis.hset(user_key, "registration_date", "2023-01-15")).result();
 
     qb::io::cout() << "Added " << hset_count << " new fields to hash" << std::endl;
@@ -101,13 +101,12 @@ run_hash_operations(bool &running) {
     // when_all call, so capturing `&redis` / `&user_key` by reference is safe.
     // Because every command runs on the same client, the three reads are
     // pipelined into a single round-trip group. hget yields Reply<optional<string>>.
-    auto fetch_field = [&redis, &user_key](std::string field)
-        -> qb::io::async::task<qb::redis::Reply<std::optional<std::string>>> {
+    auto fetch_field = [&redis, &user_key](std::string field) -> qb::io::async::task<qb::redis::Reply<std::optional<std::string>>> {
         co_return co_await redis.hget(user_key, field);
     };
 
-    auto [first_name_r, last_name_r, nonexistent_r] = co_await qb::io::async::when_all(
-        fetch_field("first_name"), fetch_field("last_name"), fetch_field("nonexistent_field"));
+    auto [first_name_r, last_name_r, nonexistent_r] =
+        co_await qb::io::async::when_all(fetch_field("first_name"), fetch_field("last_name"), fetch_field("nonexistent_field"));
 
     qb::io::cout() << "HMGET results:" << std::endl;
     if (first_name_r.ok() && first_name_r.result().has_value()) {
@@ -143,7 +142,7 @@ run_hash_operations(bool &running) {
     auto all_data_r = co_await redis.hgetall(user_key);
     qb::io::cout() << "All hash fields for " << user_key << ":" << std::endl;
     if (all_data_r.ok()) {
-        for (const auto& [field, value] : all_data_r.result()) {
+        for (const auto &[field, value] : all_data_r.result()) {
             qb::io::cout() << "  " << field << ": " << value << std::endl;
         }
     }
@@ -152,7 +151,7 @@ run_hash_operations(bool &running) {
     // hkeys / hvals return Reply<vector<string>>
     auto fields_r = co_await redis.hkeys(user_key);
     if (fields_r.ok()) {
-        const auto& fields_list = fields_r.result();
+        const auto &fields_list = fields_r.result();
         qb::io::cout() << "Hash fields: ";
         for (size_t i = 0; i < fields_list.size(); i++) {
             qb::io::cout() << fields_list[i] << (i < fields_list.size() - 1 ? ", " : "");
@@ -162,7 +161,7 @@ run_hash_operations(bool &running) {
 
     auto values_r = co_await redis.hvals(user_key);
     if (values_r.ok()) {
-        const auto& values_list = values_r.result();
+        const auto &values_list = values_r.result();
         qb::io::cout() << "Hash values: ";
         for (size_t i = 0; i < values_list.size(); i++) {
             qb::io::cout() << values_list[i] << (i < values_list.size() - 1 ? ", " : "");
@@ -176,7 +175,7 @@ run_hash_operations(bool &running) {
     qb::io::cout() << "Hash now has " << hlen_r.result() << " fields" << std::endl;
 
     // Clean up
-    (void)(co_await redis.del(user_key));
+    (void) (co_await redis.del(user_key));
     qb::io::cout() << "Hash operations completed successfully!" << std::endl;
 
     co_return;

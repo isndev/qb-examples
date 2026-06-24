@@ -41,9 +41,9 @@
 
 #include <iostream>
 
+#include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <redis/redis.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -69,12 +69,12 @@ run_list_operations(bool &running) {
     qb::io::cout() << "Connected to Redis successfully!" << std::endl;
 
     // Generate unique keys for this example to avoid collisions
-    std::string task_queue_key        = "example:tasks:queue";
+    std::string task_queue_key         = "example:tasks:queue";
     std::string notification_stack_key = "example:notifications:stack";
 
     // Clean up any existing data
-    (void)(co_await redis.del(task_queue_key));
-    (void)(co_await redis.del(notification_stack_key));
+    (void) (co_await redis.del(task_queue_key));
+    (void) (co_await redis.del(notification_stack_key));
 
     // -------- Basic LPUSH, RPUSH, LLEN operations --------
     qb::io::cout() << "\n===== Basic List Operations =====\n" << std::endl;
@@ -83,9 +83,9 @@ run_list_operations(bool &running) {
     // rpush returns Reply<long long> = list length after push.
     qb::io::cout() << "Creating a task queue (FIFO) with RPUSH:" << std::endl;
 
-    (void)(co_await redis.rpush(task_queue_key, "Task 1: Send email"));
-    (void)(co_await redis.rpush(task_queue_key, "Task 2: Process order"));
-    (void)(co_await redis.rpush(task_queue_key, "Task 3: Update database"));
+    (void) (co_await redis.rpush(task_queue_key, "Task 1: Send email"));
+    (void) (co_await redis.rpush(task_queue_key, "Task 2: Process order"));
+    (void) (co_await redis.rpush(task_queue_key, "Task 3: Update database"));
 
     qb::io::cout() << "Added 3 tasks to the queue" << std::endl;
 
@@ -96,9 +96,9 @@ run_list_operations(bool &running) {
     // Create a LIFO stack using LPUSH (add to left) and LPOP (remove from left).
     qb::io::cout() << "\nCreating a notification stack (LIFO) with LPUSH:" << std::endl;
 
-    (void)(co_await redis.lpush(notification_stack_key, "Notification 1: New comment"));
-    (void)(co_await redis.lpush(notification_stack_key, "Notification 2: New like"));
-    (void)(co_await redis.lpush(notification_stack_key, "Notification 3: New follower"));
+    (void) (co_await redis.lpush(notification_stack_key, "Notification 1: New comment"));
+    (void) (co_await redis.lpush(notification_stack_key, "Notification 2: New like"));
+    (void) (co_await redis.lpush(notification_stack_key, "Notification 3: New follower"));
 
     qb::io::cout() << "Added 3 notifications to the stack" << std::endl;
 
@@ -115,17 +115,15 @@ run_list_operations(bool &running) {
     // when_all call, so capturing `&redis` by reference is safe. Because both
     // commands run on the same client, the reads are pipelined into a single
     // round-trip group. lrange yields Reply<vector<string>>.
-    auto range_all = [&redis](std::string key)
-        -> qb::io::async::task<qb::redis::Reply<std::vector<std::string>>> {
+    auto range_all = [&redis](std::string key) -> qb::io::async::task<qb::redis::Reply<std::vector<std::string>>> {
         co_return co_await redis.lrange(key, 0, -1);
     };
 
-    auto [tasks_r, notifs_r] = co_await qb::io::async::when_all(
-        range_all(task_queue_key), range_all(notification_stack_key));
+    auto [tasks_r, notifs_r] = co_await qb::io::async::when_all(range_all(task_queue_key), range_all(notification_stack_key));
 
     qb::io::cout() << "All tasks in queue (ordered by insertion time):" << std::endl;
     if (tasks_r.ok()) {
-        const auto& tasks = tasks_r.result();
+        const auto &tasks = tasks_r.result();
         for (size_t i = 0; i < tasks.size(); i++) {
             qb::io::cout() << "  " << (i + 1) << ". " << tasks[i] << std::endl;
         }
@@ -133,7 +131,7 @@ run_list_operations(bool &running) {
 
     qb::io::cout() << "\nAll notifications in stack (newest first):" << std::endl;
     if (notifs_r.ok()) {
-        const auto& notifications = notifs_r.result();
+        const auto &notifications = notifs_r.result();
         for (size_t i = 0; i < notifications.size(); i++) {
             qb::io::cout() << "  " << (i + 1) << ". " << notifications[i] << std::endl;
         }
@@ -175,14 +173,13 @@ run_list_operations(bool &running) {
 
     // Create a new list with a single item
     std::string temp_key = "example:temp:list";
-    (void)(co_await redis.del(temp_key));
-    (void)(co_await redis.rpush(temp_key, "Last item"));
+    (void) (co_await redis.del(temp_key));
+    (void) (co_await redis.rpush(temp_key, "Last item"));
 
     // Pop the only item with BLPOP
     auto blpop1_r = co_await redis.blpop({temp_key}, 2);
     if (blpop1_r.ok() && blpop1_r.result().has_value()) {
-        qb::io::cout() << "  BLPOP result - Key: " << blpop1_r.result()->first
-                       << ", Value: "              << blpop1_r.result()->second << std::endl;
+        qb::io::cout() << "  BLPOP result - Key: " << blpop1_r.result()->first << ", Value: " << blpop1_r.result()->second << std::endl;
     }
 
     // Try BLPOP again with timeout (should time out as the list is now empty)
@@ -196,31 +193,29 @@ run_list_operations(bool &running) {
     qb::io::cout() << "\n===== Additional List Operations =====\n" << std::endl;
 
     // lindex returns Reply<optional<string>>
-    auto idx0_r = co_await redis.lindex(task_queue_key, 0);
-    std::string current_task = (idx0_r.ok() && idx0_r.result().has_value())
-                                   ? *idx0_r.result()
-                                   : "New task";
+    auto        idx0_r       = co_await redis.lindex(task_queue_key, 0);
+    std::string current_task = (idx0_r.ok() && idx0_r.result().has_value()) ? *idx0_r.result() : "New task";
 
     // lset returns Reply<status>; ok() indicates success
-    (void)(co_await redis.lset(task_queue_key, 0, "Updated: " + current_task));
+    (void) (co_await redis.lset(task_queue_key, 0, "Updated: " + current_task));
     qb::io::cout() << "Updated task using LSET" << std::endl;
 
     // Add new tasks and trim the list to keep only 3 most recent
-    (void)(co_await redis.rpush(task_queue_key, "Task 4: Send notifications"));
-    (void)(co_await redis.rpush(task_queue_key, "Task 5: Generate report"));
+    (void) (co_await redis.rpush(task_queue_key, "Task 4: Send notifications"));
+    (void) (co_await redis.rpush(task_queue_key, "Task 5: Generate report"));
 
     auto after_push_r = co_await redis.llen(task_queue_key);
     qb::io::cout() << "Added 2 more tasks, queue now has " << after_push_r.result() << " tasks" << std::endl;
 
     // ltrim returns Reply<status>
-    (void)(co_await redis.ltrim(task_queue_key, -3, -1));
+    (void) (co_await redis.ltrim(task_queue_key, -3, -1));
     qb::io::cout() << "Trimmed queue to keep only 3 most recent tasks" << std::endl;
 
     // Show the final task list
     auto final_r = co_await redis.lrange(task_queue_key, 0, -1);
     qb::io::cout() << "Final tasks in queue:" << std::endl;
     if (final_r.ok()) {
-        const auto& final_tasks = final_r.result();
+        const auto &final_tasks = final_r.result();
         for (size_t i = 0; i < final_tasks.size(); i++) {
             qb::io::cout() << "  " << (i + 1) << ". " << final_tasks[i] << std::endl;
         }
@@ -228,7 +223,7 @@ run_list_operations(bool &running) {
 
     // Clean up
     qb::io::cout() << "\nCleaning up..." << std::endl;
-    (void)(co_await redis.del(task_queue_key, notification_stack_key, temp_key));
+    (void) (co_await redis.del(task_queue_key, notification_stack_key, temp_key));
     qb::io::cout() << "List operations completed successfully!" << std::endl;
 
     co_return;

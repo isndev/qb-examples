@@ -25,7 +25,7 @@ Everything that touches the network is a coroutine:
 ### The golden rule: one class = one file
 
 Every class, actor, session type, and component lives in its own header +
-optional `.cpp` file.  This makes the dependency graph explicit and keeps each
+optional `.cpp` file. This makes the dependency graph explicit and keeps each
 translation unit focused.
 
 ---
@@ -64,13 +64,13 @@ taskmanager/
 
 ### File responsibility rules
 
-| File | What belongs there |
-|------|--------------------|
-| `include/events.h` | QB `struct` events crossing actor boundaries |
-| `include/models/*.h` | Plain data structures (serialisable, no QB deps) |
+| File                      | What belongs there                                           |
+|---------------------------|--------------------------------------------------------------|
+| `include/events.h`        | QB `struct` events crossing actor boundaries                 |
+| `include/models/*.h`      | Plain data structures (serialisable, no QB deps)             |
 | `include/actors/<name>.h` | Declaration only – types, method signatures, inline trivials |
-| `src/actors/<name>.cpp` | All non-trivial method bodies |
-| `src/main.cpp` | Engine wiring, zero business logic |
+| `src/actors/<name>.cpp`   | All non-trivial method bodies                                |
+| `src/main.cpp`            | Engine wiring, zero business logic                           |
 
 ---
 
@@ -122,29 +122,34 @@ POST /tasks
 ## Class Roles
 
 ### `TcpListener`  _(header-only)_
+
 - Inherits `qb::Actor` + `qb::io::use<T>::tcp::acceptor`
 - Owns the listening socket; accepts connections in a tight loop
 - Round-robin dispatch via `push<NewConnectionEvent>(target_id)`
 - **Never** touches HTTP; pure connection fan-out
 
 ### `HttpSession`  _(declaration only)_
+
 - Thin CRTP wrapper: `qb::http::use<HttpSession>::session<TaskManager>`
 - No application logic; the HTTP protocol machinery is in the base class
 - Forward-declares `TaskManager` to break the circular dependency
 
 ### `TaskManager`  _(actor)_
+
 - Inherits `qb::Actor` + `qb::http::use<T>::io_handler<HttpSession>`
 - Owns: `qb::pg::tcp::database`, `qb::redis::tcp::client`, `WebSocketHandler`
 - Registers all HTTP routes in `setup_routes()`
 - **Must** call `io_handler::disconnected(id)` in its override to prevent leaks
 
 ### `WebSocketHandler`  _(inner component, not an actor)_
+
 - Inherits `qb::io::use<T>::tcp::io_handler<WsSession>` (session pool)
 - Owns a `qb::redis::tcp::co_consumer` (coroutine Redis SUB)
 - `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the actor
   then spawns `consume_loop()` (scoped — cancelled on kill)
 
 ### `WsSession`  _(declaration + impl)_
+
 - Thin CRTP wrapper: `qb::io::use<WsSession>::tcp::client<WebSocketHandler>`
 - Handles inbound frames via `on(ws_protocol::message&&)`
 - Sends data via `send_json(const qb::json&)`
@@ -165,7 +170,7 @@ public:
 };
 ```
 
-The base class stores `TaskManager&` (reference, not value).  A forward
+The base class stores `TaskManager&` (reference, not value). A forward
 declaration is sufficient; the complete type is only required in `.cpp` files
 that call methods on `TaskManager`.
 
@@ -180,7 +185,7 @@ class TaskManager : public qb::Actor, public qb::http::use<TaskManager>::io_hand
 ```
 
 Components that share the same VirtualCore as their owner do **not** need to be
-actors.  They are plain C++ objects with QB mixin bases (io_handler, consumer).
+actors. They are plain C++ objects with QB mixin bases (io_handler, consumer).
 
 ### 3 – Session cleanup (CRITICAL)
 
@@ -256,17 +261,17 @@ The static files are copied to `build/presets/dev/bin/resources/static/`.
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Readiness check (DB, Redis, WS count) |
-| `GET` | `/tasks` | List tasks (Redis-cached, `X-Cache` header) |
-| `POST` | `/tasks` | Create task (`{"title":"…","description":"…","status":"…"}`) |
-| `GET` | `/tasks/:id` | Get single task |
-| `PUT` | `/tasks/:id` | Update task (partial JSON accepted) |
-| `DELETE` | `/tasks/:id` | Delete task |
-| `GET` | `/ws` | WebSocket upgrade (101) |
-| `GET` | `/static/*` | Static files |
-| `GET` | `/` | Redirect → `/static/index.html` |
+| Method   | Path         | Description                                                  |
+|----------|--------------|--------------------------------------------------------------|
+| `GET`    | `/health`    | Readiness check (DB, Redis, WS count)                        |
+| `GET`    | `/tasks`     | List tasks (Redis-cached, `X-Cache` header)                  |
+| `POST`   | `/tasks`     | Create task (`{"title":"…","description":"…","status":"…"}`) |
+| `GET`    | `/tasks/:id` | Get single task                                              |
+| `PUT`    | `/tasks/:id` | Update task (partial JSON accepted)                          |
+| `DELETE` | `/tasks/:id` | Delete task                                                  |
+| `GET`    | `/ws`        | WebSocket upgrade (101)                                      |
+| `GET`    | `/static/*`  | Static files                                                 |
+| `GET`    | `/`          | Redirect → `/static/index.html`                              |
 
 ---
 

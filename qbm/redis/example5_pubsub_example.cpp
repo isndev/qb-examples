@@ -42,16 +42,16 @@
  * - `qb::io::async::callback` with `std::chrono::duration` timeout.
  */
 
+#include <chrono>
+#include <iostream>
 #include <redis/redis.h>
+#include <string>
+#include <vector>
 #include <qb/actor.h>
-#include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <chrono>
+#include <qb/main.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -62,7 +62,8 @@ struct PublishMessageEvent : qb::Event {
     std::string message;
 
     PublishMessageEvent(std::string ch, std::string msg)
-        : channel(std::move(ch)), message(std::move(msg)) {}
+        : channel(std::move(ch))
+        , message(std::move(msg)) {}
 };
 
 // Event to signal an actor to subscribe to a channel
@@ -79,7 +80,8 @@ struct ReceivedMessageEvent : qb::Event {
     std::string message;
 
     ReceivedMessageEvent(std::string ch, std::string msg)
-        : channel(std::move(ch)), message(std::move(msg)) {}
+        : channel(std::move(ch))
+        , message(std::move(msg)) {}
 };
 
 // Event to signal shutdown
@@ -96,15 +98,17 @@ struct SubscriptionCompleteEvent : qb::Event {
 class PublisherActor : public qb::Actor {
 private:
     qb::redis::tcp::client _redis{REDIS_URI};
-    qb::ActorId _coordinator_id;
-    int _messages_published = 0;
-    int _target_messages    = 0;
+    qb::ActorId            _coordinator_id;
+    int                    _messages_published = 0;
+    int                    _target_messages    = 0;
 
 public:
     PublisherActor(qb::ActorId coordinator, int target_messages = 5)
-        : _coordinator_id(coordinator), _target_messages(target_messages) {}
+        : _coordinator_id(coordinator)
+        , _target_messages(target_messages) {}
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         auto cout = qb::io::cout();
         cout << "PublisherActor initialized" << std::endl;
 
@@ -122,37 +126,33 @@ public:
         co_return true;
     }
 
-    void on(const PublishMessageEvent& event) {
+    void
+    on(const PublishMessageEvent &event) {
         std::string channel = event.channel;
         std::string message = event.message;
 
         spawn([this, channel, message](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
-            cout << "Publishing to channel '" << channel
-                 << "': " << message << std::endl;
+            cout << "Publishing to channel '" << channel << "': " << message << std::endl;
 
             auto r = co_await _redis.publish(channel, message);
             if (r.ok()) {
-                cout << "Message delivered to " << r.result()
-                     << " subscribers" << std::endl;
+                cout << "Message delivered to " << r.result() << " subscribers" << std::endl;
             }
 
             _messages_published++;
 
             if (_messages_published >= _target_messages) {
-                cout << "Published " << _messages_published
-                     << " messages, target reached" << std::endl;
-                qb::io::async::callback([this]() {
-                    push<ShutdownEvent>(id());
-                }, std::chrono::seconds(1));
+                cout << "Published " << _messages_published << " messages, target reached" << std::endl;
+                qb::io::async::callback([this]() { push<ShutdownEvent>(id()); }, std::chrono::seconds(1));
             }
         });
     }
 
-    void on(const ShutdownEvent&) {
+    void
+    on(const ShutdownEvent &) {
         auto cout = qb::io::cout();
-        cout << "PublisherActor shutting down after publishing "
-             << _messages_published << " messages" << std::endl;
+        cout << "PublisherActor shutting down after publishing " << _messages_published << " messages" << std::endl;
 
         // Notify coordinator to shutdown the system
         push<ShutdownEvent>(_coordinator_id);
@@ -164,15 +164,17 @@ public:
 class SubscriberActor : public qb::Actor {
 private:
     qb::redis::tcp::co_consumer _consumer{REDIS_URI};
-    std::vector<std::string> _subscribed_channels;
-    qb::ActorId _coordinator_id;
-    std::string _name;
+    std::vector<std::string>    _subscribed_channels;
+    qb::ActorId                 _coordinator_id;
+    std::string                 _name;
 
 public:
     SubscriberActor(qb::ActorId coordinator, std::string name = "Subscriber")
-        : _coordinator_id(coordinator), _name(std::move(name)) {}
+        : _coordinator_id(coordinator)
+        , _name(std::move(name)) {}
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         auto cout = qb::io::cout();
         cout << _name << " initialized" << std::endl;
 
@@ -192,14 +194,10 @@ public:
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             while (auto msg = co_await _consumer.receive()) {
-                cout << _name << " received on '" << msg->channel
-                     << "': " << msg->payload << std::endl;
+                cout << _name << " received on '" << msg->channel << "': " << msg->payload << std::endl;
 
                 if (_coordinator_id != qb::ActorId()) {
-                    push<ReceivedMessageEvent>(
-                        _coordinator_id,
-                        std::string(msg->channel),
-                        std::string(msg->payload));
+                    push<ReceivedMessageEvent>(_coordinator_id, std::string(msg->channel), std::string(msg->payload));
                 }
             }
             cout << _name << " receive loop ended" << std::endl;
@@ -208,7 +206,8 @@ public:
         co_return true;
     }
 
-    void on(const SubscribeEvent& event) {
+    void
+    on(const SubscribeEvent &event) {
         std::string channel = event.channel;
 
         spawn([this, channel](qb::ScopedCoroContext) -> qb::io::async::task<void> {
@@ -217,24 +216,21 @@ public:
 
             auto r = co_await _consumer.subscribe(channel);
             if (r.ok()) {
-                cout << _name << " subscribed to channel: "
-                     << channel << std::endl;
+                cout << _name << " subscribed to channel: " << channel << std::endl;
                 _subscribed_channels.push_back(channel);
 
                 // Notify coordinator that subscription is confirmed
                 push<SubscriptionCompleteEvent>(_coordinator_id);
             } else {
-                qb::io::cerr() << _name
-                               << " failed to subscribe to channel: "
-                               << channel << std::endl;
+                qb::io::cerr() << _name << " failed to subscribe to channel: " << channel << std::endl;
             }
         });
     }
 
-    void on(const ShutdownEvent&) {
+    void
+    on(const ShutdownEvent &) {
         auto cout = qb::io::cout();
-        cout << _name << " shutting down, unsubscribing from "
-             << _subscribed_channels.size() << " channels" << std::endl;
+        cout << _name << " shutting down, unsubscribing from " << _subscribed_channels.size() << " channels" << std::endl;
 
         // Disconnect the consumer — this closes the internal channel, which makes
         // the receive() loop return nullopt and the spawned coroutine exit cleanly.
@@ -245,7 +241,9 @@ public:
 };
 
 // Coordinator actor that manages publishers and subscribers
-class CoordinatorActor : public qb::Actor, public qb::ICallback {
+class CoordinatorActor
+    : public qb::Actor
+    , public qb::ICallback {
 private:
     qb::ActorId _publisher_id;
     qb::ActorId _subscriber1_id;
@@ -257,17 +255,15 @@ private:
     int  _subscriptions_complete = 0;
     int  _expected_subscriptions = 2; // one per subscriber
 
-    std::vector<std::string> _channels = {"news", "sports", "technology"};
+    std::vector<std::string> _channels         = {"news", "sports", "technology"};
     std::vector<std::string> _example_messages = {
-        "Breaking News: Important announcement!",
-        "Sports Update: Team wins championship!",
-        "Technology News: New device released!",
-        "Weather Alert: Sunny day ahead!",
-        "Traffic Update: Clear roads everywhere!"
+        "Breaking News: Important announcement!", "Sports Update: Team wins championship!", "Technology News: New device released!",
+        "Weather Alert: Sunny day ahead!", "Traffic Update: Clear roads everywhere!"
     };
 
 public:
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         auto cout = qb::io::cout();
         cout << "CoordinatorActor initialized" << std::endl;
 
@@ -307,24 +303,27 @@ public:
         cout << "Created Subscriber2: " << _subscriber2_id << std::endl;
 
         // Subscribe to channels after a brief delay to let connections establish
-        qb::io::async::callback([this]() {
-            auto cout = qb::io::cout();
-            cout << "Setting up subscriptions..." << std::endl;
+        qb::io::async::callback(
+            [this]() {
+                auto cout = qb::io::cout();
+                cout << "Setting up subscriptions..." << std::endl;
 
-            // Subscriber 1: news + sports
-            push<SubscribeEvent>(_subscriber1_id, _channels[0]);
-            push<SubscribeEvent>(_subscriber1_id, _channels[1]);
+                // Subscriber 1: news + sports
+                push<SubscribeEvent>(_subscriber1_id, _channels[0]);
+                push<SubscribeEvent>(_subscriber1_id, _channels[1]);
 
-            // Subscriber 2: sports + technology (overlap on sports)
-            push<SubscribeEvent>(_subscriber2_id, _channels[1]);
-            push<SubscribeEvent>(_subscriber2_id, _channels[2]);
-        }, std::chrono::seconds(1));
+                // Subscriber 2: sports + technology (overlap on sports)
+                push<SubscribeEvent>(_subscriber2_id, _channels[1]);
+                push<SubscribeEvent>(_subscriber2_id, _channels[2]);
+            },
+            std::chrono::seconds(1));
 
         co_return true;
     }
 
     // Periodic callback: publish one message per tick once subscriptions are ready
-    void on(qb::LoopEvent const&) override {
+    void
+    on(qb::LoopEvent const &) override {
         if (_subscriptions_complete < _expected_subscriptions || _shutdown_requested)
             return;
 
@@ -332,47 +331,48 @@ public:
             int channel_idx = _message_count % static_cast<int>(_channels.size());
             int message_idx = _message_count % static_cast<int>(_example_messages.size());
 
-            push<PublishMessageEvent>(_publisher_id,
-                                     _channels[channel_idx],
-                                     _example_messages[message_idx]);
+            push<PublishMessageEvent>(_publisher_id, _channels[channel_idx], _example_messages[message_idx]);
             _message_count++;
         }
     }
 
-    void on(const ReceivedMessageEvent& event) {
+    void
+    on(const ReceivedMessageEvent &event) {
         auto cout = qb::io::cout();
-        cout << "Coordinator received forwarded message from channel '"
-             << event.channel << "': " << event.message << std::endl;
+        cout << "Coordinator received forwarded message from channel '" << event.channel << "': " << event.message << std::endl;
     }
 
-    void on(const SubscriptionCompleteEvent&) {
+    void
+    on(const SubscriptionCompleteEvent &) {
         auto cout = qb::io::cout();
         _subscriptions_complete++;
-        cout << "Subscription complete notification received. "
-             << _subscriptions_complete << " of "
-             << _expected_subscriptions << " complete." << std::endl;
+        cout << "Subscription complete notification received. " << _subscriptions_complete << " of " << _expected_subscriptions << " complete."
+             << std::endl;
 
         if (_subscriptions_complete >= _expected_subscriptions) {
-            cout << "All subscriptions complete. Starting to publish messages..."
-                 << std::endl;
+            cout << "All subscriptions complete. Starting to publish messages..." << std::endl;
         }
     }
 
-    void on(const qb::KillEvent&) {
+    void
+    on(const qb::KillEvent &) {
         auto cout = qb::io::cout();
         cout << "CoordinatorActor received kill event" << std::endl;
         shutdown_system();
     }
 
-    void on(const ShutdownEvent&) {
+    void
+    on(const ShutdownEvent &) {
         auto cout = qb::io::cout();
         cout << "CoordinatorActor received shutdown event" << std::endl;
         shutdown_system();
     }
 
-    void shutdown_system() {
+    void
+    shutdown_system() {
         auto cout = qb::io::cout();
-        if (_shutdown_requested) return;
+        if (_shutdown_requested)
+            return;
 
         _shutdown_requested = true;
         cout << "Shutting down pub/sub system..." << std::endl;
@@ -381,21 +381,26 @@ public:
         push<ShutdownEvent>(_subscriber1_id);
         push<ShutdownEvent>(_subscriber2_id);
 
-        qb::io::async::callback([this]() {
-            auto cout = qb::io::cout();
-            cout << "CoordinatorActor shutting down" << std::endl;
-            kill();
-
-            qb::io::async::callback([]() {
+        qb::io::async::callback(
+            [this]() {
                 auto cout = qb::io::cout();
-                cout << "Stopping engine..." << std::endl;
-                qb::Main::stop();
-            }, std::chrono::seconds(1));
-        }, std::chrono::seconds(2));
+                cout << "CoordinatorActor shutting down" << std::endl;
+                kill();
+
+                qb::io::async::callback(
+                    []() {
+                        auto cout = qb::io::cout();
+                        cout << "Stopping engine..." << std::endl;
+                        qb::Main::stop();
+                    },
+                    std::chrono::seconds(1));
+            },
+            std::chrono::seconds(2));
     }
 };
 
-int main() {
+int
+main() {
     qb::io::async::init();
     auto cout = qb::io::cout();
 

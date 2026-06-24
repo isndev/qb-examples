@@ -11,31 +11,31 @@
 
 'use strict';
 
-const API    = '';
+const API = '';
 const WS_URL = `ws://${location.host}/ws`;
 
 // ── State ──────────────────────────────────────────────────────────────────────
-let tasks          = [];
+let tasks = [];
 let selectedStatus = 'pending';
-let draggingId     = null;
-let loadPending    = false;
-let ws             = null;
-let wsDelay        = 1000;
-let wsTimer        = null;
+let draggingId = null;
+let loadPending = false;
+let ws = null;
+let wsDelay = 1000;
+let wsTimer = null;
 
 // ── DOM refs ───────────────────────────────────────────────────────────────────
-const $  = id => document.getElementById(id);
-const eventsLog    = $('events-log');
-const wsBadge      = $('ws-badge');
-const cacheBadge   = $('cache-badge');
-const totalCount   = $('total-count');
-const drawer       = $('drawer');
-const overlay      = $('drawer-overlay');
-const taskForm     = $('task-form');
-const titleInput   = $('task-title');
-const descInput    = $('task-desc');
+const $ = id => document.getElementById(id);
+const eventsLog = $('events-log');
+const wsBadge = $('ws-badge');
+const cacheBadge = $('cache-badge');
+const totalCount = $('total-count');
+const drawer = $('drawer');
+const overlay = $('drawer-overlay');
+const taskForm = $('task-form');
+const titleInput = $('task-title');
+const descInput = $('task-desc');
 const toastContainer = $('toast-container');
-const board        = $('kanban-board');
+const board = $('kanban-board');
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
 async function init() {
@@ -51,7 +51,9 @@ function bindUI() {
     $('new-task-btn').addEventListener('click', openDrawer);
     $('btn-close-drawer').addEventListener('click', closeDrawer);
     overlay.addEventListener('click', closeDrawer);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeDrawer();
+    });
 
     // Form submission
     taskForm.addEventListener('submit', handleCreate);
@@ -70,13 +72,20 @@ function bindUI() {
 
     // Drag & drop on drop zones
     document.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
-        zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
-        zone.addEventListener('drop',      handleDrop);
+        zone.addEventListener('dragover', e => {
+            e.preventDefault();
+            zone.classList.add('drag-over');
+        });
+        zone.addEventListener('dragleave', e => {
+            if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+        });
+        zone.addEventListener('drop', handleDrop);
     });
 
     // Clear events
-    $('clear-events-btn').addEventListener('click', () => { eventsLog.innerHTML = ''; });
+    $('clear-events-btn').addEventListener('click', () => {
+        eventsLog.innerHTML = '';
+    });
 }
 
 // ── Drawer ─────────────────────────────────────────────────────────────────────
@@ -116,20 +125,20 @@ async function loadTasks() {
 
 async function handleCreate(e) {
     e.preventDefault();
-    const title       = titleInput.value.trim();
+    const title = titleInput.value.trim();
     const description = descInput.value.trim();
-    const status      = selectedStatus;
+    const status = selectedStatus;
     if (!title) return;
 
     const btn = $('btn-submit');
-    btn.disabled    = true;
+    btn.disabled = true;
     btn.textContent = 'Creating…';
 
     try {
         const res = await fetch(`${API}/tasks`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ title, description, status })
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, description, status})
         });
 
         if (res.ok) {
@@ -144,7 +153,7 @@ async function handleCreate(e) {
     } catch {
         showToast('Network error', 'error');
     } finally {
-        btn.disabled    = false;
+        btn.disabled = false;
         btn.textContent = 'Create Task';
     }
 }
@@ -163,7 +172,7 @@ async function deleteTask(id) {
     renderBoard();
 
     try {
-        const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+        const res = await fetch(`${API}/tasks/${id}`, {method: 'DELETE'});
         if (res.ok) {
             logEvent(`Deleted: "${task.title}"`, 'deleted', '🗑️');
             showToast(`Deleted: "${task.title}"`, 'success');
@@ -192,9 +201,9 @@ async function updateStatus(id, newStatus) {
 
     try {
         const res = await fetch(`${API}/tasks/${id}`, {
-            method:  'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ status: newStatus })
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus})
         });
 
         if (res.ok) {
@@ -229,9 +238,9 @@ function handleDragEnd(e) {
 
 function handleDrop(e) {
     e.preventDefault();
-    const zone      = e.currentTarget;
+    const zone = e.currentTarget;
     const newStatus = zone.dataset.status;
-    const id        = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const id = parseInt(e.dataTransfer.getData('text/plain'), 10);
     zone.classList.remove('drag-over');
     if (id && newStatus) updateStatus(id, newStatus);
 }
@@ -244,8 +253,8 @@ function handleCardAction(e) {
         const id = parseInt(advBtn.dataset.id, 10);
         const task = tasks.find(t => t.id === id);
         if (task) {
-            const order  = ['pending', 'in_progress', 'completed'];
-            const next   = order[(order.indexOf(task.status) + 1) % order.length];
+            const order = ['pending', 'in_progress', 'completed'];
+            const next = order[(order.indexOf(task.status) + 1) % order.length];
             updateStatus(id, next);
         }
         return;
@@ -263,14 +272,18 @@ const STATUSES = ['pending', 'in_progress', 'completed'];
 
 function renderBoard() {
     STATUSES.forEach(status => {
-        const col   = tasks.filter(t => t.status === status);
-        const zone  = $(`zone-${status}`);
+        const col = tasks.filter(t => t.status === status);
+        const zone = $(`zone-${status}`);
         const badge = $(`count-${status}`);
 
         badge.textContent = col.length;
 
         if (col.length === 0) {
-            const hints = { pending: 'No pending tasks', in_progress: 'Drag tasks here to start', completed: '🎉 Completed tasks appear here' };
+            const hints = {
+                pending: 'No pending tasks',
+                in_progress: 'Drag tasks here to start',
+                completed: '🎉 Completed tasks appear here'
+            };
             zone.innerHTML = `<div class="empty-hint">${hints[status]}</div>`;
             return;
         }
@@ -281,7 +294,7 @@ function renderBoard() {
         zone.querySelectorAll('.task-card[draggable]').forEach(card => {
             const id = parseInt(card.dataset.id, 10);
             card.addEventListener('dragstart', e => handleDragStart(e, id));
-            card.addEventListener('dragend',   handleDragEnd);
+            card.addEventListener('dragend', handleDragEnd);
         });
     });
 
@@ -290,11 +303,11 @@ function renderBoard() {
 }
 
 function renderCard(task) {
-    const order   = ['pending', 'in_progress', 'completed'];
-    const nextSt  = order[(order.indexOf(task.status) + 1) % order.length];
+    const order = ['pending', 'in_progress', 'completed'];
+    const nextSt = order[(order.indexOf(task.status) + 1) % order.length];
     const nextLbl = statusLabel(nextSt);
     const advIcon = task.status === 'completed' ? '↩' : '→';
-    const date    = formatDate(task.created_at);
+    const date = formatDate(task.created_at);
 
     // Use data-* attributes + event delegation: no inline handlers, no escaping issues
     return `
@@ -343,11 +356,12 @@ function connectWS() {
             if (msg.type === 'ack') return;
             if (msg.action) {
                 const label = msg.title ? `"${escHtml(msg.title)}"` : `#${msg.task_id}`;
-                const icons = { created: '✨', updated: '↗️', deleted: '🗑️' };
+                const icons = {created: '✨', updated: '↗️', deleted: '🗑️'};
                 logEvent(`${msg.action} ${label}`, msg.action, icons[msg.action] ?? '📡');
                 loadTasks();
             }
-        } catch { /* malformed frame */ }
+        } catch { /* malformed frame */
+        }
     };
 
     ws.onclose = e => {
@@ -363,7 +377,8 @@ function connectWS() {
         }
     };
 
-    ws.onerror = () => { /* onclose fires next */ };
+    ws.onerror = () => { /* onclose fires next */
+    };
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────────
@@ -373,10 +388,13 @@ function setWsConnected(ok) {
 }
 
 function updateCacheBadge(header) {
-    if (!header) { cacheBadge.className = 'cache-badge hidden'; return; }
+    if (!header) {
+        cacheBadge.className = 'cache-badge hidden';
+        return;
+    }
     const hit = header === 'HIT';
     cacheBadge.textContent = `CACHE ${header}`;
-    cacheBadge.className   = `cache-badge ${hit ? 'hit' : 'miss'}`;
+    cacheBadge.className = `cache-badge ${hit ? 'hit' : 'miss'}`;
 }
 
 function logEvent(message, type = 'info', icon = '📡') {
@@ -394,7 +412,7 @@ function logEvent(message, type = 'info', icon = '📡') {
 
 function showToast(message, type = 'success') {
     const t = document.createElement('div');
-    t.className   = `toast ${type}`;
+    t.className = `toast ${type}`;
     t.textContent = message;
     toastContainer.appendChild(t);
     setTimeout(() => t.remove(), 3000);
@@ -402,19 +420,21 @@ function showToast(message, type = 'success') {
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
 function statusLabel(s) {
-    return { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' }[s] ?? s;
+    return {pending: 'Pending', in_progress: 'In Progress', completed: 'Completed'}[s] ?? s;
 }
 
 function formatDate(str) {
     if (!str) return '';
     try {
-        const d    = new Date(str.replace(' ', 'T'));
+        const d = new Date(str.replace(' ', 'T'));
         const diff = (Date.now() - d.getTime()) / 1000;
-        if (diff < 60)    return 'just now';
-        if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
         if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
         return d.toLocaleDateString();
-    } catch { return ''; }
+    } catch {
+        return '';
+    }
 }
 
 /** Safe HTML escaping via DOM (no regex tricks). */
@@ -430,7 +450,9 @@ function escAttr(text) {
     return text ? String(text).replace(/[^a-zA-Z0-9_]/g, '_') : '';
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 init();

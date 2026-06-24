@@ -27,10 +27,10 @@
  */
 #pragma once
 
-#include <qb/io/async.h>
-#include <redis/redis.h>
 #include <http/http.h>
 #include <http/ws.h>
+#include <redis/redis.h>
+#include <qb/io/async.h>
 #include <qb/json.h>
 #include "ws_session.h"
 
@@ -44,8 +44,7 @@ class TaskManager; // back-reference (state access if needed)
  *
  * Constructed by TaskManager; lifetime tied to the owning actor.
  */
-class WebSocketHandler
-    : public qb::io::use<WebSocketHandler>::tcp::io_handler<WsSession> {
+class WebSocketHandler : public qb::io::use<WebSocketHandler>::tcp::io_handler<WsSession> {
 public:
     /**
      * @param manager    Back-reference to the owning TaskManager.
@@ -79,15 +78,14 @@ public:
      * @brief Perform the HTTP → WebSocket protocol upgrade on @p sock.
      * @return true on success; on a bad handshake the session is disconnected.
      */
-    bool upgrade_connection(qb::io::tcp::socket    &&sock,
-                            const qb::http::Request &request,
-                            qb::http::Response      &response);
+    bool upgrade_connection(qb::io::tcp::socket &&sock, const qb::http::Request &request, qb::http::Response &response);
 
     /** Send @p data as a JSON text frame to every connected WS client. */
     void broadcast_to_all(const qb::json &data);
 
     /** Number of currently connected WebSocket clients. */
-    [[nodiscard]] std::size_t client_count() const noexcept {
+    [[nodiscard]] std::size_t
+    client_count() const noexcept {
         return session_count();
     }
 

@@ -23,10 +23,10 @@
 #include <iostream>
 #include <string>
 
-#include <qb/io/async/coroutine.h> // when_all, sleep
-#include <qb/main.h>
 #include <http/coro.h> // co_await qb::http::GET (coroutine client)
 #include <http/http.h>
+#include <qb/io/async/coroutine.h> // when_all, sleep
+#include <qb/main.h>
 
 class CoroutineServer
     : public qb::Actor

@@ -7,22 +7,48 @@
     "description": "High-performance asynchronous HTTP/1.1 and HTTP/2 framework"
   },
   "features": {
-    "protocols": ["HTTP/1.1", "HTTP/2"],
+    "protocols": [
+      "HTTP/1.1",
+      "HTTP/2"
+    ],
     "async_io": true,
     "middleware_system": true,
     "static_files": true,
     "file_upload": true,
     "json_support": true,
-    "authentication": ["JWT", "Custom"],
+    "authentication": [
+      "JWT",
+      "Custom"
+    ],
     "validation": true,
-    "compression": ["gzip", "deflate"],
-    "caching": ["ETag", "Last-Modified", "Cache-Control"]
+    "compression": [
+      "gzip",
+      "deflate"
+    ],
+    "caching": [
+      "ETag",
+      "Last-Modified",
+      "Cache-Control"
+    ]
   },
   "architecture": {
-    "design_patterns": ["Actor Model", "CRTP", "RAII"],
+    "design_patterns": [
+      "Actor Model",
+      "CRTP",
+      "RAII"
+    ],
     "concurrency": "Event-driven with optional Actor Framework integration",
-    "dependencies": ["qb-io", "qb-core (optional)", "libev", "llhttp"],
-    "platforms": ["Linux", "macOS", "Windows"]
+    "dependencies": [
+      "qb-io",
+      "qb-core (optional)",
+      "libev",
+      "llhttp"
+    ],
+    "platforms": [
+      "Linux",
+      "macOS",
+      "Windows"
+    ]
   },
   "examples": {
     "static_file_server": {

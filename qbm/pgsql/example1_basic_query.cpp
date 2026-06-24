@@ -21,9 +21,9 @@
  * - `qb::io::cout()` — thread-safe console output.
  */
 
+#include <pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <pgsql/pgsql.h>
 
 #include <string>
 

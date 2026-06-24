@@ -1,8 +1,8 @@
 // QB HTTP Framework - Client-side utilities
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     console.log('QB HTTP Static File Server - JavaScript loaded');
-    
+
     // Add some interactive features
     enhanceNavigation();
     addClickEffects();
@@ -13,7 +13,7 @@ function enhanceNavigation() {
     // Add smooth scrolling for anchor links
     const links = document.querySelectorAll('a[href^="#"]');
     links.forEach(link => {
-        link.addEventListener('click', function(e) {
+        link.addEventListener('click', function (e) {
             e.preventDefault();
             const target = document.querySelector(this.getAttribute('href'));
             if (target) {
@@ -29,21 +29,21 @@ function addClickEffects() {
     // Add simple click effect to buttons without any dynamic CSS
     const buttons = document.querySelectorAll('.btn, button');
     buttons.forEach(button => {
-        button.addEventListener('click', function(e) {
+        button.addEventListener('click', function (e) {
             // Add a simple class-based effect
             this.classList.add('clicked');
-            
+
             setTimeout(() => {
                 this.classList.remove('clicked');
             }, 200);
         });
-        
+
         // Add hover class for better UX
-        button.addEventListener('mouseenter', function() {
+        button.addEventListener('mouseenter', function () {
             this.classList.add('hover');
         });
-        
-        button.addEventListener('mouseleave', function() {
+
+        button.addEventListener('mouseleave', function () {
             this.classList.remove('hover');
         });
     });
@@ -58,9 +58,9 @@ function showPageInfo() {
         timestamp: now.toISOString(),
         localTime: now.toLocaleString()
     };
-    
+
     console.log('Page Information:', pageInfo);
-    
+
     // Add debug info to footer if needed (without dynamic CSS)
     if (window.location.search.includes('debug=true')) {
         const footer = document.querySelector('footer');
@@ -87,13 +87,13 @@ const QBHttpUtils = {
                 },
                 ...options
             });
-            
+
             const data = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(data.error || 'HTTP ' + response.status);
             }
-            
+
             return data;
         } catch (error) {
             console.error('API Request failed:', error);

@@ -3,9 +3,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(qb_examples_all LANGUAGES CXX)
 
-if(NOT QB_BUILD_EXAMPLES)
+if (NOT QB_BUILD_EXAMPLES)
     return()
-endif()
+endif ()
 
 qb_status_message("Building full-stack QB examples")
 

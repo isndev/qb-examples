@@ -34,7 +34,8 @@ class TaskManager;
  */
 class HttpSession : public qb::http::use<HttpSession>::session<TaskManager> {
 public:
-    explicit HttpSession(TaskManager &mgr) : session(mgr) {}
+    explicit HttpSession(TaskManager &mgr)
+        : session(mgr) {}
 };
 
 } // namespace actors

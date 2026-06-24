@@ -39,7 +39,8 @@ class WsSession : public qb::io::use<WsSession>::tcp::client<WebSocketHandler> {
 public:
     using ws_protocol = qb::http::ws::protocol<WsSession>;
 
-    explicit WsSession(WebSocketHandler &handler) : client(handler) {}
+    explicit WsSession(WebSocketHandler &handler)
+        : client(handler) {}
 
     /**
      * @brief Handle an inbound WebSocket frame.

@@ -33,37 +33,37 @@ qb_status_message("Building qb I/O examples")
 
 # Example 1: Asynchronous I/O fundamentals
 qb_add_executable(
-    NAME example1_async_io
-    SOURCES example1_async_io.cpp
-    DEPENDS qb-core qb-io
+        NAME example1_async_io
+        SOURCES example1_async_io.cpp
+        DEPENDS qb-core qb-io
 )
 
 # Example 2: File I/O operations (Unix/Linux/macOS only)
-if(NOT QB_PLATFORM_WINDOWS)
+if (NOT QB_PLATFORM_WINDOWS)
     qb_add_executable(
-        NAME example2_file_io
-        SOURCES example2_file_io.cpp
-        DEPENDS qb-core qb-io
+            NAME example2_file_io
+            SOURCES example2_file_io.cpp
+            DEPENDS qb-core qb-io
     )
-endif()
+endif ()
 
 # Example 3: TCP networking
 qb_add_executable(
-    NAME example3_tcp_networking
-    SOURCES example3_tcp_networking.cpp
-    DEPENDS qb-core qb-io
+        NAME example3_tcp_networking
+        SOURCES example3_tcp_networking.cpp
+        DEPENDS qb-core qb-io
 )
 
 # Example 4: UDP networking
 qb_add_executable(
-    NAME example4_udp_networking
-    SOURCES example4_udp_networking.cpp
-    DEPENDS qb-core qb-io
+        NAME example4_udp_networking
+        SOURCES example4_udp_networking.cpp
+        DEPENDS qb-core qb-io
 )
 
 # Example 5: Custom Protocol implementation
 qb_add_executable(
-    NAME example5_custom_protocol
-    SOURCES example5_custom_protocol.cpp
-    DEPENDS qb-core qb-io
+        NAME example5_custom_protocol
+        SOURCES example5_custom_protocol.cpp
+        DEPENDS qb-core qb-io
 ) 

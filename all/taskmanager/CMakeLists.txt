@@ -29,38 +29,38 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(taskmanager
-    LANGUAGES    CXX
-    VERSION      1.0.0
-    DESCRIPTION  "QB TaskManager – Expert architecture example"
+        LANGUAGES CXX
+        VERSION 1.0.0
+        DESCRIPTION "QB TaskManager – Expert architecture example"
 )
 
-if(NOT QB_BUILD_EXAMPLES)
+if (NOT QB_BUILD_EXAMPLES)
     return()
-endif()
+endif ()
 
 qb_status_message("Building QB TaskManager (expert architecture)")
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 
 set(SOURCES
-    src/main.cpp
-    src/actors/task_manager.cpp
-    src/actors/websocket_handler.cpp
+        src/main.cpp
+        src/actors/task_manager.cpp
+        src/actors/websocket_handler.cpp
 )
 
 # ── Target ────────────────────────────────────────────────────────────────────
 
 qb_add_executable(
-    NAME    taskmanager
-    SOURCES ${SOURCES}
-    DEPENDS
+        NAME taskmanager
+        SOURCES ${SOURCES}
+        DEPENDS
         qbm-http
         qbm-pgsql
         qbm-redis
 )
 
 target_include_directories(taskmanager PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # Compile-time constant: absolute path to the static files directory.
@@ -68,15 +68,15 @@ target_include_directories(taskmanager PRIVATE
 # Each example copies into its own bin/<example>/resources subdir so parallel
 # builds never race (or clobber each other) on a shared bin/resources directory.
 target_compile_definitions(taskmanager PRIVATE
-    RESOURCES_PATH="${CMAKE_BINARY_DIR}/bin/taskmanager/resources/static"
+        RESOURCES_PATH="${CMAKE_BINARY_DIR}/bin/taskmanager/resources/static"
 )
 
 # ── Resources ─────────────────────────────────────────────────────────────────
 
 qb_copy_resources(
-    TARGET      taskmanager
-    RESOURCES   "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-    DESTINATION "${CMAKE_BINARY_DIR}/bin/taskmanager/resources"
+        TARGET taskmanager
+        RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        DESTINATION "${CMAKE_BINARY_DIR}/bin/taskmanager/resources"
 )
 
 qb_status_message("QB TaskManager configured")

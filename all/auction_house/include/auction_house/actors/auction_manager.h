@@ -24,9 +24,9 @@
 #include <http/http.h>
 #include <memory>
 #include <pgsql/pgsql.h>
+#include <redis/redis.h>
 #include <qb/actor.h>
 #include <qb/io/async.h>
-#include <redis/redis.h>
 #include "auction_house/events.h"
 #include "auction_house/models/bid.h"
 #include "auction_house/models/lot.h"

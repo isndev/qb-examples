@@ -12,12 +12,12 @@
  */
 #pragma once
 
-#include <qb/json.h>
-#include <qb/system/time.h>
-#include <pgsql/pgsql.h>
 #include <cstdint>
+#include <pgsql/pgsql.h>
 #include <string>
 #include <vector>
+#include <qb/json.h>
+#include <qb/system/time.h>
 
 namespace taskmanager {
 namespace models {
@@ -55,7 +55,10 @@ struct Task {
         updated_at  = row[5].as<std::string>();
     }
 
-    [[nodiscard]] bool is_valid() const noexcept { return id > 0; }
+    [[nodiscard]] bool
+    is_valid() const noexcept {
+        return id > 0;
+    }
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(Task, id, title, description, status, created_at, updated_at)
 };
@@ -85,7 +88,8 @@ struct TaskList {
         total = tasks.size();
     }
 
-    [[nodiscard]] qb::json to_json() const {
+    [[nodiscard]] qb::json
+    to_json() const {
         qb::json j;
         j["total"]  = total;
         j["cached"] = cached;
@@ -108,7 +112,7 @@ struct TaskList {
  * @endcode
  */
 struct TaskEvent {
-    std::string action;      ///< "created" | "updated" | "deleted"
+    std::string action; ///< "created" | "updated" | "deleted"
     int32_t     task_id{0};
     std::string title;
     uint64_t    timestamp{0};

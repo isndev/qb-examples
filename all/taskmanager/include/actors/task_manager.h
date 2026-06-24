@@ -36,16 +36,16 @@
  */
 #pragma once
 
-#include <qb/actor.h>
-#include <qb/io/async.h>
 #include <http/http.h>
+#include <memory>
 #include <pgsql/pgsql.h>
 #include <redis/redis.h>
-#include <memory>
-#include "events.h"
-#include "models/task.h"
+#include <qb/actor.h>
+#include <qb/io/async.h>
 #include "actors/http_session.h"
 #include "actors/websocket_handler.h"
+#include "events.h"
+#include "models/task.h"
 
 namespace taskmanager {
 namespace actors {
@@ -65,9 +65,7 @@ public:
      * @param redis_uri   Redis URI, e.g. `tcp://localhost:6379`.
      * @param static_root Filesystem path served at `/static/`.
      */
-    TaskManager(qb::io::uri pg_uri,
-                qb::io::uri redis_uri,
-                std::string static_root);
+    TaskManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::string static_root);
 
     // ── QB Actor interface ───────────────────────────────────────────────────
 
@@ -108,10 +106,10 @@ private:
 
     // ── Coroutine route handlers ─────────────────────────────────────────────
 
-    qb::io::async::task<void> handle_health    (ctx_t ctx);
-    qb::io::async::task<void> handle_ws_upgrade (ctx_t ctx);
-    qb::io::async::task<void> handle_list_tasks (ctx_t ctx);
-    qb::io::async::task<void> handle_get_task   (ctx_t ctx);
+    qb::io::async::task<void> handle_health(ctx_t ctx);
+    qb::io::async::task<void> handle_ws_upgrade(ctx_t ctx);
+    qb::io::async::task<void> handle_list_tasks(ctx_t ctx);
+    qb::io::async::task<void> handle_get_task(ctx_t ctx);
     qb::io::async::task<void> handle_create_task(ctx_t ctx);
     qb::io::async::task<void> handle_update_task(ctx_t ctx);
     qb::io::async::task<void> handle_delete_task(ctx_t ctx);
@@ -122,11 +120,11 @@ private:
     qb::io::uri _redis_uri;
     std::string _static_root;
 
-    std::unique_ptr<qb::pg::tcp::database> _db;      ///< PostgreSQL connection.
-    qb::redis::tcp::client                 _redis;   ///< Redis cache + PUBLISH client.
+    std::unique_ptr<qb::pg::tcp::database> _db;    ///< PostgreSQL connection.
+    qb::redis::tcp::client                 _redis; ///< Redis cache + PUBLISH client.
     WebSocketHandler                       _ws_handler;
 
-    bool _db_ready{false};    ///< reported by /health (true once activated)
+    bool _db_ready{false}; ///< reported by /health (true once activated)
     bool _redis_ready{false};
 };
 

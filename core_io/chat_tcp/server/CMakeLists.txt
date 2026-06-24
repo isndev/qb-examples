@@ -24,14 +24,14 @@
 
 # Chat server executable
 qb_add_executable(
-    NAME chat_server
-    SOURCES
+        NAME chat_server
+        SOURCES
         main.cpp
         AcceptActor.cpp
         ServerActor.cpp
         ChatSession.cpp
         ChatRoomActor.cpp
-    DEPENDS
+        DEPENDS
         chat_shared
         qb-core
 ) 

@@ -21,9 +21,7 @@ namespace actors {
 
 // ─── Constructor ──────────────────────────────────────────────────────────────
 
-TaskManager::TaskManager(qb::io::uri  pg_uri,
-                         qb::io::uri  redis_uri,
-                         std::string  static_root)
+TaskManager::TaskManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::string static_root)
     : _pg_uri(std::move(pg_uri))
     , _redis_uri(std::move(redis_uri))
     , _static_root(std::move(static_root))
@@ -32,7 +30,8 @@ TaskManager::TaskManager(qb::io::uri  pg_uri,
 
 // ─── Coroutine lifecycle ────────────────────────────────────────────────────────
 
-qb::io::async::task<bool> TaskManager::onInit() {
+qb::io::async::task<bool>
+TaskManager::onInit() {
     // Register handlers up-front (before the first co_await) so events that arrive
     // while we are Activating are dispatched correctly once we go live.
     registerEvent<NewConnectionEvent>(*this);
@@ -69,76 +68,74 @@ qb::io::async::task<bool> TaskManager::onInit() {
     setup_routes();
     router().compile();
 
-    qb::io::cout() << "[TaskManager " << id()
-                   << "] ready (coroutine init) — db + redis + ws all up\n";
+    qb::io::cout() << "[TaskManager " << id() << "] ready (coroutine init) — db + redis + ws all up\n";
     co_return true;
 }
 
-void TaskManager::on(NewConnectionEvent &ev) {
+void
+TaskManager::on(NewConnectionEvent &ev) {
     auto *session = registerSession(std::move(ev.socket));
     if (!session) {
-        qb::io::cerr() << "[TaskManager " << id()
-                       << "] HTTP session rejected (limit reached)\n";
+        qb::io::cerr() << "[TaskManager " << id() << "] HTTP session rejected (limit reached)\n";
         return;
     }
-    qb::io::cout() << "[TaskManager " << id() << "] HTTP session " << session->id()
-                   << "  active=" << session_count() << '\n';
+    qb::io::cout() << "[TaskManager " << id() << "] HTTP session " << session->id() << "  active=" << session_count() << '\n';
 }
 
-void TaskManager::on(qb::SignalEvent const &ev) {
-    qb::io::cout() << "[TaskManager " << id() << "] signal " << ev.signum
-                   << " – graceful shutdown\n";
+void
+TaskManager::on(qb::SignalEvent const &ev) {
+    qb::io::cout() << "[TaskManager " << id() << "] signal " << ev.signum << " – graceful shutdown\n";
     shutdown_resources();
     kill();
 }
 
-void TaskManager::on(qb::KillEvent const &) {
+void
+TaskManager::on(qb::KillEvent const &) {
     qb::io::cout() << "[TaskManager " << id() << "] shutting down\n";
     shutdown_resources();
     kill();
 }
 
-void TaskManager::shutdown_resources() {
-    _ws_handler.shutdown();   // closes the SUB → consume_loop() ends
+void
+TaskManager::shutdown_resources() {
+    _ws_handler.shutdown(); // closes the SUB → consume_loop() ends
     _redis.disconnect();
     if (_db)
         _db->disconnect();
 }
 
-void TaskManager::disconnected(qb::uuid session_id) {
-    qb::io::cout() << "[TaskManager " << id() << "] HTTP session " << session_id
-                   << " disconnected  remaining=" << (session_count() - 1) << '\n';
+void
+TaskManager::disconnected(qb::uuid session_id) {
+    qb::io::cout() << "[TaskManager " << id() << "] HTTP session " << session_id << " disconnected  remaining=" << (session_count() - 1)
+                   << '\n';
     // ALWAYS forward to the base so the session is erased and its shared_ptr freed.
     qb::http::use<TaskManager>::io_handler<HttpSession>::disconnected(session_id);
 }
 
 // ─── Schema + prepared statements (coroutine) ──────────────────────────────────
 
-qb::io::async::task<bool> TaskManager::prepare_schema() {
-    auto created = co_await _db->query(
-        "CREATE TABLE IF NOT EXISTS tasks ("
-        "  id          SERIAL PRIMARY KEY,"
-        "  title       TEXT NOT NULL,"
-        "  description TEXT,"
-        "  status      TEXT DEFAULT 'pending',"
-        "  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-        "  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        ");");
+qb::io::async::task<bool>
+TaskManager::prepare_schema() {
+    auto created = co_await _db->query("CREATE TABLE IF NOT EXISTS tasks ("
+                                       "  id          SERIAL PRIMARY KEY,"
+                                       "  title       TEXT NOT NULL,"
+                                       "  description TEXT,"
+                                       "  status      TEXT DEFAULT 'pending',"
+                                       "  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                       "  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                                       ");");
     if (!created.ok()) {
-        qb::io::cerr() << "[TaskManager " << id() << "] CREATE TABLE failed: "
-                       << created.error().what() << '\n';
+        qb::io::cerr() << "[TaskManager " << id() << "] CREATE TABLE failed: " << created.error().what() << '\n';
         co_return false;
     }
 
     using qb::pg::oid;
     // `prep` is a named local (not a temporary): it outlives every `co_await prep(...)`
     // below, so capturing `this` by value is safe across the inner suspensions.
-    const auto prep = [this](std::string_view name, std::string_view sql,
-                             qb::pg::type_oid_sequence types) -> qb::io::async::task<bool> {
+    const auto prep = [this](std::string_view name, std::string_view sql, qb::pg::type_oid_sequence types) -> qb::io::async::task<bool> {
         auto r = co_await _db->prepare(std::string{name}, std::string{sql}, std::move(types));
         if (!r.ok())
-            qb::io::cerr() << "[TaskManager] prepare '" << name << "' failed: "
-                           << r.error().what() << '\n';
+            qb::io::cerr() << "[TaskManager] prepare '" << name << "' failed: " << r.error().what() << '\n';
         co_return r.ok();
     };
 
@@ -176,9 +173,7 @@ qb::io::async::task<bool> TaskManager::prepare_schema() {
                        qb::pg::type_oid_sequence{oid::text, oid::text, oid::text, oid::int4}))
         co_return false;
 
-    if (!co_await prep("delete_task",
-                       "DELETE FROM tasks WHERE id = $1 RETURNING id;",
-                       qb::pg::type_oid_sequence{oid::int4}))
+    if (!co_await prep("delete_task", "DELETE FROM tasks WHERE id = $1 RETURNING id;", qb::pg::type_oid_sequence{oid::int4}))
         co_return false;
 
     co_return true;
@@ -186,26 +181,23 @@ qb::io::async::task<bool> TaskManager::prepare_schema() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────────
 
-void TaskManager::setup_routes() {
+void
+TaskManager::setup_routes() {
     router().use(qb::http::CorsMiddleware<HttpSession>::dev());
 
     router().use(std::make_shared<qb::http::LoggingMiddleware<HttpSession>>(
         [](qb::http::LogLevel level, const std::string &message) {
-            const char *lvl = (level == qb::http::LogLevel::Error)  ? "ERROR"
-                            : (level == qb::http::LogLevel::Warning) ? "WARN"
-                            : (level == qb::http::LogLevel::Info)    ? "INFO"
-                                                                     : "DEBUG";
+            const char *lvl = (level == qb::http::LogLevel::Error)     ? "ERROR"
+                              : (level == qb::http::LogLevel::Warning) ? "WARN"
+                              : (level == qb::http::LogLevel::Info)    ? "INFO"
+                                                                       : "DEBUG";
             qb::io::cout() << "[HTTP:" << lvl << "] " << message << '\n';
         },
-        qb::http::LogLevel::Info,
-        qb::http::LogLevel::Debug));
+        qb::http::LogLevel::Info, qb::http::LogLevel::Debug));
 
     {
         qb::http::StaticFilesOptions opts(_static_root);
-        opts.with_path_prefix_to_strip("/static")
-            .with_etags(true)
-            .with_last_modified(true)
-            .with_cache_control(true, "public, max-age=3600");
+        opts.with_path_prefix_to_strip("/static").with_etags(true).with_last_modified(true).with_cache_control(true, "public, max-age=3600");
         router().use(qb::http::static_files_middleware<HttpSession>(std::move(opts)));
     }
 
@@ -216,35 +208,32 @@ void TaskManager::setup_routes() {
     router().get("/health", this, &TaskManager::handle_health);
     router().get("/ws", this, &TaskManager::handle_ws_upgrade);
 
-    router().group("/tasks")
-        ->get ("",     this, &TaskManager::handle_list_tasks)
-         .post("",     this, &TaskManager::handle_create_task)
-         .get ("/:id", this, &TaskManager::handle_get_task)
-         .put ("/:id", this, &TaskManager::handle_update_task)
-         .del ("/:id", this, &TaskManager::handle_delete_task);
+    router()
+        .group("/tasks")
+        ->get("", this, &TaskManager::handle_list_tasks)
+        .post("", this, &TaskManager::handle_create_task)
+        .get("/:id", this, &TaskManager::handle_get_task)
+        .put("/:id", this, &TaskManager::handle_update_task)
+        .del("/:id", this, &TaskManager::handle_delete_task);
 }
 
 // ─── Coroutine route handlers ───────────────────────────────────────────────────
 
-qb::io::async::task<void> TaskManager::handle_health(ctx_t ctx) {
-    ctx->json({
-        {"status",     "ok"},
-        {"db",         _db_ready},
-        {"redis",      _redis_ready},
-        {"ws_clients", _ws_handler.client_count()}
-    });
+qb::io::async::task<void>
+TaskManager::handle_health(ctx_t ctx) {
+    ctx->json({{"status", "ok"}, {"db", _db_ready}, {"redis", _redis_ready}, {"ws_clients", _ws_handler.client_count()}});
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_ws_upgrade(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_ws_upgrade(ctx_t ctx) {
     try {
         auto [transport, ok] = this->extractSession(ctx->session()->id());
         if (!ok) {
             ctx->internal_server_error("Session extraction failed");
             co_return;
         }
-        if (_ws_handler.upgrade_connection(
-                std::move(transport), ctx->request(), ctx->response()))
+        if (_ws_handler.upgrade_connection(std::move(transport), ctx->request(), ctx->response()))
             ctx->suppress_response(); // the 101 went directly on the wire
         else
             ctx->bad_request("WebSocket upgrade failed");
@@ -255,7 +244,8 @@ qb::io::async::task<void> TaskManager::handle_ws_upgrade(ctx_t ctx) {
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_list_tasks(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_list_tasks(ctx_t ctx) {
     // 1. Redis cache.
     auto cached = co_await _redis.get("tasks:list");
     if (cached.ok() && cached.result().has_value() && !cached.result()->empty()) {
@@ -278,7 +268,8 @@ qb::io::async::task<void> TaskManager::handle_list_tasks(ctx_t ctx) {
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_get_task(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_get_task(ctx_t ctx) {
     const auto task_id_opt = ctx->path_param<int32_t>("id");
     if (!task_id_opt) {
         ctx->bad_request("Invalid task ID");
@@ -299,7 +290,8 @@ qb::io::async::task<void> TaskManager::handle_get_task(ctx_t ctx) {
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_create_task(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_create_task(ctx_t ctx) {
     auto data = ctx->bind<qb::json>(); // parse body once, no throw
     if (!data || !data->contains("title")) {
         ctx->bad_request("Invalid JSON – 'title' is required");
@@ -310,8 +302,7 @@ qb::io::async::task<void> TaskManager::handle_create_task(ctx_t ctx) {
     task.description = data->value("description", "");
     task.status      = data->value("status", "pending");
 
-    auto res = co_await _db->execute(
-        "insert_task", qb::pg::params{task.title, task.description, task.status});
+    auto res = co_await _db->execute("insert_task", qb::pg::params{task.title, task.description, task.status});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
         co_return;
@@ -319,15 +310,14 @@ qb::io::async::task<void> TaskManager::handle_create_task(ctx_t ctx) {
     const int32_t new_id = res.result()[0][0].as<int32_t>();
 
     (void) co_await _redis.del("tasks:list"); // best-effort cache invalidation
-    (void) co_await _redis.publish(
-        "tasks:events",
-        qb::json(models::TaskEvent{"created", new_id, task.title}).dump()); // best-effort notify
+    (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"created", new_id, task.title}).dump()); // best-effort notify
 
     ctx->json({{"id", new_id}, {"status", "created"}}, qb::http::status::CREATED);
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_update_task(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_update_task(ctx_t ctx) {
     const auto task_id_opt = ctx->path_param<int32_t>("id");
     if (!task_id_opt) {
         ctx->bad_request("Invalid task ID");
@@ -337,7 +327,7 @@ qb::io::async::task<void> TaskManager::handle_update_task(ctx_t ctx) {
 
     models::Task task;
     try {
-        auto data        = ctx->request().body().as<qb::json>();
+        auto data = ctx->request().body().as<qb::json>();
         // Default to "" so the COALESCE SQL keeps existing values for omitted fields.
         task.title       = data.value("title", "");
         task.description = data.value("description", "");
@@ -347,9 +337,7 @@ qb::io::async::task<void> TaskManager::handle_update_task(ctx_t ctx) {
         co_return;
     }
 
-    auto res = co_await _db->execute(
-        "update_task",
-        qb::pg::params{task.title, task.description, task.status, task_id});
+    auto res = co_await _db->execute("update_task", qb::pg::params{task.title, task.description, task.status, task_id});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
         co_return;
@@ -359,15 +347,15 @@ qb::io::async::task<void> TaskManager::handle_update_task(ctx_t ctx) {
         co_return;
     }
 
-    (void) co_await _redis.del("tasks:list"); // best-effort cache invalidation
-    (void) co_await _redis.publish(
-        "tasks:events", qb::json(models::TaskEvent{"updated", task_id}).dump()); // best-effort notify
+    (void) co_await _redis.del("tasks:list");                                                               // best-effort cache invalidation
+    (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"updated", task_id}).dump()); // best-effort notify
 
     ctx->json({{"id", task_id}, {"status", "updated"}});
     co_return;
 }
 
-qb::io::async::task<void> TaskManager::handle_delete_task(ctx_t ctx) {
+qb::io::async::task<void>
+TaskManager::handle_delete_task(ctx_t ctx) {
     const auto task_id_opt = ctx->path_param<int32_t>("id");
     if (!task_id_opt) {
         ctx->bad_request("Invalid task ID");
@@ -385,9 +373,8 @@ qb::io::async::task<void> TaskManager::handle_delete_task(ctx_t ctx) {
         co_return;
     }
 
-    (void) co_await _redis.del("tasks:list"); // best-effort cache invalidation
-    (void) co_await _redis.publish(
-        "tasks:events", qb::json(models::TaskEvent{"deleted", task_id}).dump()); // best-effort notify
+    (void) co_await _redis.del("tasks:list");                                                               // best-effort cache invalidation
+    (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"deleted", task_id}).dump()); // best-effort notify
 
     ctx->json({{"id", task_id}, {"status", "deleted"}});
     co_return;

@@ -33,70 +33,70 @@ qb_status_message("Building qb core examples")
 
 # Example 1: Simple actor example
 qb_add_executable(
-    NAME example1_simple_actor
-    SOURCES example1_simple_actor.cpp
-    DEPENDS qb-core
+        NAME example1_simple_actor
+        SOURCES example1_simple_actor.cpp
+        DEPENDS qb-core
 )
 
 # Example 2: Basic actor communication
 qb_add_executable(
-    NAME example2_basic_actors
-    SOURCES example2_basic_actors.cpp
-    DEPENDS qb-core
+        NAME example2_basic_actors
+        SOURCES example2_basic_actors.cpp
+        DEPENDS qb-core
 )
 
 # Example 3: Multiple cores and event priorities
 qb_add_executable(
-    NAME example3_multicore
-    SOURCES example3_multicore.cpp
-    DEPENDS qb-core
+        NAME example3_multicore
+        SOURCES example3_multicore.cpp
+        DEPENDS qb-core
 )
 
 # Example 4: Actor lifecycle and callbacks
 qb_add_executable(
-    NAME example4_lifecycle
-    SOURCES example4_lifecycle.cpp
-    DEPENDS qb-core
+        NAME example4_lifecycle
+        SOURCES example4_lifecycle.cpp
+        DEPENDS qb-core
 )
 
 # Example 5: Timer usage with the latest API
 qb_add_executable(
-    NAME example5_timers
-    SOURCES example5_timers.cpp
-    DEPENDS qb-core
+        NAME example5_timers
+        SOURCES example5_timers.cpp
+        DEPENDS qb-core
 )
 
 # Example 6: Shared queue between actors
 qb_add_executable(
-    NAME example6_shared_queue
-    SOURCES example6_shared_queue.cpp
-    DEPENDS qb-core
+        NAME example6_shared_queue
+        SOURCES example6_shared_queue.cpp
+        DEPENDS qb-core
 )
 
 # Example 7: Publisher/Subscriber pattern
 qb_add_executable(
-    NAME example7_pub_sub
-    SOURCES example7_pub_sub.cpp
-    DEPENDS qb-core
+        NAME example7_pub_sub
+        SOURCES example7_pub_sub.cpp
+        DEPENDS qb-core
 )
 
 # Example 8: State machine implementation
 qb_add_executable(
-    NAME example8_state_machine
-    SOURCES example8_state_machine.cpp
-    DEPENDS qb-core
+        NAME example8_state_machine
+        SOURCES example8_state_machine.cpp
+        DEPENDS qb-core
 )
 
 # Example 9: Trading system simulation
 qb_add_executable(
-    NAME example9_trading_system
-    SOURCES example9_trading_system.cpp
-    DEPENDS qb-core
+        NAME example9_trading_system
+        SOURCES example9_trading_system.cpp
+        DEPENDS qb-core
 )
 
 # Example 10: Distributed computing system
 qb_add_executable(
-    NAME example10_distributed_computing
-    SOURCES example10_distributed_computing.cpp
-    DEPENDS qb-core
+        NAME example10_distributed_computing
+        SOURCES example10_distributed_computing.cpp
+        DEPENDS qb-core
 ) 

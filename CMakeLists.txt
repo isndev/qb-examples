@@ -30,9 +30,9 @@ project(qb_examples
 )
 
 # Build examples only if enabled
-if(NOT QB_BUILD_EXAMPLES)
+if (NOT QB_BUILD_EXAMPLES)
     return()
-endif()
+endif ()
 
 qb_status_message("Building qb framework examples")
 

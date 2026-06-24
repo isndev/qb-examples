@@ -24,14 +24,14 @@
 
 # Message broker server executable
 qb_add_executable(
-    NAME broker_server
-    SOURCES
+        NAME broker_server
+        SOURCES
         main.cpp
         AcceptActor.cpp
         ServerActor.cpp
         BrokerSession.cpp
         TopicManagerActor.cpp
-    DEPENDS
+        DEPENDS
         broker_shared
         qb-core
 ) 

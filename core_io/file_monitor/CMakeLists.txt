@@ -32,11 +32,11 @@ qb_status_message("Building file monitor example")
 
 # File monitor executable
 qb_add_executable(
-    NAME file_monitor
-    SOURCES
+        NAME file_monitor
+        SOURCES
         main.cpp
         watcher.cpp
         processor.cpp
-    DEPENDS qb-core
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS qb-core
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
 ) 

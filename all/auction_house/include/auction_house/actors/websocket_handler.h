@@ -10,9 +10,9 @@
 
 #include <http/http.h>
 #include <http/ws.h>
+#include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/json.h>
-#include <redis/redis.h>
 #include "ws_session.h"
 
 namespace auction_house {

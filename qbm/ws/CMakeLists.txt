@@ -32,24 +32,24 @@ qb_status_message("Building qb WebSocket module examples")
 
 # Define WebSocket examples to build
 set(QB_WS_EXAMPLES
-    01_chat_server
-    02_chat_client
+        01_chat_server
+        02_chat_client
 )
 
 # Build each WebSocket example
-foreach(EXAMPLE_NAME ${QB_WS_EXAMPLES})
+foreach (EXAMPLE_NAME ${QB_WS_EXAMPLES})
     qb_add_executable(
-        NAME ${EXAMPLE_NAME}
-        SOURCES ${EXAMPLE_NAME}.cpp
-        DEPENDS qbm-http
+            NAME ${EXAMPLE_NAME}
+            SOURCES ${EXAMPLE_NAME}.cpp
+            DEPENDS qbm-http
     )
-endforeach()
+endforeach ()
 
 # Special handling for chat server - copy static resources
 qb_copy_resources(
-    TARGET 01_chat_server
-    RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-    DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
+        TARGET 01_chat_server
+        RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        DESTINATION "${CMAKE_BINARY_DIR}/bin/resources"
 )
 
 list(LENGTH QB_WS_EXAMPLES QB_WS_EXAMPLES_COUNT)

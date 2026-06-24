@@ -34,13 +34,13 @@
  * - Actor communication (`push`, `addRefActor`, `spawn`).
  */
 
+#include <chrono>
+#include <iostream>
 #include <redis/redis.h>
 #include <qb/actor.h>
-#include <qb/main.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <iostream>
-#include <chrono>
+#include <qb/main.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -52,7 +52,8 @@ struct ShutdownEvent : qb::Event {
 
 struct WorkCompletedEvent : qb::Event {
     int operations_completed;
-    explicit WorkCompletedEvent(int completed) : operations_completed(completed) {}
+    explicit WorkCompletedEvent(int completed)
+        : operations_completed(completed) {}
 };
 
 struct RedisDataEvent : qb::Event {
@@ -60,26 +61,28 @@ struct RedisDataEvent : qb::Event {
     std::string value;
 
     RedisDataEvent(std::string k, std::string v)
-        : key(std::move(k)), value(std::move(v)) {}
+        : key(std::move(k))
+        , value(std::move(v)) {}
 };
 
 // Actor that performs Redis operations using the coroutine API
 class RedisWorkerActor : public qb::Actor {
 private:
     qb::redis::tcp::client _redis{REDIS_URI};
-    int _completed_operations = 0;
-    int _target_operations;
-    qb::ActorId _coordinator_id;
+    int                    _completed_operations = 0;
+    int                    _target_operations;
+    qb::ActorId            _coordinator_id;
 
 public:
     RedisWorkerActor(int target_ops = 5, qb::ActorId coordinator = qb::ActorId())
-        : _target_operations(target_ops), _coordinator_id(coordinator) {}
+        : _target_operations(target_ops)
+        , _coordinator_id(coordinator) {}
 
     // onInit is now a coroutine — co_await the connection, co_return the result
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         auto cout = qb::io::cout();
-        cout << "RedisWorkerActor initialized. Will process "
-             << _target_operations << " operations." << std::endl;
+        cout << "RedisWorkerActor initialized. Will process " << _target_operations << " operations." << std::endl;
 
         // Register for events before the first co_await
         registerEvent<RedisDataEvent>(*this);
@@ -96,7 +99,7 @@ public:
 
         // Clean up existing keys with prefix 'async:'
         auto del_result = co_await _redis.del("async:counter");
-        (void)del_result;
+        (void) del_result;
         cout << "Cleaned up existing keys with prefix 'async:'" << std::endl;
 
         // Initialize a counter for our example
@@ -109,7 +112,8 @@ public:
         co_return true;
     }
 
-    void on(const RedisDataEvent& event) {
+    void
+    on(const RedisDataEvent &event) {
         // Spawn a coroutine to handle async Redis operations for this event
         std::string key   = event.key;
         std::string value = event.value;
@@ -133,20 +137,17 @@ public:
 
             // Track operation completion
             _completed_operations++;
-            cout << "Completed " << _completed_operations << " of "
-                 << _target_operations << " operations" << std::endl;
+            cout << "Completed " << _completed_operations << " of " << _target_operations << " operations" << std::endl;
 
             // GET the current value to demonstrate retrieval
             auto get_r = co_await _redis.get(key);
             if (get_r.ok() && get_r.result().has_value()) {
-                cout << "Current value of " << key << ": "
-                     << *get_r.result() << std::endl;
+                cout << "Current value of " << key << ": " << *get_r.result() << std::endl;
             }
 
             // If we've reached our target, notify coordinator and self-shutdown
             if (_completed_operations >= _target_operations) {
-                cout << "Reached target number of operations, notifying coordinator"
-                     << std::endl;
+                cout << "Reached target number of operations, notifying coordinator" << std::endl;
 
                 if (_coordinator_id != qb::ActorId()) {
                     push<WorkCompletedEvent>(_coordinator_id, _completed_operations);
@@ -157,7 +158,8 @@ public:
         });
     }
 
-    void on(const ShutdownEvent&) {
+    void
+    on(const ShutdownEvent &) {
         // Spawn a coroutine to fetch final stats before killing
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
@@ -178,11 +180,12 @@ public:
 class MainActor : public qb::Actor {
 private:
     qb::ActorId _worker_id;
-    int _target_operations = 5;
-    bool _work_completed   = false;
+    int         _target_operations = 5;
+    bool        _work_completed    = false;
 
 public:
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         auto cout = qb::io::cout();
         cout << "MainActor initialized" << std::endl;
 
@@ -209,40 +212,45 @@ public:
             cout << "Sending data operation " << i << " to worker" << std::endl;
             push<RedisDataEvent>(_worker_id, key, value);
 
-            qb::io::async::callback([i]() {
-                auto cout2 = qb::io::cout();
-                cout2 << "MainActor: scheduled operation " << i << " sent"
-                      << std::endl;
-            }, std::chrono::milliseconds(100 * i));
+            qb::io::async::callback(
+                [i]() {
+                    auto cout2 = qb::io::cout();
+                    cout2 << "MainActor: scheduled operation " << i << " sent" << std::endl;
+                },
+                std::chrono::milliseconds(100 * i));
         }
 
         co_return true;
     }
 
     // Handle completion notification from worker
-    void on(const WorkCompletedEvent& event) {
+    void
+    on(const WorkCompletedEvent &event) {
         auto cout = qb::io::cout();
-        cout << "MainActor: Received work completed notification. "
-             << event.operations_completed << " operations processed." << std::endl;
+        cout << "MainActor: Received work completed notification. " << event.operations_completed << " operations processed." << std::endl;
 
         _work_completed = true;
 
         // Schedule our own termination with a small delay
-        qb::io::async::callback([this]() {
-            auto cout = qb::io::cout();
-            cout << "MainActor: All work is done, shutting down..." << std::endl;
-            kill();
-        }, std::chrono::seconds(1));
+        qb::io::async::callback(
+            [this]() {
+                auto cout = qb::io::cout();
+                cout << "MainActor: All work is done, shutting down..." << std::endl;
+                kill();
+            },
+            std::chrono::seconds(1));
     }
 
-    void on(const qb::KillEvent&) {
+    void
+    on(const qb::KillEvent &) {
         auto cout = qb::io::cout();
         cout << "MainActor shutting down" << std::endl;
         kill();
     }
 };
 
-int main() {
+int
+main() {
     qb::io::async::init();
     auto cout = qb::io::cout();
 

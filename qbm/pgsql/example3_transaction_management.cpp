@@ -21,9 +21,9 @@
  * - `co_await db.prepare(name, sql, types)` → `Reply<PreparedQuery>`.
  */
 
+#include <pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <pgsql/pgsql.h>
 
 #include <iomanip>
 #include <optional>
@@ -35,18 +35,17 @@
 const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
 
 // Table for this example — using DOUBLE PRECISION for balance
-const char *ACCOUNTS_TABLE_SQL =
-    "CREATE TABLE IF NOT EXISTS accounts ("
-    "id SERIAL PRIMARY KEY, "
-    "name TEXT NOT NULL UNIQUE, "
-    "balance DOUBLE PRECISION NOT NULL DEFAULT 0.0"
-    ");";
+const char *ACCOUNTS_TABLE_SQL = "CREATE TABLE IF NOT EXISTS accounts ("
+                                 "id SERIAL PRIMARY KEY, "
+                                 "name TEXT NOT NULL UNIQUE, "
+                                 "balance DOUBLE PRECISION NOT NULL DEFAULT 0.0"
+                                 ");";
 
 // Prepared statement names
-const char *PREPARE_INSERT_ACCOUNT          = "insert_account_stmt_v3_5";
-const char *PREPARE_UPDATE_BALANCE          = "update_balance_stmt_v3_5";
-const char *PREPARE_SELECT_ACCOUNT_BY_NAME  = "select_account_by_name_stmt_v3_5";
-const char *PREPARE_DELETE_ACCOUNT          = "delete_account_stmt_v3_5";
+const char *PREPARE_INSERT_ACCOUNT         = "insert_account_stmt_v3_5";
+const char *PREPARE_UPDATE_BALANCE         = "update_balance_stmt_v3_5";
+const char *PREPARE_SELECT_ACCOUNT_BY_NAME = "select_account_by_name_stmt_v3_5";
+const char *PREPARE_DELETE_ACCOUNT         = "delete_account_stmt_v3_5";
 
 // Helper: format double with 2 decimal places
 std::string
@@ -71,22 +70,16 @@ setup_schema(qb::pg::tcp::database &db) {
     }
 
     const struct {
-        const char *name;
-        const char *sql;
+        const char               *name;
+        const char               *sql;
         qb::pg::type_oid_sequence types;
     } stmts[] = {
         {PREPARE_INSERT_ACCOUNT,
          "INSERT INTO accounts (name, balance) VALUES ($1, $2) RETURNING id, name, balance;",
          {qb::pg::oid::text, qb::pg::oid::float8}},
-        {PREPARE_UPDATE_BALANCE,
-         "UPDATE accounts SET balance = balance + $1 WHERE name = $2;",
-         {qb::pg::oid::float8, qb::pg::oid::text}},
-        {PREPARE_SELECT_ACCOUNT_BY_NAME,
-         "SELECT id, name, balance FROM accounts WHERE name = $1;",
-         {qb::pg::oid::text}},
-        {PREPARE_DELETE_ACCOUNT,
-         "DELETE FROM accounts WHERE name = $1;",
-         {qb::pg::oid::text}},
+        {PREPARE_UPDATE_BALANCE, "UPDATE accounts SET balance = balance + $1 WHERE name = $2;", {qb::pg::oid::float8, qb::pg::oid::text}},
+        {PREPARE_SELECT_ACCOUNT_BY_NAME, "SELECT id, name, balance FROM accounts WHERE name = $1;", {qb::pg::oid::text}},
+        {PREPARE_DELETE_ACCOUNT, "DELETE FROM accounts WHERE name = $1;", {qb::pg::oid::text}},
     };
 
     for (auto &s : stmts) {
@@ -109,8 +102,7 @@ ensure_account(qb::pg::tcp::database &db, const std::string &name, double initia
     auto r = co_await db.execute(PREPARE_INSERT_ACCOUNT, qb::pg::params{name, initial_balance});
     if (r.ok()) {
         if (!r.result().empty())
-            qb::io::cout() << "Ensured account (created): '" << name << "' with balance "
-                           << r.result()[0]["balance"].as<double>() << std::endl;
+            qb::io::cout() << "Ensured account (created): '" << name << "' with balance " << r.result()[0]["balance"].as<double>() << std::endl;
         else
             qb::io::cout() << "Ensured account (created): '" << name << "'" << std::endl;
     } else {
@@ -133,8 +125,8 @@ display_account(qb::pg::tcp::database &db, const std::string &name) {
     }
     const auto &rs = r.result();
     if (!rs.empty()) {
-        qb::io::cout() << "Account '" << name << "': ID=" << rs[0]["id"].as<int>()
-                       << ", Balance=" << rs[0]["balance"].as<double>() << std::endl;
+        qb::io::cout() << "Account '" << name << "': ID=" << rs[0]["id"].as<int>() << ", Balance=" << rs[0]["balance"].as<double>()
+                       << std::endl;
     } else {
         qb::io::cout() << "Account '" << name << "' not found." << std::endl;
     }
@@ -144,12 +136,8 @@ display_account(qb::pg::tcp::database &db, const std::string &name) {
 // ─── Successful fund transfer ─────────────────────────────────────────────────
 
 qb::io::async::task<void>
-transfer_funds(qb::pg::tcp::database &db,
-               const std::string     &from_account,
-               const std::string     &to_account,
-               double                 amount) {
-    qb::io::cout() << "\nAttempting to transfer " << amount
-                   << " from '" << from_account << "' to '" << to_account << "'." << std::endl;
+transfer_funds(qb::pg::tcp::database &db, const std::string &from_account, const std::string &to_account, double amount) {
+    qb::io::cout() << "\nAttempting to transfer " << amount << " from '" << from_account << "' to '" << to_account << "'." << std::endl;
 
     // Ensure both accounts exist before starting the transaction.
     co_await ensure_account(db, from_account, 100.00);
@@ -159,13 +147,12 @@ transfer_funds(qb::pg::tcp::database &db,
     {
         auto r = co_await db.begin();
         if (!r.ok()) {
-            qb::io::cerr() << "FATAL: Could not begin transaction for transfer "
-                           << from_account << " -> " << to_account << ": " << r.error().what() << std::endl;
+            qb::io::cerr() << "FATAL: Could not begin transaction for transfer " << from_account << " -> " << to_account << ": "
+                           << r.error().what() << std::endl;
             co_return;
         }
     }
-    qb::io::cout() << "Transaction started for transferring funds ("
-                   << from_account << " -> " << to_account << ")." << std::endl;
+    qb::io::cout() << "Transaction started for transferring funds (" << from_account << " -> " << to_account << ")." << std::endl;
 
     // Debit from_account.
     qb::io::cout() << "Debiting " << amount << " from '" << from_account << "'" << std::endl;
@@ -197,8 +184,8 @@ transfer_funds(qb::pg::tcp::database &db,
             co_return;
         }
     }
-    qb::io::cout() << "SUCCESS: Transaction for transferring " << amount
-                   << " from '" << from_account << "' to '" << to_account << "' committed." << std::endl;
+    qb::io::cout() << "SUCCESS: Transaction for transferring " << amount << " from '" << from_account << "' to '" << to_account
+                   << "' committed." << std::endl;
     co_return;
 }
 
@@ -215,8 +202,7 @@ transfer_funds_with_error(qb::pg::tcp::database &db) {
     {
         auto r = co_await db.begin();
         if (!r.ok()) {
-            qb::io::cerr() << "FATAL: Could not begin transaction for 'Eve' error scenario: "
-                           << r.error().what() << std::endl;
+            qb::io::cerr() << "FATAL: Could not begin transaction for 'Eve' error scenario: " << r.error().what() << std::endl;
             co_return;
         }
     }

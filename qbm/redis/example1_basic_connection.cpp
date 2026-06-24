@@ -20,9 +20,9 @@
 
 #include <iostream>
 
+#include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <redis/redis.h>
 
 // Redis configuration - initializer-list form consumed by the client constructor.
 #define REDIS_URI {"tcp://localhost:6379"}

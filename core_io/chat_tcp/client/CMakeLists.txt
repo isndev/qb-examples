@@ -24,12 +24,12 @@
 
 # Chat client executable
 qb_add_executable(
-    NAME chat_client
-    SOURCES
+        NAME chat_client
+        SOURCES
         main.cpp
         ClientActor.cpp
         InputActor.cpp
-    DEPENDS
+        DEPENDS
         chat_shared
         qb-core
 ) 

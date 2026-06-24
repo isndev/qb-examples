@@ -24,12 +24,12 @@
 
 # Message broker client executable
 qb_add_executable(
-    NAME broker_client
-    SOURCES
+        NAME broker_client
+        SOURCES
         main.cpp
         ClientActor.cpp
         InputActor.cpp
-    DEPENDS
+        DEPENDS
         broker_shared
         qb-core
 ) 
