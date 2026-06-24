@@ -14,8 +14,8 @@
 #include <ctime>
 #include <http/middleware/all.h>
 #include <iomanip>
-#include <qb/io.h>
 #include <sstream>
+#include <qb/io.h>
 
 namespace auction_house {
 namespace actors {
@@ -497,7 +497,7 @@ AuctionManager::broadcast_lot_event(models::LotEvent event) {
 
 qb::io::async::task<void>
 AuctionManager::invalidate_lot_cache(int32_t lot_id) {
-    (void) co_await _redis.del("lots:active");                              // best-effort cache invalidation
+    (void) co_await _redis.del("lots:active"); // best-effort cache invalidation
     (void) co_await _redis.del("lot:" + std::to_string(lot_id));
     (void) co_await _redis.del("lot:" + std::to_string(lot_id) + ":bids");
 }

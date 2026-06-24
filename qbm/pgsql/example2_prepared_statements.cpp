@@ -22,9 +22,9 @@
  * - `Reply<T>`: `ok()`, `result()`, `error()`.
  */
 
+#include <pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <pgsql/pgsql.h>
 
 #include <optional>
 #include <string>
@@ -34,12 +34,12 @@
 const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
 
 // Prepared statement names
-const char *PREPARE_INSERT_USER        = "insert_user_stmt_v2_5";
-const char *PREPARE_SELECT_USER_BY_ID  = "select_user_by_id_stmt_v2_5";
+const char *PREPARE_INSERT_USER       = "insert_user_stmt_v2_5";
+const char *PREPARE_SELECT_USER_BY_ID = "select_user_by_id_stmt_v2_5";
 
 struct User {
-    int                       id;
-    std::string               name;
+    int                        id;
+    std::string                name;
     std::optional<std::string> email;
 };
 
@@ -47,8 +47,7 @@ struct User {
 
 qb::io::async::task<void>
 insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::optional<std::string> email) {
-    qb::io::cout() << "Attempting to insert user: " << name
-                   << ", Email: " << (email ? *email : "NULL") << std::endl;
+    qb::io::cout() << "Attempting to insert user: " << name << ", Email: " << (email ? *email : "NULL") << std::endl;
 
     // INSERT — params accept nullopt transparently.
     auto ins = co_await db.execute(PREPARE_INSERT_USER, qb::pg::params{name, email});
@@ -83,9 +82,7 @@ insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::
     user.id    = row["id"].as<int>();
     user.name  = row["name"].as<std::string>();
     user.email = row["email"].as<std::optional<std::string>>();
-    qb::io::cout() << "Selected User ---- ID: " << user.id
-                   << ", Name: " << user.name
-                   << ", Email: " << (user.email ? *user.email : "N/A")
+    qb::io::cout() << "Selected User ---- ID: " << user.id << ", Name: " << user.name << ", Email: " << (user.email ? *user.email : "N/A")
                    << " ----" << std::endl;
     co_return;
 }
@@ -116,12 +113,11 @@ run_prepared_statements(bool &running) {
     // 2. Create schema.
     qb::io::cout() << "Initializing database schema and preparing statements..." << std::endl;
     {
-        [[maybe_unused]] auto r = co_await db.execute(
-            "CREATE TABLE IF NOT EXISTS users ("
-            "id SERIAL PRIMARY KEY, "
-            "name TEXT NOT NULL, "
-            "email TEXT UNIQUE"
-            ");");
+        [[maybe_unused]] auto r = co_await db.execute("CREATE TABLE IF NOT EXISTS users ("
+                                                      "id SERIAL PRIMARY KEY, "
+                                                      "name TEXT NOT NULL, "
+                                                      "email TEXT UNIQUE"
+                                                      ");");
         if (!r.ok()) {
             qb::io::cerr() << "Failed to create users table: " << r.error().what() << std::endl;
             co_return;
@@ -130,9 +126,8 @@ run_prepared_statements(bool &running) {
 
     // 3. Prepare INSERT.
     {
-        auto r = co_await db.prepare(PREPARE_INSERT_USER,
-                                      "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;",
-                                      qb::pg::type_oid_sequence{qb::pg::oid::text, qb::pg::oid::text});
+        auto r = co_await db.prepare(PREPARE_INSERT_USER, "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;",
+                                     qb::pg::type_oid_sequence{qb::pg::oid::text, qb::pg::oid::text});
         if (!r.ok()) {
             qb::io::cerr() << "Failed to prepare insert statement: " << r.error().what() << std::endl;
             co_return;
@@ -141,9 +136,8 @@ run_prepared_statements(bool &running) {
 
     // 4. Prepare SELECT.
     {
-        auto r = co_await db.prepare(PREPARE_SELECT_USER_BY_ID,
-                                      "SELECT id, name, email FROM users WHERE id = $1;",
-                                      qb::pg::type_oid_sequence{qb::pg::oid::int4});
+        auto r = co_await db.prepare(PREPARE_SELECT_USER_BY_ID, "SELECT id, name, email FROM users WHERE id = $1;",
+                                     qb::pg::type_oid_sequence{qb::pg::oid::int4});
         if (!r.ok()) {
             qb::io::cerr() << "Failed to prepare select statement: " << r.error().what() << std::endl;
             co_return;

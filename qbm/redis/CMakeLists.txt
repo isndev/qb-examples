@@ -32,25 +32,25 @@ qb_status_message("Building qb Redis module examples")
 
 # Define Redis examples to build
 set(QB_REDIS_EXAMPLES
-    example1_basic_connection
-    example2_hash_operations
-    example3_list_operations
-    example4_async_operations
-    example5_pubsub_example
-    example6_transaction_example
-    example7_stream_processor
-    example8_complex_actor_system
-    coro_example
+        example1_basic_connection
+        example2_hash_operations
+        example3_list_operations
+        example4_async_operations
+        example5_pubsub_example
+        example6_transaction_example
+        example7_stream_processor
+        example8_complex_actor_system
+        coro_example
 )
 
 # Build each Redis example
-foreach(EXAMPLE_NAME ${QB_REDIS_EXAMPLES})
+foreach (EXAMPLE_NAME ${QB_REDIS_EXAMPLES})
     qb_add_executable(
-        NAME ${EXAMPLE_NAME}
-        SOURCES ${EXAMPLE_NAME}.cpp
-        DEPENDS qbm-redis
+            NAME ${EXAMPLE_NAME}
+            SOURCES ${EXAMPLE_NAME}.cpp
+            DEPENDS qbm-redis
     )
-endforeach()
+endforeach ()
 
 list(LENGTH QB_REDIS_EXAMPLES QB_REDIS_EXAMPLES_COUNT)
 qb_status_message("Redis examples configured with ${QB_REDIS_EXAMPLES_COUNT} targets") 

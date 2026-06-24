@@ -5,8 +5,8 @@
 #pragma once
 
 #include <pgsql/pgsql.h>
-#include <qb/json.h>
 #include <string>
+#include <qb/json.h>
 
 namespace auction_house {
 namespace models {

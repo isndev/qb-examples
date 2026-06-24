@@ -13,35 +13,39 @@
  *   ./build/examples/coroutine/actor_example
  */
 
-#include <qb/actor.h>
-#include <qb/main.h>
-#include <qb/io/async/coroutine.h>
-#include <iostream>
 #include <chrono>
+#include <iostream>
+#include <qb/actor.h>
+#include <qb/io/async/coroutine.h>
+#include <qb/main.h>
 
 // Events for our example
 struct StartProcessing : qb::Event {
-    int request_id;
+    int         request_id;
     std::string data;
 
     StartProcessing(int id, std::string d)
-        : request_id(id), data(std::move(d)) {}
+        : request_id(id)
+        , data(std::move(d)) {}
 };
 
 struct ProcessingComplete : qb::Event {
-    int request_id;
+    int         request_id;
     std::string result;
-    uint64_t processing_time_ns;
+    uint64_t    processing_time_ns;
 
     ProcessingComplete(int id, std::string r, uint64_t time)
-        : request_id(id), result(std::move(r)), processing_time_ns(time) {}
+        : request_id(id)
+        , result(std::move(r))
+        , processing_time_ns(time) {}
 };
 
 // Simulated async service (could be Redis, HTTP, database, etc.)
 class AsyncService {
 public:
     // Simulated async operation
-    static qb::io::async::task<std::string> process_data(const std::string& input) {
+    static qb::io::async::task<std::string>
+    process_data(const std::string &input) {
         // Simulate network/database delay
         co_await qb::io::async::sleep(std::chrono::milliseconds(100));
 
@@ -56,7 +60,8 @@ class CoroWorker : public qb::Actor {
     int processed_count_ = 0;
 
 public:
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "CoroWorker initialized with ID: " << id() << "\n";
 
         registerEvent<StartProcessing>(*this);
@@ -66,16 +71,16 @@ public:
     }
 
     // Synchronous event handler - this is where we receive requests
-    void on(StartProcessing& req) {
+    void
+    on(StartProcessing &req) {
         auto start_time = time();
 
-        std::cout << "[Actor " << id() << "] Received request "
-                  << req.request_id << " with data: " << req.data << "\n";
+        std::cout << "[Actor " << id() << "] Received request " << req.request_id << " with data: " << req.data << "\n";
 
         // ⚠️ CRITICAL: Capture by VALUE only!
-        int req_id = req.request_id;
-        std::string data = req.data;
-        uint64_t start = start_time;
+        int         req_id = req.request_id;
+        std::string data   = req.data;
+        uint64_t    start  = start_time;
 
         // Launch async coroutine scoped to this actor's lifetime
         spawn([req_id, data, start](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
@@ -90,33 +95,30 @@ public:
             // Return result via event (only way to communicate back)
             ctx.template push<ProcessingComplete>(req_id, result, elapsed);
 
-            std::cout << "[Coroutine] Request " << req_id << " completed in "
-                      << elapsed / 1'000'000 << "ms\n";
+            std::cout << "[Coroutine] Request " << req_id << " completed in " << elapsed / 1'000'000 << "ms\n";
         });
 
-        std::cout << "[Actor " << id() << "] Spawned coroutine for request "
-                  << req.request_id << "\n";
+        std::cout << "[Actor " << id() << "] Spawned coroutine for request " << req.request_id << "\n";
     }
 
     // Synchronous event handler - this is where we receive async results
-    void on(ProcessingComplete& ev) {
+    void
+    on(ProcessingComplete &ev) {
         // We're back in safe Actor context with exclusive state access
         ++processed_count_;
 
-        std::cout << "[Actor " << id() << "] Request " << ev.request_id
-                  << " completed. Result: " << ev.result
-                  << " (took " << ev.processing_time_ns / 1'000'000 << "ms)\n";
+        std::cout << "[Actor " << id() << "] Request " << ev.request_id << " completed. Result: " << ev.result << " (took "
+                  << ev.processing_time_ns / 1'000'000 << "ms)\n";
 
-        std::cout << "[Actor " << id() << "] Total processed: "
-                  << processed_count_ << "\n";
+        std::cout << "[Actor " << id() << "] Total processed: " << processed_count_ << "\n";
 
         // Reply to the original sender if needed
         // reply(ev);  // Uncomment if we want to send back to caller
     }
 
-    void on(qb::KillEvent const& ev) {
-        std::cout << "[Actor " << id() << "] Shutting down. Total processed: "
-                  << processed_count_ << "\n";
+    void
+    on(qb::KillEvent const &ev) {
+        std::cout << "[Actor " << id() << "] Shutting down. Total processed: " << processed_count_ << "\n";
         kill();
     }
 };
@@ -129,7 +131,8 @@ public:
     explicit TestDriver(qb::ActorId worker_id)
         : _worker_id(worker_id) {}
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "TestDriver initialized\n";
         // Send a few test requests immediately
         std::cout << "\nSending test requests...\n\n";
@@ -145,7 +148,8 @@ public:
 };
 
 // Main function for the example
-int main(int argc, char* argv[]) {
+int
+main(int argc, char *argv[]) {
     std::cout << "=== QB Actor + Coroutine Example ===\n\n";
 
     // Create the main engine

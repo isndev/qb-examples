@@ -32,21 +32,21 @@ qb_status_message("Building qb PostgreSQL module examples")
 
 # Define PostgreSQL examples to build
 set(QB_PGSQL_EXAMPLES
-    example1_basic_query
-    example2_prepared_statements
-    example3_transaction_management
-    example4_data_types
-    example5_error_handling
+        example1_basic_query
+        example2_prepared_statements
+        example3_transaction_management
+        example4_data_types
+        example5_error_handling
 )
 
 # Build each PostgreSQL example
-foreach(EXAMPLE_NAME ${QB_PGSQL_EXAMPLES})
+foreach (EXAMPLE_NAME ${QB_PGSQL_EXAMPLES})
     qb_add_executable(
-        NAME ${EXAMPLE_NAME}
-        SOURCES ${EXAMPLE_NAME}.cpp
-        DEPENDS qbm-pgsql
+            NAME ${EXAMPLE_NAME}
+            SOURCES ${EXAMPLE_NAME}.cpp
+            DEPENDS qbm-pgsql
     )
-endforeach()
+endforeach ()
 
 list(LENGTH QB_PGSQL_EXAMPLES QB_PGSQL_EXAMPLES_COUNT)
 qb_status_message("PostgreSQL examples configured with ${QB_PGSQL_EXAMPLES_COUNT} targets") 

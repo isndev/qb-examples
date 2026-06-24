@@ -32,10 +32,10 @@ project(qb_core_io_examples
 qb_status_message("Building qb core+I/O integration examples")
 
 # File-based examples (Unix/Linux/macOS only)
-if(NOT QB_PLATFORM_WINDOWS)
+if (NOT QB_PLATFORM_WINDOWS)
     add_subdirectory(file_processor)
     add_subdirectory(file_monitor)
-endif()
+endif ()
 
 # Network-based examples (all platforms)
 add_subdirectory(chat_tcp)

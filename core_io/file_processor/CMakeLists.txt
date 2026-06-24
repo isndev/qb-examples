@@ -32,8 +32,8 @@ qb_status_message("Building file processor example")
 
 # File processor executable
 qb_add_executable(
-    NAME file_processor
-    SOURCES main.cpp
-    DEPENDS qb-core
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        NAME file_processor
+        SOURCES main.cpp
+        DEPENDS qb-core
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
 ) 

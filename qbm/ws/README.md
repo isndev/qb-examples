@@ -1,6 +1,7 @@
 # QB WebSocket Chat Examples
 
-These examples demonstrate advanced WebSocket usage with the QB Actor Framework, showcasing separated architectures, transport extraction, and real-time communication patterns.
+These examples demonstrate advanced WebSocket usage with the QB Actor Framework, showcasing separated architectures,
+transport extraction, and real-time communication patterns.
 
 - **`01_chat_server.cpp`** - Chat server with HTTP/WebSocket separation
 - **`02_chat_client.cpp`** - Command-line WebSocket chat client
@@ -17,11 +18,13 @@ These examples demonstrate advanced WebSocket usage with the QB Actor Framework,
 
 ## 🏗️ Server Architecture (`01_chat_server.cpp`)
 
-This example uses a powerful pattern where the HTTP Server and WebSocket Server are two distinct actors, providing a clean separation of concerns.
+This example uses a powerful pattern where the HTTP Server and WebSocket Server are two distinct actors, providing a
+clean separation of concerns.
 
 ### Architectural Flow
 
-The following diagram illustrates how a client's request to upgrade to WebSocket is handled by transferring the connection from the `HttpServer` to the `ChatServer`.
+The following diagram illustrates how a client's request to upgrade to WebSocket is handled by transferring the
+connection from the `HttpServer` to the `ChatServer`.
 
 ```mermaid
 sequenceDiagram
@@ -45,7 +48,8 @@ sequenceDiagram
 
 ### 1. `HttpServer`: The Public Gateway
 
-The `HttpServer` acts as the entry point. It serves static files (the web UI) and API endpoints. When it receives a request on `/ws`, its only job is to forward the connection to the `ChatServer`.
+The `HttpServer` acts as the entry point. It serves static files (the web UI) and API endpoints. When it receives a
+request on `/ws`, its only job is to forward the connection to the `ChatServer`.
 
 ```cpp
 class HttpServer : public qb::Actor,
@@ -82,7 +86,8 @@ public:
 
 ### 2. `ChatServer`: The WebSocket Specialist
 
-The `ChatServer` is a pure `io_handler` that knows nothing about HTTP routing. Its sole purpose is to manage WebSocket clients.
+The `ChatServer` is a pure `io_handler` that knows nothing about HTTP routing. Its sole purpose is to manage WebSocket
+clients.
 
 ```cpp
 class ChatServer : public qb::Actor,
@@ -141,8 +146,9 @@ public:
 
 The client uses a similar dual-actor architecture to separate network logic from UI logic.
 
--   **`WebSocketClientActor`**: Handles the WebSocket connection, handshake, and message serialization/deserialization.
--   **`CommandLineActor`**: Manages user input from `stdin` and displays messages received from the `WebSocketClientActor`.
+- **`WebSocketClientActor`**: Handles the WebSocket connection, handshake, and message serialization/deserialization.
+- **`CommandLineActor`**: Manages user input from `stdin` and displays messages received from the
+  `WebSocketClientActor`.
 
 This separation ensures that blocking `stdin` reads do not interfere with the non-blocking network I/O.
 
@@ -178,7 +184,8 @@ class ChatSession {
 
 ### 2. Efficient Broadcasting
 
-The `io_handler` base class provides the `stream_if()` method, which is a highly efficient way to broadcast messages to multiple clients without extra copies.
+The `io_handler` base class provides the `stream_if()` method, which is a highly efficient way to broadcast messages to
+multiple clients without extra copies.
 
 ```cpp
 class ChatServer : public qb::io::use<ChatServer>::tcp::io_handler<ChatSession> {
@@ -206,7 +213,8 @@ class ChatServer : public qb::io::use<ChatServer>::tcp::io_handler<ChatSession> 
 
 ### 3. WebSocket Frame Type Handling
 
-Your `on(ws_protocol::message&&)` handler receives all data frames. To correctly distinguish between Text and Binary types, you must check the opcode from the raw frame header.
+Your `on(ws_protocol::message&&)` handler receives all data frames. To correctly distinguish between Text and Binary
+types, you must check the opcode from the raw frame header.
 
 ```cpp
 class WebSocketSession {
@@ -263,8 +271,9 @@ make 01_chat_server 02_chat_client
 # From the build directory
 ./examples/qbm/ws/01_chat_server --port 8080 --static-root ../examples/qbm/ws/resources/chat
 ```
-*   **Web Chat**: `http://localhost:8080/`
-*   **WebSocket Endpoint**: `ws://localhost:8080/ws`
+
+* **Web Chat**: `http://localhost:8080/`
+* **WebSocket Endpoint**: `ws://localhost:8080/ws`
 
 ### 3. Run the Command-Line Client
 
@@ -272,13 +281,16 @@ make 01_chat_server 02_chat_client
 # From the build directory
 ./examples/qbm/ws/02_chat_client
 ```
+
 Then, inside the client:
+
 ```
 /connect ws://localhost:8080/ws
 /username MyCoolName
 Hello from the command line!
 /quit
 ```
+
 You can run multiple clients and open the web UI to see them all communicate in real-time.
 
 ---
@@ -286,23 +298,27 @@ You can run multiple clients and open the web UI to see them all communicate in 
 ## 🏛️ Architecture Benefits
 
 ### **🔧 Responsibility Separation**
+
 - **HttpServer**: Static files, API, HTTP routing
-- **ChatServer**: WebSocket sessions, broadcasting 
+- **ChatServer**: WebSocket sessions, broadcasting
 - **HttpSession**: HTTP request handling
 - **ChatSession**: WebSocket connection handling
 
 ### **⚡ Performance**
+
 - **Zero-copy** transport transfer via `extractSession()`
 - **Concurrent sessions** via `io_handler<>`
 - **Non-blocking I/O** throughout
 - **Efficient message dispatch** with `unordered_map`
 
-### **🧩 Modularity**  
+### **🧩 Modularity**
+
 - **Easy extension** with new message types
 - **Pluggable architecture** (HTTP → HTTPS, authentication, etc.)
 - **Testable components** (each actor testable separately)
 
 ### **🛡️ Reliability**
+
 - **Thread-safe by design** (actor model)
 - **Graceful shutdown** handling
 - **Error isolation** (actor failure doesn't affect others)
@@ -324,14 +340,15 @@ You can run multiple clients and open the web UI to see them all communicate in 
 10. CLI Client ──receives message──→ Display in terminal
 ```
 
-This architecture demonstrates **real-world patterns** for building scalable, maintainable network applications with QB! 🎉
+This architecture demonstrates **real-world patterns** for building scalable, maintainable network applications with QB!
+🎉
 
 ---
 
 ## 🔗 Advanced QB Concepts Used
 
 - **`qb::Actor`** - Actor model concurrency
-- **`qb::io::use<>`** - Transport injection via CRTP  
+- **`qb::io::use<>`** - Transport injection via CRTP
 - **`qb::http::use<>`** - HTTP protocol injection
 - **`extractSession()`** - Socket ownership transfer
 - **`registerSession()`** - Transferred session registration

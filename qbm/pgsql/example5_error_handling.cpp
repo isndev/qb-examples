@@ -31,13 +31,13 @@
  * - `Reply::ok()`, `Reply::result()`, `Reply::error()` and the `db_error` field set.
  * - Driving an SQL-issuing coroutine from a sync handler via `spawn(...)`.
  */
-#include <qb/actor.h>
-#include <qb/main.h>
-#include <qb/io.h>
 #include <pgsql/pgsql.h>
+#include <qb/actor.h>
+#include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/io/async/coroutine/utils.h>
+#include <qb/main.h>
 
 #include <chrono>
 #include <iostream>
@@ -47,15 +47,14 @@
 // IMPORTANT: Replace with your actual PostgreSQL connection string.
 const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
 
-const char *ERROR_TEST_TABLE_SQL =
-    "CREATE TABLE IF NOT EXISTS error_test_items ("
-    "id SERIAL PRIMARY KEY, "
-    "name TEXT NOT NULL UNIQUE, "
-    "quantity INT CHECK (quantity >= 0), "
-    "description TEXT"
-    ");";
+const char *ERROR_TEST_TABLE_SQL = "CREATE TABLE IF NOT EXISTS error_test_items ("
+                                   "id SERIAL PRIMARY KEY, "
+                                   "name TEXT NOT NULL UNIQUE, "
+                                   "quantity INT CHECK (quantity >= 0), "
+                                   "description TEXT"
+                                   ");";
 
-const char *PREPARE_INSERT_ERROR_ITEM        = "insert_error_item_stmt_v5";
+const char *PREPARE_INSERT_ERROR_ITEM         = "insert_error_item_stmt_v5";
 const char *PREPARE_SELECT_ERROR_ITEM_BY_NAME = "select_error_item_by_name_stmt_v5";
 
 class ErrorHandlingActor : public qb::Actor {
@@ -64,7 +63,8 @@ public:
 
     ~ErrorHandlingActor() override = default;
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         qb::io::cout() << "ErrorHandlingActor [" << id() << "] onInit." << std::endl;
         registerEvent<qb::KillEvent>(*this);
 
@@ -91,7 +91,8 @@ public:
         co_return true;
     }
 
-    void on(const qb::KillEvent &) {
+    void
+    on(const qb::KillEvent &) {
         qb::io::cout() << "ErrorHandlingActor received KillEvent." << std::endl;
         kill();
     }
@@ -99,18 +100,19 @@ public:
 private:
     // Report a db_error using the current API surface:
     // what()/severity/code(SQLSTATE string)/detail + structured sqlstate enum.
-    void printDbError(const std::string &context, const qb::pg::error::db_error &err) {
+    void
+    printDbError(const std::string &context, const qb::pg::error::db_error &err) {
         qb::io::cerr() << "--- ERROR in " << context << " ---" << std::endl;
         qb::io::cerr() << "Message: " << err.what() << std::endl;
         qb::io::cerr() << "Severity: " << err.severity << std::endl;
-        qb::io::cerr() << "SQLSTATE (Code): " << err.code
-                       << " (Enum: " << static_cast<int>(err.sqlstate) << ")" << std::endl;
+        qb::io::cerr() << "SQLSTATE (Code): " << err.code << " (Enum: " << static_cast<int>(err.sqlstate) << ")" << std::endl;
         if (!err.detail.empty())
             qb::io::cerr() << "Detail: " << err.detail << std::endl;
         qb::io::cerr() << "-------------------------" << std::endl;
     }
 
-    qb::io::async::task<bool> initializeSchemaAndStatements() {
+    qb::io::async::task<bool>
+    initializeSchemaAndStatements() {
         qb::io::cout() << "Initializing error_test_items table and preparing statements..." << std::endl;
 
         auto create = co_await _db_connection->execute(ERROR_TEST_TABLE_SQL);
@@ -119,19 +121,17 @@ private:
             co_return false;
         }
 
-        auto prep_insert = co_await _db_connection->prepare(
-            PREPARE_INSERT_ERROR_ITEM,
-            "INSERT INTO error_test_items (name, quantity, description) VALUES ($1, $2, $3);",
-            {qb::pg::oid::text, qb::pg::oid::int4, qb::pg::oid::text});
+        auto prep_insert = co_await _db_connection->prepare(PREPARE_INSERT_ERROR_ITEM,
+                                                            "INSERT INTO error_test_items (name, quantity, description) VALUES ($1, $2, $3);",
+                                                            {qb::pg::oid::text, qb::pg::oid::int4, qb::pg::oid::text});
         if (!prep_insert.ok()) {
             printDbError("Prepare Insert Statement", prep_insert.error());
             co_return false;
         }
 
-        auto prep_select = co_await _db_connection->prepare(
-            PREPARE_SELECT_ERROR_ITEM_BY_NAME,
-            "SELECT name, quantity, description FROM error_test_items WHERE name = $1;",
-            {qb::pg::oid::text});
+        auto prep_select =
+            co_await _db_connection->prepare(PREPARE_SELECT_ERROR_ITEM_BY_NAME,
+                                             "SELECT name, quantity, description FROM error_test_items WHERE name = $1;", {qb::pg::oid::text});
         if (!prep_select.ok()) {
             printDbError("Prepare Select Statement", prep_select.error());
             co_return false;
@@ -141,7 +141,8 @@ private:
         co_return true;
     }
 
-    qb::io::async::task<void> runErrorScenarios() {
+    qb::io::async::task<void>
+    runErrorScenarios() {
         qb::io::cout() << "\n--- Running Error Handling Scenarios ---" << std::endl;
 
         // Scenario 1: Syntax Error (expected SQLSTATE 42601, syntax_error).
@@ -157,17 +158,14 @@ private:
         // Scenario 2: Unique Constraint Violation (expected SQLSTATE 23505, unique_violation).
         {
             qb::io::cout() << "\nScenario 2: Unique constraint violation..." << std::endl;
-            auto first = co_await _db_connection->execute(
-                PREPARE_INSERT_ERROR_ITEM,
-                qb::pg::params{std::string("UniqueItem"), 10, std::string("First instance")});
+            auto first = co_await _db_connection->execute(PREPARE_INSERT_ERROR_ITEM,
+                                                          qb::pg::params{std::string("UniqueItem"), 10, std::string("First instance")});
             if (!first.ok()) {
                 printDbError("Initial Insert for Unique Violation", first.error());
             } else {
                 qb::io::cout() << "Attempting to insert duplicate 'UniqueItem'..." << std::endl;
                 auto dup = co_await _db_connection->execute(
-                    PREPARE_INSERT_ERROR_ITEM,
-                    qb::pg::params{std::string("UniqueItem"), 20,
-                                   std::string("Second instance - should fail")});
+                    PREPARE_INSERT_ERROR_ITEM, qb::pg::params{std::string("UniqueItem"), 20, std::string("Second instance - should fail")});
                 if (dup.ok())
                     qb::io::cerr() << "UNEXPECTED SUCCESS: Duplicate insert somehow succeeded." << std::endl;
                 else
@@ -179,9 +177,7 @@ private:
         {
             qb::io::cout() << "\nScenario 3: Check constraint violation (negative quantity)..." << std::endl;
             auto reply = co_await _db_connection->execute(
-                PREPARE_INSERT_ERROR_ITEM,
-                qb::pg::params{std::string("CheckItem"), -5,
-                               std::string("Negative quantity - should fail")});
+                PREPARE_INSERT_ERROR_ITEM, qb::pg::params{std::string("CheckItem"), -5, std::string("Negative quantity - should fail")});
             if (reply.ok())
                 qb::io::cerr() << "UNEXPECTED SUCCESS: Insert with negative quantity succeeded." << std::endl;
             else
@@ -195,15 +191,13 @@ private:
             qb::io::cout() << "\nScenario 4: Client-side result processing errors..." << std::endl;
             auto inserted = co_await _db_connection->execute(
                 PREPARE_INSERT_ERROR_ITEM,
-                qb::pg::params{std::string("ClientErrorItem"), 5,
-                               std::optional<std::string>()}); // description is NULL
+                qb::pg::params{std::string("ClientErrorItem"), 5, std::optional<std::string>()}); // description is NULL
             if (!inserted.ok()) {
                 printDbError("Insert for Client Errors", inserted.error());
                 co_return;
             }
 
-            auto selected = co_await _db_connection->execute(
-                PREPARE_SELECT_ERROR_ITEM_BY_NAME, qb::pg::params{std::string("ClientErrorItem")});
+            auto selected = co_await _db_connection->execute(PREPARE_SELECT_ERROR_ITEM_BY_NAME, qb::pg::params{std::string("ClientErrorItem")});
             if (!selected.ok()) {
                 printDbError("Select for Client Errors", selected.error());
                 co_return;
@@ -239,7 +233,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> cleanupDatabase() {
+    qb::io::async::task<void>
+    cleanupDatabase() {
         qb::io::cout() << "Cleaning up error_test_items table..." << std::endl;
         auto reply = co_await _db_connection->execute("DROP TABLE IF EXISTS error_test_items;");
         if (reply.ok())
@@ -252,7 +247,8 @@ private:
     std::unique_ptr<qb::pg::tcp::database> _db_connection;
 };
 
-int main(int /*argc*/, char * /*argv*/[]) {
+int
+main(int /*argc*/, char * /*argv*/[]) {
     qb::Main engine;
     if (std::string(PG_CONNECTION_STRING) == "tcp://user:password@host:port[dbname]") {
         qb::io::cerr() << "WARNING: Using default PG_CONNECTION_STRING. Please update it." << std::endl;

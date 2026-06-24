@@ -19,7 +19,7 @@ body {
     margin: 0 auto;
     background: white;
     border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
     padding: 30px;
     position: relative;
     overflow: hidden;
@@ -156,7 +156,7 @@ footer {
     padding: 20px;
     margin-bottom: 20px;
     border-left: 4px solid #3498db;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s ease;
 }
 
@@ -184,7 +184,7 @@ table {
     background: white;
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 th, td {
@@ -243,11 +243,11 @@ tr:hover {
         padding: 20px;
         margin: 10px;
     }
-    
+
     h1 {
         font-size: 2em;
     }
-    
+
     .btn {
         padding: 10px 20px;
         font-size: 14px;
@@ -256,8 +256,14 @@ tr:hover {
 
 /* Animations */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .container {
@@ -283,10 +289,25 @@ tr:hover {
     margin-right: 10px;
 }
 
-.method-get { background: #28a745; color: white; }
-.method-post { background: #007bff; color: white; }
-.method-put { background: #ffc107; color: black; }
-.method-delete { background: #dc3545; color: white; }
+.method-get {
+    background: #28a745;
+    color: white;
+}
+
+.method-post {
+    background: #007bff;
+    color: white;
+}
+
+.method-put {
+    background: #ffc107;
+    color: black;
+}
+
+.method-delete {
+    background: #dc3545;
+    color: white;
+}
 
 /* Loading Animation */
 .loading {
@@ -304,8 +325,12 @@ tr:hover {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 /* Utility classes */

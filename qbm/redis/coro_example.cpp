@@ -16,10 +16,10 @@
  * PURE QB-IO - NO ACTORS!
  */
 
+#include <iostream>
+#include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <redis/redis.h>
-#include <iostream>
 
 /**
  * @brief Example 1: Simple GET/SET operations
@@ -67,9 +67,9 @@ example_sequential_operations() {
     }
 
     // Setup test data - hset returns Reply<long long> (new fields added).
-    (void)(co_await redis.hset("user:123", "name",  "Bob"));
-    (void)(co_await redis.hset("user:123", "email", "bob@example.com"));
-    (void)(co_await redis.hset("user:123", "age",   "30"));
+    (void) (co_await redis.hset("user:123", "name", "Bob"));
+    (void) (co_await redis.hset("user:123", "email", "bob@example.com"));
+    (void) (co_await redis.hset("user:123", "age", "30"));
 
     std::cout << "User data created" << std::endl;
 
@@ -81,9 +81,9 @@ example_sequential_operations() {
 
     if (name.ok() && email.ok() && age.ok()) {
         std::cout << "User Profile:" << std::endl;
-        std::cout << "  Name:  " << name.result().value_or("N/A")  << std::endl;
+        std::cout << "  Name:  " << name.result().value_or("N/A") << std::endl;
         std::cout << "  Email: " << email.result().value_or("N/A") << std::endl;
-        std::cout << "  Age:   " << age.result().value_or("N/A")   << std::endl;
+        std::cout << "  Age:   " << age.result().value_or("N/A") << std::endl;
     }
 }
 
@@ -101,9 +101,9 @@ example_multiple_keys() {
     }
 
     // Set multiple keys
-    (void)(co_await redis.set("key1", "value1"));
-    (void)(co_await redis.set("key2", "value2"));
-    (void)(co_await redis.set("key3", "value3"));
+    (void) (co_await redis.set("key1", "value1"));
+    (void) (co_await redis.set("key2", "value2"));
+    (void) (co_await redis.set("key3", "value3"));
 
     std::cout << "Created 3 keys" << std::endl;
 
@@ -117,23 +117,24 @@ example_multiple_keys() {
     // Because every command runs on the same client, the three GETs are
     // pipelined: they go out together and the responses are awaited as one
     // round-trip group rather than three sequential request/response cycles.
-    auto fetch = [&redis](std::string key)
-        -> qb::io::async::task<qb::redis::Reply<std::optional<std::string>>> {
+    auto fetch = [&redis](std::string key) -> qb::io::async::task<qb::redis::Reply<std::optional<std::string>>> {
         co_return co_await redis.get(key);
     };
 
-    auto [r1, r2, r3] = co_await qb::io::async::when_all(
-        fetch("key1"), fetch("key2"), fetch("key3"));
+    auto [r1, r2, r3] = co_await qb::io::async::when_all(fetch("key1"), fetch("key2"), fetch("key3"));
 
     int success = 0;
-    if (r1.ok() && r1.result().has_value()) ++success;
-    if (r2.ok() && r2.result().has_value()) ++success;
-    if (r3.ok() && r3.result().has_value()) ++success;
+    if (r1.ok() && r1.result().has_value())
+        ++success;
+    if (r2.ok() && r2.result().has_value())
+        ++success;
+    if (r3.ok() && r3.result().has_value())
+        ++success;
 
     std::cout << "Fetched " << success << "/3 keys successfully" << std::endl;
 
     // Cleanup - del() returns Reply<long long> (keys deleted).
-    (void)(co_await redis.del("key1", "key2", "key3"));
+    (void) (co_await redis.del("key1", "key2", "key3"));
     std::cout << "Cleaned up test keys" << std::endl;
 }
 
@@ -192,7 +193,7 @@ run_all_examples(bool &running) {
 }
 
 int
-main(int /*argc*/, char* /*argv*/[]) {
+main(int /*argc*/, char * /*argv*/[]) {
     // Initialize qb-io async system
     qb::io::async::init();
 

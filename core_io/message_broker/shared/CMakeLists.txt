@@ -24,11 +24,11 @@
 
 # Shared library for broker components
 qb_add_library(
-    NAME broker_shared
-    SOURCES
+        NAME broker_shared
+        SOURCES
         Protocol.h
         Protocol.cpp
         Events.h
-    DEPENDS qb-core
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS qb-core
+        INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
 ) 

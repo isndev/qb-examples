@@ -6,7 +6,7 @@
     "features": [
       "Request Multiplexing",
       "Server Push",
-      "Stream Prioritization", 
+      "Stream Prioritization",
       "Header Compression (HPACK)",
       "Flow Control",
       "SSL/TLS with ALPN"
@@ -44,7 +44,7 @@
       },
       {
         "id": 2,
-        "name": "Bob Smith", 
+        "name": "Bob Smith",
         "email": "bob@example.com",
         "role": "user"
       },

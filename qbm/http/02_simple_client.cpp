@@ -16,10 +16,10 @@
  * @ingroup Examples
  */
 
-#include <iostream>
-#include <qb/main.h>
 #include <http/coro.h>
 #include <http/http.h>
+#include <iostream>
+#include <qb/main.h>
 
 // HTTP Client Actor that makes various requests
 class HttpClientActor : public qb::Actor {
@@ -29,7 +29,8 @@ private:
 public:
     HttpClientActor() = default;
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "Initializing HTTP Client Actor..." << std::endl;
 
         // Wait 1 second before starting, then drive the whole request flow
@@ -45,7 +46,8 @@ public:
     }
 
 private:
-    qb::io::async::task<void> make_requests() {
+    qb::io::async::task<void>
+    make_requests() {
         std::cout << "Starting HTTP requests..." << std::endl;
         std::cout << "=========================" << std::endl;
 
@@ -65,7 +67,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> make_get_request() {
+    qb::io::async::task<void>
+    make_get_request() {
         std::cout << "Making GET request to httpbin.org..." << std::endl;
 
         // Create request
@@ -94,7 +97,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> make_post_request() {
+    qb::io::async::task<void>
+    make_post_request() {
         std::cout << "\nMaking POST request to httpbin.org..." << std::endl;
 
         // Create request with JSON body
@@ -127,7 +131,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> make_headers_request() {
+    qb::io::async::task<void>
+    make_headers_request() {
         std::cout << "\nMaking request to test custom headers..." << std::endl;
 
         qb::http::Request request(qb::io::uri("http://httpbin.org/headers"));
@@ -149,26 +154,31 @@ private:
         co_return;
     }
 
-    void finish_demo() {
+    void
+    finish_demo() {
         std::cout << "\nHTTP Client demo completed!" << std::endl;
         std::cout << "Total requests made: " << _request_count << std::endl;
         std::cout << "Shutting down client actor..." << std::endl;
 
         // Schedule shutdown after a brief pause
-        qb::io::async::callback([this]() {
-            if (this->is_alive()) {
-                qb::Main::stop();
-            }
-        }, std::chrono::seconds(2));
+        qb::io::async::callback(
+            [this]() {
+                if (this->is_alive()) {
+                    qb::Main::stop();
+                }
+            },
+            std::chrono::seconds(2));
     }
 
-    void on(const qb::KillEvent& event) noexcept {
+    void
+    on(const qb::KillEvent &event) noexcept {
         std::cout << "HTTP Client Actor shutting down..." << std::endl;
         this->kill();
     }
 };
 
-int main() {
+int
+main() {
     try {
         std::cout << "QB HTTP Client Example" << std::endl;
         std::cout << "======================" << std::endl;
@@ -192,7 +202,7 @@ int main() {
 
         std::cout << "Client demo finished" << std::endl;
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         std::cerr << "Client error: " << e.what() << std::endl;
         return 1;
     }

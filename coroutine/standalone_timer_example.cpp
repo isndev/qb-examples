@@ -13,14 +13,15 @@
  *   ./standalone_timer_example
  */
 
-#include <qb/io/async/coroutine.h>
-#include <iostream>
 #include <chrono>
+#include <iostream>
+#include <qb/io/async/coroutine.h>
 
 using namespace qb::io::async;
 
 // Example 1: Simple delayed greeting
-task<void> delayed_greeting(const std::string& name, std::chrono::milliseconds delay) {
+task<void>
+delayed_greeting(const std::string &name, std::chrono::milliseconds delay) {
     std::cout << "Waiting for " << delay.count() << "ms...\n";
 
     co_await sleep(delay);
@@ -29,7 +30,8 @@ task<void> delayed_greeting(const std::string& name, std::chrono::milliseconds d
 }
 
 // Example 2: Sequential delays
-task<void> countdown(int start) {
+task<void>
+countdown(int start) {
     for (int i = start; i > 0; --i) {
         std::cout << i << "...\n";
         co_await sleep(std::chrono::milliseconds(500));
@@ -38,7 +40,8 @@ task<void> countdown(int start) {
 }
 
 // Example 3: Concurrent operations
-task<void> concurrent_demo() {
+task<void>
+concurrent_demo() {
     std::cout << "Starting concurrent operations...\n";
 
     // Launch multiple coroutines
@@ -69,12 +72,14 @@ task<void> concurrent_demo() {
 }
 
 // Example 4: Task with return value
-task<int> compute_value(int base) {
+task<int>
+compute_value(int base) {
     co_await sleep(std::chrono::milliseconds(100));
     co_return base * 2;
 }
 
-task<void> use_computed_value() {
+task<void>
+use_computed_value() {
     std::cout << "Computing value...\n";
 
     int result = co_await compute_value(21);
@@ -82,7 +87,8 @@ task<void> use_computed_value() {
     std::cout << "Result: " << result << "\n";
 }
 
-int main() {
+int
+main() {
     std::cout << "=== QB Coroutine Standalone Example ===\n\n";
 
     // Initialize async system

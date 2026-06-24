@@ -20,10 +20,10 @@
  */
 #pragma once
 
+#include <vector>
 #include <qb/actor.h>
 #include <qb/io/async.h>
 #include <qb/io/uri.h>
-#include <vector>
 #include "auction_house/events.h"
 
 namespace auction_house {

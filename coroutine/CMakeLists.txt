@@ -32,14 +32,14 @@ qb_status_message("Building qb coroutine examples")
 
 # Standalone coroutine driving (pure qb-io, no actor framework).
 qb_add_executable(
-    NAME standalone_timer_example
-    SOURCES standalone_timer_example.cpp
-    DEPENDS qb-core qb-io
+        NAME standalone_timer_example
+        SOURCES standalone_timer_example.cpp
+        DEPENDS qb-core qb-io
 )
 
 # Coroutines hosted inside actors.
 qb_add_executable(
-    NAME actor_example
-    SOURCES actor_example.cpp
-    DEPENDS qb-core qb-io
+        NAME actor_example
+        SOURCES actor_example.cpp
+        DEPENDS qb-core qb-io
 )
