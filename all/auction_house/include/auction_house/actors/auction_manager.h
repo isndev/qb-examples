@@ -21,6 +21,7 @@
  */
 #pragma once
 
+#include <filesystem>
 #include <http/http.h>
 #include <memory>
 #include <pgsql/pgsql.h>
@@ -46,7 +47,7 @@ class AuctionManager
 public:
     using ctx_t = std::shared_ptr<qb::http::Context<HttpSession>>;
 
-    AuctionManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::string static_root);
+    AuctionManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::filesystem::path static_root);
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -83,9 +84,9 @@ private:
 
     // ── Members ───────────────────────────────────────────────────────────────
 
-    qb::io::uri _pg_uri;
-    qb::io::uri _redis_uri;
-    std::string _static_root;
+    qb::io::uri           _pg_uri;
+    qb::io::uri           _redis_uri;
+    std::filesystem::path _static_root;
 
     std::unique_ptr<qb::pg::tcp::database> _db;
     qb::redis::tcp::client                 _redis;

@@ -87,7 +87,7 @@ main(int argc, char *argv[]) {
     const qb::io::uri redis_uri{"tcp://localhost:6379"};
 
     // Find static resources
-    std::string static_root = RESOURCES_PATH;
+    std::filesystem::path static_root = RESOURCES_PATH;
     for (const char *candidate : {RESOURCES_PATH, "./resources/static", "../resources/static", "../../resources/static"}) {
         if (std::filesystem::exists(candidate)) {
             static_root = candidate;

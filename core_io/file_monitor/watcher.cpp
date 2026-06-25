@@ -91,7 +91,7 @@ void DirectoryMonitor::on(qb::io::async::event::file const& event) {
     }
 }
 
-void DirectoryMonitor::startWatching(const std::string& path, qb::duration interval) {
+void DirectoryMonitor::startWatching(const std::filesystem::path& path, qb::duration interval) {
     start(path, interval);
 }
 
@@ -215,9 +215,10 @@ void DirectoryWatcher::on(qb::KillEvent&) {
     kill();
 }
 
-std::shared_ptr<DirectoryWatcher::WatchInfo> 
-DirectoryWatcher::getOrCreateWatch(const std::string& path, bool recursive) {
-    auto it = _watched_directories.find(path);
+std::shared_ptr<DirectoryWatcher::WatchInfo>
+DirectoryWatcher::getOrCreateWatch(const std::filesystem::path& path, bool recursive) {
+    const std::string key = path.string();
+    auto it = _watched_directories.find(key);
     if (it != _watched_directories.end()) {
         // Update recursion flag if needed
         if (recursive && !it->second->recursive) {
@@ -225,17 +226,17 @@ DirectoryWatcher::getOrCreateWatch(const std::string& path, bool recursive) {
         }
         return it->second;
     }
-    
+
     // Create a new watch
     auto watch = std::make_shared<WatchInfo>();
     watch->path = path;
     watch->recursive = recursive;
-    _watched_directories[path] = watch;
-    
+    _watched_directories[key] = watch;
+
     return watch;
 }
 
-bool DirectoryWatcher::setupDirectoryWatch(const std::string& path, 
+bool DirectoryWatcher::setupDirectoryWatch(const std::filesystem::path& path,
                                            std::shared_ptr<WatchInfo> watch,
                                            bool recursive) {
     try {
@@ -292,29 +293,33 @@ bool DirectoryWatcher::setupDirectoryWatch(const std::string& path,
     }
 }
 
-void DirectoryWatcher::publishFileEvent(const std::string& file_path, FileEventType event_type) {
+void DirectoryWatcher::publishFileEvent(const std::filesystem::path& file_path, FileEventType event_type) {
     // Find which directory watch contains this file
     std::shared_ptr<WatchInfo> watch;
     std::string watch_dir;
-    
+
+    // The _watched_directories map is keyed by string paths; compare against the
+    // string form for the prefix match and for the qb::string FileEvent field.
+    const std::string file_path_str = file_path.string();
+
     // Find the deepest directory that contains this file
     for (const auto& pair : _watched_directories) {
-        if (file_path.find(pair.first) == 0) { // path starts with dir
+        if (file_path_str.find(pair.first) == 0) { // path starts with dir
             if (watch_dir.empty() || pair.first.length() > watch_dir.length()) {
                 watch_dir = pair.first;
                 watch = pair.second;
             }
         }
     }
-    
+
     if (watch) {
         // Log the event
         qb::io::cout() << "File event: " << eventTypeToString(event_type)
-                  << " - " << file_path << std::endl;
-        
+                  << " - " << file_path_str << std::endl;
+
         // Publish to all subscribers
         for (const auto& subscriber : watch->subscribers) {
-            push<FileEvent>(subscriber, file_path, event_type);
+            push<FileEvent>(subscriber, file_path_str, event_type);
         }
     }
 }

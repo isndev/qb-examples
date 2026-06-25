@@ -55,7 +55,7 @@ main() {
 
     // Resolve static file root: prefer the compile-time path, fall back to
     // relative paths so the binary works when run from the build directory.
-    std::string static_root = RESOURCES_PATH;
+    std::filesystem::path static_root = RESOURCES_PATH;
     for (const char *candidate : {RESOURCES_PATH, "./resources/static", "../resources/static", "../../resources/static"}) {
         if (std::filesystem::exists(candidate)) {
             static_root = candidate;

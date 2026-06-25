@@ -68,7 +68,8 @@ enum class MachineState {
     BREWING,        // Making coffee
     DISPENSING,     // Dispensing coffee
     MAINTENANCE,    // Machine is in maintenance mode
-    ERROR           // Error state
+    FAULT           // Error state (named FAULT, not ERROR: <windows.h> defines an
+                    // object-like `ERROR` macro that would mangle this enumerator)
 };
 
 // Convert state to string for display
@@ -80,7 +81,7 @@ std::string stateToString(MachineState state) {
         case MachineState::BREWING: return "BREWING";
         case MachineState::DISPENSING: return "DISPENSING";
         case MachineState::MAINTENANCE: return "MAINTENANCE";
-        case MachineState::ERROR: return "ERROR";
+        case MachineState::FAULT: return "ERROR";
         default: return "UNKNOWN";
     }
 }
@@ -317,7 +318,7 @@ private:
             [this](const InputEventMessage& msg) {
                 // Transition to ERROR when an error is detected
                 _error_message = "Unknown error detected";
-                changeState(MachineState::ERROR, _error_message);
+                changeState(MachineState::FAULT, _error_message);
             };
         
         // SELECTING state transitions
@@ -396,7 +397,7 @@ private:
             [this](const InputEventMessage& msg) {
                 // Error during brewing
                 _error_message = "Brewing error: Water supply issue";
-                changeState(MachineState::ERROR, _error_message);
+                changeState(MachineState::FAULT, _error_message);
             };
         
         // DISPENSING state transitions
@@ -415,7 +416,7 @@ private:
             };
         
         // ERROR state transitions
-        _transition_table[MachineState::ERROR][InputEvent::RESET] = 
+        _transition_table[MachineState::FAULT][InputEvent::RESET] = 
             [this](const InputEventMessage& msg) {
                 // Reset after error
                 _error_message = "";
@@ -423,7 +424,7 @@ private:
             };
         
         // Default handler for unhandled state/event combinations
-        for (int state = 0; state <= static_cast<int>(MachineState::ERROR); ++state) {
+        for (int state = 0; state <= static_cast<int>(MachineState::FAULT); ++state) {
             for (int event = 0; event <= static_cast<int>(InputEvent::DISPENSE_FINISHED); ++event) {
                 auto machine_state = static_cast<MachineState>(state);
                 auto input_event = static_cast<InputEvent>(event);
@@ -514,7 +515,7 @@ private:
             case MachineState::MAINTENANCE:
                 status_message = "Machine in maintenance mode";
                 break;
-            case MachineState::ERROR:
+            case MachineState::FAULT:
                 status_message = "Error: " + _error_message;
                 break;
         }

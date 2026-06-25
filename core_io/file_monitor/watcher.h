@@ -79,7 +79,7 @@ public:
     /**
      * @brief Start watching a directory
      */
-    void startWatching(const std::string& path, qb::duration interval = std::chrono::milliseconds(500));
+    void startWatching(const std::filesystem::path& path, qb::duration interval = std::chrono::milliseconds(500));
     
     /**
      * @brief Stop watching
@@ -97,7 +97,7 @@ class DirectoryWatcher : public qb::Actor {
 private:
     // Structure to track watched directory
     struct WatchInfo {
-        std::string path;
+        std::filesystem::path path;
         bool recursive;
         std::vector<qb::ActorId> subscribers;
         std::unique_ptr<DirectoryMonitor> watcher;
@@ -132,9 +132,9 @@ private:
     /**
      * @brief Utility functions
      */
-    std::shared_ptr<WatchInfo> getOrCreateWatch(const std::string& path, bool recursive);
-    bool setupDirectoryWatch(const std::string& path, std::shared_ptr<WatchInfo> watch, bool recursive);
-    void publishFileEvent(const std::string& file_path, FileEventType event_type);
+    std::shared_ptr<WatchInfo> getOrCreateWatch(const std::filesystem::path& path, bool recursive);
+    bool setupDirectoryWatch(const std::filesystem::path& path, std::shared_ptr<WatchInfo> watch, bool recursive);
+    void publishFileEvent(const std::filesystem::path& file_path, FileEventType event_type);
     int countWatchedFiles(std::shared_ptr<WatchInfo> watch);
 };
 

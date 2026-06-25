@@ -83,7 +83,7 @@ namespace {
     }
     
     // Create a directory with appropriate error handling
-    bool createDirectory(const std::string& path) {
+    bool createDirectory(const std::filesystem::path& path) {
         try {
             if (std::filesystem::exists(path)) {
                 qb::io::cout() << "Directory already exists: " << path << std::endl;
@@ -95,12 +95,12 @@ namespace {
             return false;
         }
     }
-    
+
     // Get full path for a test file
-    std::string getTestFilePath(const std::string& dir, const std::string& filename) {
+    std::filesystem::path getTestFilePath(const std::filesystem::path& dir, const std::filesystem::path& filename) {
         std::filesystem::path path(dir);
         path /= filename;
-        return path.string();
+        return path;
     }
 }
 
@@ -111,10 +111,10 @@ namespace {
  */
 class FileOperationsManager {
 private:
-    std::string _test_dir;
-    
+    std::filesystem::path _test_dir;
+
 public:
-    explicit FileOperationsManager(const std::string& test_dir) : _test_dir(test_dir) {
+    explicit FileOperationsManager(std::filesystem::path test_dir) : _test_dir(std::move(test_dir)) {
         // Ensure test directory exists
         if (!createDirectory(_test_dir)) {
             qb::io::cerr() << "Failed to create test directory: " << _test_dir << std::endl;
@@ -172,14 +172,14 @@ private:
         }
         
         // Create the file path
-        std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
+        std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Writing data to: " << file_path << std::endl;
-        
+
         // Use QB-IO file API to write the file
         qb::io::sys::file file;
         auto start_time = std::chrono::high_resolution_clock::now();
-        
-        if (file.open(file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
+
+        if (file.open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
             // Write the data - Cast unsigned char* to char* to match the API
             auto written = file.write(reinterpret_cast<const char*>(data.data()), data.size());
             file.close();
@@ -210,22 +210,25 @@ private:
         printSection("Reading Binary File");
         
         // Create the file path
-        std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
+        std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Reading data from: " << file_path << std::endl;
-        
-        // Use standard file operations for getting file size
+
+        // Use standard file operations for getting file size.
+        // stat() is a narrow `const char*` sink on every platform, so use
+        // path.string().c_str() (path.c_str() is wchar_t* on Windows).
+        const std::string file_path_str = file_path.string();
         struct stat file_stat;
-        if (stat(file_path.c_str(), &file_stat) != 0) {
+        if (stat(file_path_str.c_str(), &file_stat) != 0) {
             qb::io::cerr() << "Error getting file stats: " << strerror(errno) << std::endl;
                 return;
             }
         size_t file_size = file_stat.st_size;
-        
+
         // Use QB-IO file API to read the file
         qb::io::sys::file file;
         auto start_time = std::chrono::high_resolution_clock::now();
-        
-        if (file.open(file_path.c_str(), O_RDONLY) >= 0) {
+
+        if (file.open(file_path, O_RDONLY) >= 0) {
             // Allocate buffer for file content
             std::vector<char> buffer(file_size);
             
@@ -267,9 +270,11 @@ private:
         printSection("Memory-Mapped File I/O");
 #ifndef _WIN32
         // Create the file path
-        std::string file_path = getTestFilePath(_test_dir, TEST_MMAP_FILE);
+        std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_MMAP_FILE);
         qb::io::cout() << "Creating memory-mapped file: " << file_path << std::endl;
 
+        // POSIX-only branch: ::open is a narrow sink; path.c_str() is `const char*`
+        // here (this block never compiles on Windows where it would be wchar_t*).
         int fd = open(file_path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
             qb::io::cerr() << "Error opening file for memory mapping: " << strerror(errno) << std::endl;
@@ -331,30 +336,32 @@ private:
     void demonstrateFileCopy() {
         printSection("File Copy Operation");
         
-        std::string source_path = getTestFilePath(_test_dir, TEST_FILE);
-        std::string dest_path = getTestFilePath(_test_dir, TEST_COPY_FILE);
-        
+        std::filesystem::path source_path = getTestFilePath(_test_dir, TEST_FILE);
+        std::filesystem::path dest_path = getTestFilePath(_test_dir, TEST_COPY_FILE);
+
         qb::io::cout() << "Copying " << source_path << " to " << dest_path << std::endl;
-        
-        // Get source file size using standard file operations
+
+        // Get source file size using standard file operations. stat() is a narrow
+        // `const char*` sink on every platform → use path.string().c_str().
+        const std::string source_path_str = source_path.string();
         struct stat file_stat;
-        if (stat(source_path.c_str(), &file_stat) != 0) {
+        if (stat(source_path_str.c_str(), &file_stat) != 0) {
             qb::io::cerr() << "Error getting source file stats: " << strerror(errno) << std::endl;
             return;
         }
         size_t file_size = file_stat.st_size;
-        
+
         qb::io::sys::file source_file;
         qb::io::sys::file dest_file;
-        
+
         auto start_time = std::chrono::high_resolution_clock::now();
-        
-        if (source_file.open(source_path.c_str(), O_RDONLY) < 0) {
+
+        if (source_file.open(source_path, O_RDONLY) < 0) {
             qb::io::cerr() << "Error opening source file: " << strerror(errno) << std::endl;
             return;
         }
-        
-        if (dest_file.open(dest_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) < 0) {
+
+        if (dest_file.open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0644) < 0) {
             qb::io::cerr() << "Error opening destination file: " << strerror(errno) << std::endl;
             source_file.close();
             return;
@@ -399,12 +406,14 @@ private:
     void demonstrateFileInfo() {
         printSection("File Information");
         
-        std::string file_path = getTestFilePath(_test_dir, TEST_FILE);
+        std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Getting information for: " << file_path << std::endl;
-        
-        // Use standard file operations to get file info
+
+        // Use standard file operations to get file info. stat() is a narrow
+        // `const char*` sink on every platform → use path.string().c_str().
+        const std::string file_path_str = file_path.string();
         struct stat file_stat;
-        if (stat(file_path.c_str(), &file_stat) == 0) {
+        if (stat(file_path_str.c_str(), &file_stat) == 0) {
             qb::io::cout() << "File size: " << file_stat.st_size << " bytes" << std::endl;
             qb::io::cout() << "File permissions: " << std::oct << (file_stat.st_mode & 0777)
                       << std::dec << std::endl;
@@ -427,7 +436,7 @@ private:
         printSection("Cleaning Up");
         
         // List of files to clean up
-        std::vector<std::string> files_to_clean = {
+        std::vector<std::filesystem::path> files_to_clean = {
             getTestFilePath(_test_dir, TEST_FILE),
             getTestFilePath(_test_dir, TEST_MMAP_FILE),
             getTestFilePath(_test_dir, TEST_COPY_FILE)

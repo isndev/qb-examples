@@ -55,7 +55,7 @@ private:
     std::unordered_map<std::string, FileMetadata> _tracked_files;
     
     // Path where processor is monitoring
-    std::string _base_path;
+    std::filesystem::path _base_path;
     
     // Statistics tracking
     ProcessingStats _stats;
@@ -67,7 +67,7 @@ public:
     /**
      * @brief Constructor
      */
-    explicit FileProcessor(const std::string& base_path);
+    explicit FileProcessor(std::filesystem::path base_path);
     
     /**
      * @brief Initialize the actor
@@ -86,9 +86,9 @@ private:
     /**
      * @brief Processing methods for different file events
      */
-    void processFileCreated(const std::string& path);
-    void processFileModified(const std::string& path);
-    void processFileDeleted(const std::string& path);
+    void processFileCreated(const std::filesystem::path& path);
+    void processFileModified(const std::filesystem::path& path);
+    void processFileDeleted(const std::filesystem::path& path);
     
     /**
      * @brief Check if a file should be processed
@@ -96,12 +96,12 @@ private:
      * Determines if a file should be processed based on its extension,
      * attributes, and configuration settings
      */
-    bool shouldProcessFile(const std::string& path);
-    
+    bool shouldProcessFile(const std::filesystem::path& path);
+
     /**
      * @brief Extract file metadata
      */
-    FileMetadata extractMetadata(const std::string& path);
+    FileMetadata extractMetadata(const std::filesystem::path& path);
     
     /**
      * @brief Update statistics

@@ -11,6 +11,7 @@
  */
 
 #include <qb/main.h>
+#include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <http/http.h>
 #include <http/middleware/all.h>
 #include <http/2/http2.h>
@@ -23,39 +24,14 @@
 
 using qb::json;
 
-// Absolute in-tree resources path, baked by CMake so the example works from any
-// working directory. Empty when built outside that CMake target.
-#ifndef HTTP2_RESOURCES_DIR
-#define HTTP2_RESOURCES_DIR ""
-#endif
-
-// Locate the directory that actually contains index.html. Tried in order:
-//   1. $HTTP2_STATIC_ROOT (explicit override)
-//   2. ./resources/http2   (when launched from the build bin/ dir)
-//   3. the CMake-baked in-tree path (always present in a source checkout)
-// This avoids the "Index file not found" 404 the example showed when run from a
-// directory without ./resources/http2.
-static std::string
+// Locate the directory that contains the HTTP/2 demo site. An explicit
+// $HTTP2_STATIC_ROOT wins; otherwise the bundled resources/http2 is resolved next to the
+// executable, so the example serves the demo from any working directory.
+static std::filesystem::path
 resolve_static_root() {
-    namespace fs = std::filesystem;
-    std::vector<std::string> candidates;
     if (const char *env = std::getenv("HTTP2_STATIC_ROOT"); env && *env)
-        candidates.emplace_back(env);
-    candidates.emplace_back("./resources/http2");
-    if (std::string baked = HTTP2_RESOURCES_DIR; !baked.empty())
-        candidates.emplace_back(std::move(baked));
-
-    for (const auto &c : candidates) {
-        std::error_code ec;
-        if (fs::exists(fs::path(c) / "index.html", ec)) {
-            std::cout << "Static root resolved to: " << c << std::endl;
-            return c;
-        }
-    }
-    std::cerr << "WARNING: could not find resources/http2/index.html in any known "
-                 "location. Set HTTP2_STATIC_ROOT or run from a dir containing "
-                 "resources/http2." << std::endl;
-    return candidates.back();
+        return std::filesystem::path(env);
+    return qb::io::sys::resolve_resource("./resources/http2");
 }
 
 // Parse a decimal integer from an untrusted path/query param and require it to
@@ -107,13 +83,13 @@ public:
  */
 class Http2StaticServer : public qb::Actor, public qb::http2::use<Http2StaticServer>::server<Http2StaticSession> {
 private:
-    std::string _static_root;
-    std::string _cert_file;
-    std::string _key_file;
+    std::filesystem::path _static_root;
+    std::filesystem::path _cert_file;
+    std::filesystem::path _key_file;
 
 public:
-    explicit Http2StaticServer(const std::string& static_root = "./resources/http2")
-        : _static_root(static_root), _cert_file("./server.crt"), _key_file("./server.key") {}
+    explicit Http2StaticServer(std::filesystem::path static_root = "./resources/http2")
+        : _static_root(std::move(static_root)), _cert_file("resources/ssl/cert.pem"), _key_file("resources/ssl/key.pem") {}
 
     qb::io::async::task<bool> onInit() override {
         std::cout << "HTTP/2 server actor created successfully" << std::endl;
@@ -137,26 +113,18 @@ private:
             std::cout << "Created static directory: " << _static_root << std::endl;
         }
         
-        // Check for SSL certificates
+        // The self-signed dev certificate is bundled under resources/ssl next to the binary.
+        // Resolve it relative to the executable so the server runs from any working directory.
+        _cert_file = qb::io::sys::resolve_resource(_cert_file);
+        _key_file  = qb::io::sys::resolve_resource(_key_file);
         if (!std::filesystem::exists(_cert_file) || !std::filesystem::exists(_key_file)) {
-            if (!generate_self_signed_certificate()) {
-                return false;
-            }
-        } else {
-            std::cout << "Using existing SSL certificates" << std::endl;
+            std::cerr << "SSL certificate not found (" << _cert_file << "). Run the "
+                         "example from its build output directory." << std::endl;
+            return false;
         }
-        
-        return true;
-    }
+        std::cout << "Using SSL certificate: " << _cert_file << std::endl;
 
-    bool generate_self_signed_certificate() {
-        std::cout << "Generating self-signed SSL certificate..." << std::endl;
-        std::string cert_command = 
-            "openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.crt "
-            "-days 365 -nodes -subj '/C=US/ST=CA/L=San Francisco/O=QB Framework/CN=localhost'";
-        
-        int result = std::system(cert_command.c_str());
-        return result == 0;
+        return true;
     }
 
     void setup_middleware() {
@@ -209,7 +177,7 @@ private:
     void setup_routes() {
         // Root route - serve index.html
         router().get("/", [this](auto ctx) {
-            std::filesystem::path index_path = std::filesystem::path(_static_root) / "index.html";
+            std::filesystem::path index_path = _static_root / "index.html";
             if (std::filesystem::exists(index_path)) {
                 std::ifstream file(index_path);
                 std::string content((std::istreambuf_iterator<char>(file)),
@@ -223,14 +191,14 @@ private:
                 // download the response instead of displaying it.
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
                 ctx->response().add_header("Content-Type", "text/plain; charset=utf-8");
-                ctx->response().body() = "Index file not found (static root: " + _static_root + ")";
+                ctx->response().body() = "Index file not found (static root: " + _static_root.string() + ")";
                 ctx->complete();
             }
         });
 
         // Favicon route
         router().get("/favicon.ico", [this](auto ctx) {
-            std::filesystem::path favicon_path = std::filesystem::path(_static_root) / "favicon.ico";
+            std::filesystem::path favicon_path = _static_root / "favicon.ico";
             if (std::filesystem::exists(favicon_path)) {
                 std::ifstream file(favicon_path, std::ios::binary);
                 std::string content((std::istreambuf_iterator<char>(file)),

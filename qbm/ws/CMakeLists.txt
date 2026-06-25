@@ -45,14 +45,11 @@ foreach (EXAMPLE_NAME ${QB_WS_EXAMPLES})
     )
 endforeach ()
 
-# Special handling for chat server - copy static resources
-# Per-example destination (own bin/<example>/resources subdir) so parallel builds
-# never race on a shared bin/resources — matching the all/* reference apps.
-qb_copy_resources(
-        TARGET 01_chat_server
-        RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-        DESTINATION "${CMAKE_BINARY_DIR}/bin/01_chat_server/resources"
-)
+# Stage the chat web assets next to the built executable so the example loads them with
+# a plain "resources/chat/..." relative path (see qb_stage_example_resources).
+qb_stage_example_resources(
+        STAGE_NAME qb_ws_examples_resources
+        TARGETS 01_chat_server)
 
 list(LENGTH QB_WS_EXAMPLES QB_WS_EXAMPLES_COUNT)
 qb_status_message("WebSocket examples configured with ${QB_WS_EXAMPLES_COUNT} targets") 
