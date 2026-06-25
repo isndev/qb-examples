@@ -65,13 +65,13 @@ using namespace file_processor;
 class ClientActor : public qb::Actor {
 private:
     qb::ActorId _manager_id;
-    std::string _test_directory;
+    std::filesystem::path _test_directory;
     uint32_t _next_request_id = 1;
     uint32_t _pending_requests = 0;
-    
+
 public:
-    ClientActor(qb::ActorId manager_id, const std::string& test_dir)
-        : _manager_id(manager_id), _test_directory(test_dir) {
+    ClientActor(qb::ActorId manager_id, std::filesystem::path test_dir)
+        : _manager_id(manager_id), _test_directory(std::move(test_dir)) {
         // Register for response types
         registerEvent<ReadFileResponse>(*this);
         registerEvent<WriteFileResponse>(*this);
@@ -148,7 +148,7 @@ private:
         
         // Create some test files
         for (int i = 1; i <= 5; ++i) {
-            std::string filename = _test_directory + "/test_file_" + std::to_string(i) + ".txt";
+            std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(i) + ".txt");
             std::string content = "This is the content of test file " + std::to_string(i) + ".\n";
             content += "Created by ClientActor to demonstrate distributed file processing.\n";
             content += "Random line " + std::to_string(rand() % 1000) + " to make the content unique.\n";
@@ -162,25 +162,25 @@ private:
         }
     }
     
-    void requestWriteFile(const std::string& filepath, const std::string& content) {
+    void requestWriteFile(const std::filesystem::path& filepath, const std::string& content) {
         qb::io::cout() << "ClientActor requesting file write: " << filepath << std::endl;
-        
+
         // Create a vector with the content
         auto data = std::make_shared<std::vector<char>>(content.begin(), content.end());
-        
+
         // Send the request to the manager
         uint32_t request_id = _next_request_id++;
-        push<WriteFileRequest>(_manager_id, filepath.c_str(), data, id(), request_id);
-        
+        push<WriteFileRequest>(_manager_id, filepath.string().c_str(), data, id(), request_id);
+
         _pending_requests++;
     }
-    
-    void requestReadFile(const std::string& filepath) {
+
+    void requestReadFile(const std::filesystem::path& filepath) {
         qb::io::cout() << "ClientActor requesting file read: " << filepath << std::endl;
-        
+
         // Send the request to the manager
         uint32_t request_id = _next_request_id++;
-        push<ReadFileRequest>(_manager_id, filepath.c_str(), id(), request_id);
+        push<ReadFileRequest>(_manager_id, filepath.string().c_str(), id(), request_id);
         
         _pending_requests++;
     }
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
     qb::io::cout() << "=== QB Core/IO Example: Distributed File Processing ===\n" << std::endl;
     
     // Define the test file directory
-    std::string test_dir = "./test_files";
+    std::filesystem::path test_dir = "./test_files";
     
     try {
         // Initialize the qb actor system

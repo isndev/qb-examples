@@ -22,7 +22,7 @@ namespace actors {
 
 // ─── Constructor ────────────────────────────────────────────────────────────
 
-AuctionManager::AuctionManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::string static_root)
+AuctionManager::AuctionManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::filesystem::path static_root)
     : _pg_uri(std::move(pg_uri))
     , _redis_uri(std::move(redis_uri))
     , _static_root(std::move(static_root))

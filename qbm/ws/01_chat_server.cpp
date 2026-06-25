@@ -21,6 +21,7 @@
 #include <functional>
 #include <qb/main.h>
 #include <qb/actor.h>
+#include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/time.h>
 #include <http/http.h>
 #include <http/ws.h>
@@ -35,7 +36,7 @@ class ChatServer;
 // ============================================================================
 // Utility Function Declarations
 // ============================================================================
-std::pair<std::string, uint16_t> parse_command_line_arguments(int argc, char* argv[]);
+std::pair<std::filesystem::path, uint16_t> parse_command_line_arguments(int argc, char* argv[]);
 void print_server_info(uint16_t port);
 
 // ============================================================================
@@ -306,13 +307,13 @@ class HttpServer
  : public qb::Actor
  , public qb::http::use<HttpServer>::template server<HttpSession> {
 private:
-    std::string _static_root;
+    std::filesystem::path _static_root;
     uint16_t _port;
     qb::ActorId _chat_server_id;
-    
+
 public:
-    explicit HttpServer(const std::string& static_root, uint16_t port, qb::ActorId chat_server_id) 
-        : _static_root(static_root), _port(port), _chat_server_id(chat_server_id) {}
+    explicit HttpServer(std::filesystem::path static_root, uint16_t port, qb::ActorId chat_server_id)
+        : _static_root(std::move(static_root)), _port(port), _chat_server_id(chat_server_id) {}
 
     qb::io::async::task<bool> onInit() override {
         std::cout << "Starting HTTP Server..." << std::endl;
@@ -456,7 +457,7 @@ private:
                 {"health_check", "/health"}
             }},
             {"static_files", {
-                {"root", _static_root},
+                {"root", _static_root.string()},
                 {"prefix", "/static"},
                 {"index", "/static/index.html"},
                 {"css", "/static/chat.css"},
@@ -633,8 +634,8 @@ int main(int argc, char* argv[]) {
 // ============================================================================
 // Utility Functions
 // ============================================================================
-std::pair<std::string, uint16_t> parse_command_line_arguments(int argc, char* argv[]) {
-    std::string static_root = "./resources/chat";
+std::pair<std::filesystem::path, uint16_t> parse_command_line_arguments(int argc, char* argv[]) {
+    std::filesystem::path static_root = "./resources/chat";
     uint16_t port = 8080;
     
     for (int i = 1; i < argc; ++i) {
@@ -652,7 +653,10 @@ std::pair<std::string, uint16_t> parse_command_line_arguments(int argc, char* ar
             exit(0);
         }
     }
-    
+
+    // Resolve the chat assets next to the executable so the server runs from any working
+    // directory (an explicit --static-root, if given, is honoured and resolved the same way).
+    static_root = qb::io::sys::resolve_resource(static_root);
     return {static_root, port};
 }
 

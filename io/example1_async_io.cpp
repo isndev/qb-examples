@@ -48,6 +48,7 @@
 #include <qb/io/async.h>
 #include <qb/io/system/file.h>
 #include <csignal>
+#include <filesystem>
 
 namespace {
     // Global constants for the example
@@ -109,15 +110,15 @@ struct FileContentEvent {
  */
 class FileProcessor : public qb::io::async::with_timeout<FileProcessor> {
 private:
-    std::string _filename;
+    std::filesystem::path _filename;
     int _operation_count = 0;
     const int _max_operations;
     std::string _content;
-    
+
 public:
-    explicit FileProcessor(const std::string& filename, int max_ops = MAX_OPERATIONS)
+    explicit FileProcessor(std::filesystem::path filename, int max_ops = MAX_OPERATIONS)
         : with_timeout(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(TIMER_INTERVAL))), // 1 second timeout
-          _filename(filename),
+          _filename(std::move(filename)),
           _max_operations(max_ops) {
         printSectionHeader("File Processor Initialized");
         qb::io::cout() << "Processor will handle " << _max_operations << " operations on file: "
@@ -283,22 +284,26 @@ public:
  */
 class FileWatcher {
 private:
-    std::string _filename;
+    std::filesystem::path _filename;
+    // Narrow, stable backing storage for the libev stat watcher: ev_stat_set()
+    // stores the `const char*` by pointer (it does not copy), so the buffer must
+    // outlive the watcher. path.string() returns a temporary, hence this member.
+    std::string _native_path;
     ev::stat* _watcher = nullptr;
-    
+
 public:
-    explicit FileWatcher(const std::string& filename)
-        : _filename(filename) {
+    explicit FileWatcher(std::filesystem::path filename)
+        : _filename(std::move(filename)), _native_path(_filename.string()) {
         printSectionHeader("File Watcher Initialized");
-        
+
         // Create the stat watcher for monitoring file changes
         _watcher = new ev::stat(qb::io::async::listener::current.loop());
-        
+
         // Set callback for file change events
         _watcher->set<FileWatcher, &FileWatcher::onFileChange>(this);
-        
+
         // Set the file to watch
-        _watcher->set(_filename.c_str());
+        _watcher->set(_native_path.c_str());
         
         // Start watching
         _watcher->start();

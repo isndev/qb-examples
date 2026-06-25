@@ -36,6 +36,11 @@ endif ()
 
 qb_status_message("Building qb framework examples")
 
+# Shared helper: stage an example's resources/ tree next to its built binaries so the
+# example C++ loads assets with a plain "resources/..." relative path (no baked paths,
+# no resolver code). Defined here so every example subdirectory can use it.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExampleResources.cmake)
+
 # NOTE: examples are being ported to the current qb API one at a time. Only the
 # adapted ones are enabled below; uncomment each category/example as it is ported.
 

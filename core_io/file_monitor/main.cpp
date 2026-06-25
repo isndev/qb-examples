@@ -79,16 +79,16 @@ namespace fs = std::filesystem;
 class ClientActor : public qb::Actor {
 private:
     qb::ActorId _watcher_id;
-    std::string _test_directory;
+    std::filesystem::path _test_directory;
     int _test_duration_seconds;
     bool _is_running = false;
-    
+
 public:
     /**
      * @brief Constructor
      */
-    ClientActor(qb::ActorId watcher_id, const std::string& test_dir, int duration = 30)
-        : _watcher_id(watcher_id), _test_directory(test_dir), _test_duration_seconds(duration) {
+    ClientActor(qb::ActorId watcher_id, std::filesystem::path test_dir, int duration = 30)
+        : _watcher_id(watcher_id), _test_directory(std::move(test_dir)), _test_duration_seconds(duration) {
         
         // Register for event types
         registerEvent<file_monitor::FileEvent>(*this);
@@ -146,8 +146,8 @@ public:
         // Stop running
         _is_running = false;
         
-        // Unwatch the directory
-        push<file_monitor::UnwatchDirectoryRequest>(_watcher_id, _test_directory, id());
+        // Unwatch the directory (UnwatchDirectoryRequest::path is a narrow std::string event field)
+        push<file_monitor::UnwatchDirectoryRequest>(_watcher_id, _test_directory.string(), id());
         
         kill();
     }
@@ -159,8 +159,8 @@ private:
     void startMonitoring() {
         qb::io::cout() << "Starting to monitor directory: " << _test_directory << std::endl;
         
-        // Request to watch the directory
-        push<file_monitor::WatchDirectoryRequest>(_watcher_id, _test_directory, true, id());
+        // Request to watch the directory (WatchDirectoryRequest::path is a narrow std::string event field)
+        push<file_monitor::WatchDirectoryRequest>(_watcher_id, _test_directory.string(), true, id());
     }
     
     /**
@@ -192,13 +192,13 @@ private:
      * @brief Create a test file
      */
     void createTestFile(int index) {
-        std::string filename = _test_directory + "/test_file_" + std::to_string(index) + ".txt";
-        
+        std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
+
         // Create the file asynchronously
         qb::io::async::callback([this, filename, index]() {
             try {
                 qb::io::sys::file file;
-                if (file.open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
+                if (file.open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
                     std::string content = "This is test file " + std::to_string(index) + "\n";
                     content += "Created at: " + getCurrentTimestamp() + "\n";
                     content += "Random data: " + std::to_string(std::rand()) + "\n";
@@ -219,14 +219,14 @@ private:
      * @brief Modify a test file
      */
     void modifyTestFile(int index) {
-        std::string filename = _test_directory + "/test_file_" + std::to_string(index) + ".txt";
-        
+        std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
+
         // Modify the file asynchronously
         qb::io::async::callback([this, filename]() {
             try {
                 if (fs::exists(filename)) {
                     qb::io::sys::file file;
-                    if (file.open(filename.c_str(), O_WRONLY | O_APPEND, 0644) >= 0) {
+                    if (file.open(filename, O_WRONLY | O_APPEND, 0644) >= 0) {
                         std::string content = "Modified at: " + getCurrentTimestamp() + "\n";
                         content += "Additional data: " + std::to_string(std::rand()) + "\n";
                         
@@ -247,8 +247,8 @@ private:
      * @brief Delete a test file
      */
     void deleteTestFile(int index) {
-        std::string filename = _test_directory + "/test_file_" + std::to_string(index) + ".txt";
-        
+        std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
+
         // Delete the file asynchronously
         qb::io::async::callback([filename]() {
             try {
@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
     qb::io::cout() << "=== QB Core/IO Example: File Monitoring System ===\n" << std::endl;
     
     // Define the test directory
-    std::string test_dir = "./monitor_test_files";
+    std::filesystem::path test_dir = "./monitor_test_files";
     
     // Duration of the test in seconds (default: 30 seconds)
     int duration = 30;

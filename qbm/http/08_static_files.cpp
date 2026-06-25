@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <qb/main.h>
+#include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <http/http.h>
 #include <http/middleware/static_files.h>
 #include <http/middleware/cors.h>
@@ -71,14 +72,16 @@ struct FileMetadata {
 
 class StaticFileServer : public qb::Actor, public qb::http::Server<> {
 private:
-    std::string _static_root;
-    std::string _upload_dir;
+    std::filesystem::path _static_root;
+    std::filesystem::path _upload_dir;
     qb::unordered_map<std::string, FileMetadata> _file_metadata;
 
 public:
-    explicit StaticFileServer(const std::string& static_root = "./resources/static", 
-                              const std::string& upload_dir = "./uploads") 
-        : _static_root(static_root), _upload_dir(upload_dir) {}
+    explicit StaticFileServer(std::filesystem::path static_root = "./resources/static",
+                              std::filesystem::path upload_dir = "./uploads")
+        // Resolve the static root next to the executable so the example serves its bundled
+        // assets from any working directory (the upload dir stays relative to the cwd).
+        : _static_root(qb::io::sys::resolve_resource(static_root)), _upload_dir(std::move(upload_dir)) {}
 
     qb::io::async::task<bool> onInit() override {
         std::cout << "Starting Static File Server..." << std::endl;
@@ -125,11 +128,11 @@ private:
 
     void create_sample_files() {
         // Check if static files exist, if not copy from resources or create minimal ones
-        if (!std::filesystem::exists(_static_root + "/index.html")) {
+        if (!std::filesystem::exists(_static_root / "index.html")) {
             std::cout << "Static files not found. Creating minimal samples...\n";
-            
+
             // Create a minimal index.html if static resources are not available
-            std::ofstream index(_static_root + "/index.html");
+            std::ofstream index(_static_root / "index.html");
             index << R"(<!DOCTYPE html>
 <html><head><title>QB HTTP Server</title></head>
 <body><h1>QB HTTP Static File Server</h1>
@@ -140,7 +143,7 @@ private:
         }
         
         // Always ensure we have the data files for the API demonstrations
-        if (!std::filesystem::exists(_static_root + "/data.json")) {
+        if (!std::filesystem::exists(_static_root / "data.json")) {
             std::cout << "Creating sample data.json...\n";
             qb::json data = {
                 {"message", "QB HTTP Framework Sample Data"},
@@ -150,7 +153,7 @@ private:
                     std::chrono::system_clock::now().time_since_epoch()).count()}
             };
             
-            std::ofstream json_file(_static_root + "/data.json");
+            std::ofstream json_file(_static_root / "data.json");
             json_file << data.dump(2);
         }
     }
@@ -288,7 +291,7 @@ private:
             qb::json response = {
                 {"files", file_list},
                 {"count", file_list.size()},
-                {"upload_directory", _upload_dir}
+                {"upload_directory", _upload_dir.string()}
             };
             
             ctx->response().status() = qb::http::Status::OK;
@@ -309,8 +312,8 @@ private:
 
     void handle_get_file_metadata(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::string filename = ctx->path_param("filename");
-        std::string filepath = _upload_dir + "/" + filename;
-        
+        std::filesystem::path filepath = _upload_dir / filename;
+
         if (!std::filesystem::exists(filepath)) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
             ctx->response().add_header("Content-Type", "application/json");
@@ -321,7 +324,7 @@ private:
             ctx->complete();
             return;
         }
-        
+
         auto meta_it = _file_metadata.find(filename);
         if (meta_it != _file_metadata.end()) {
             ctx->response().status() = qb::http::Status::OK;
@@ -416,8 +419,8 @@ private:
             
             // Generate safe filename
             std::string safe_filename = "upload_" + std::to_string(std::time(nullptr)) + "_" + uploaded_filename;
-            std::string filepath = _upload_dir + "/" + safe_filename;
-            
+            std::filesystem::path filepath = _upload_dir / safe_filename;
+
             // Write file to disk
             std::ofstream outfile(filepath, std::ios::binary);
             if (!outfile.is_open()) {
@@ -437,7 +440,7 @@ private:
             // Store metadata
             FileMetadata metadata;
             metadata.filename = safe_filename;
-            metadata.path = filepath;
+            metadata.path = filepath.string();
             metadata.mime_type = content_type;
             metadata.size = file_content.size();
             metadata.last_modified = std::filesystem::last_write_time(filepath);
@@ -477,8 +480,8 @@ private:
 
     void handle_delete_file(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::string filename = ctx->path_param("filename");
-        std::string filepath = _upload_dir + "/" + filename;
-        
+        std::filesystem::path filepath = _upload_dir / filename;
+
         try {
             if (!std::filesystem::exists(filepath)) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
@@ -562,12 +565,12 @@ private:
 
     void handle_browse_directory(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::string path_param = ctx->path_param("path");
-        std::string browse_path = _static_root;
-        
+        std::filesystem::path browse_path = _static_root;
+
         if (!path_param.empty()) {
-            browse_path += "/" + path_param;
+            browse_path /= path_param;
         }
-        
+
         try {
             if (!std::filesystem::exists(browse_path) || !std::filesystem::is_directory(browse_path)) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;

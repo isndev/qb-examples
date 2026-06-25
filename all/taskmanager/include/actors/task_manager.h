@@ -36,6 +36,7 @@
  */
 #pragma once
 
+#include <filesystem>
 #include <http/http.h>
 #include <memory>
 #include <pgsql/pgsql.h>
@@ -65,7 +66,7 @@ public:
      * @param redis_uri   Redis URI, e.g. `tcp://localhost:6379`.
      * @param static_root Filesystem path served at `/static/`.
      */
-    TaskManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::string static_root);
+    TaskManager(qb::io::uri pg_uri, qb::io::uri redis_uri, std::filesystem::path static_root);
 
     // ── QB Actor interface ───────────────────────────────────────────────────
 
@@ -116,9 +117,9 @@ private:
 
     // ── Members ──────────────────────────────────────────────────────────────
 
-    qb::io::uri _pg_uri;
-    qb::io::uri _redis_uri;
-    std::string _static_root;
+    qb::io::uri           _pg_uri;
+    qb::io::uri           _redis_uri;
+    std::filesystem::path _static_root;
 
     std::unique_ptr<qb::pg::tcp::database> _db;    ///< PostgreSQL connection.
     qb::redis::tcp::client                 _redis; ///< Redis cache + PUBLISH client.

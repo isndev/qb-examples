@@ -16,14 +16,24 @@ Alternatively, build all examples if your main CMake is configured to do so.
 
 ## Running the Examples
 
-Once built, the executables will be located in your build system's binary output directory (e.g., `build/bin/` or
-similar).
-Run them directly:
+Once built, each executable sits in its own example output directory (e.g.
+`build/<preset>/examples/qbm/http/`). Run them directly:
 
 ```bash
 ./<example_name>
 # For example:
 ./01_hello_world_server
+```
+
+The examples that serve files — `08_static_files`, `11_https_server`, `12_http2_server` —
+load their assets with a plain `resources/...` path. The build stages a copy of `resources/`
+(static site, HTTP/2 site, and the self-signed dev TLS certificate under `resources/ssl/`)
+next to the executable, and the examples resolve it relative to the executable's own
+location (`qb::io::sys::resolve_resource`). So they run from **any** working directory —
+double-click, debugger, CI, or a shell anywhere — with no `cd` and no environment setup:
+
+```bash
+build/<preset>/examples/qbm/http/08_static_files   # works regardless of the current directory
 ```
 
 ## Example Descriptions

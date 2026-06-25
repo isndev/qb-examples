@@ -53,7 +53,9 @@ actor simulates file operations to test the system.
       file metadata.
 * **I/O (`qb-io`)**:
     * `qb::io::async::directory_watcher`: The core mechanism for asynchronous file system monitoring, used within the
-      `DirectoryWatcher` actor.
+      `DirectoryWatcher` actor. Its `start()` (like `file_watcher::start()`) takes the watched path as a
+      `std::filesystem::path`; the watcher copies it into a string it owns for the watcher's lifetime, because the
+      underlying `ev::stat` keeps the path pointer without copying.
     * `qb::io::async::event::file`: The low-level event structure provided by `directory_watcher`.
     * `qb::io::async::callback`: Used by `ClientActor` to schedule test file operations and by `DirectoryWatcher` to
       defer setup.

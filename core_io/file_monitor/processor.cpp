@@ -42,8 +42,8 @@
 
 namespace file_monitor {
 
-FileProcessor::FileProcessor(const std::string& base_path)
-    : _base_path(base_path) {
+FileProcessor::FileProcessor(std::filesystem::path base_path)
+    : _base_path(std::move(base_path)) {
     // Register for message types
     registerEvent<FileEvent>(*this);
     registerEvent<SetProcessingConfigRequest>(*this);
@@ -103,15 +103,16 @@ void FileProcessor::on(qb::KillEvent&) {
     kill();
 }
 
-void FileProcessor::processFileCreated(const std::string& path) {
+void FileProcessor::processFileCreated(const std::filesystem::path& path) {
     if (!shouldProcessFile(path)) {
         return;
     }
-    
+
     try {
         FileMetadata metadata = extractMetadata(path);
-        _tracked_files[path] = metadata;
-        
+        // _tracked_files is keyed by the path's narrow string form.
+        _tracked_files[path.string()] = metadata;
+
         qb::io::cout() << "Processed new file: " << path
                   << " (" << metadata.size << " bytes)" << std::endl;
     } catch (const std::exception& e) {
@@ -120,26 +121,28 @@ void FileProcessor::processFileCreated(const std::string& path) {
     }
 }
 
-void FileProcessor::processFileModified(const std::string& path) {
+void FileProcessor::processFileModified(const std::filesystem::path& path) {
     if (!shouldProcessFile(path)) {
         return;
     }
-    
+
     try {
+        // _tracked_files is keyed by the path's narrow string form.
+        const std::string key = path.string();
         // Check if we have seen this file before
-        auto it = _tracked_files.find(path);
+        auto it = _tracked_files.find(key);
         if (it != _tracked_files.end()) {
             FileMetadata old_metadata = it->second;
             FileMetadata new_metadata = extractMetadata(path);
-            
+
             // Check if content actually changed
             if (new_metadata.content_hash != old_metadata.content_hash) {
                 qb::io::cout() << "File content changed: " << path << std::endl;
                 qb::io::cout() << "  Old size: " << old_metadata.size
                           << ", New size: " << new_metadata.size << std::endl;
-                
+
                 // Update tracked files
-                _tracked_files[path] = new_metadata;
+                _tracked_files[key] = new_metadata;
             } else {
                 qb::io::cout() << "File modified but content hash unchanged: " << path << std::endl;
             }
@@ -153,24 +156,24 @@ void FileProcessor::processFileModified(const std::string& path) {
     }
 }
 
-void FileProcessor::processFileDeleted(const std::string& path) {
-    // Remove from tracked files
-    auto it = _tracked_files.find(path);
+void FileProcessor::processFileDeleted(const std::filesystem::path& path) {
+    // Remove from tracked files (keyed by the path's narrow string form).
+    auto it = _tracked_files.find(path.string());
     if (it != _tracked_files.end()) {
         qb::io::cout() << "Removed deleted file from tracking: " << path << std::endl;
         _tracked_files.erase(it);
     }
 }
 
-bool FileProcessor::shouldProcessFile(const std::string& path) {
+bool FileProcessor::shouldProcessFile(const std::filesystem::path& path) {
     // Skip directories
     if (fs::is_directory(path)) {
         return false;
     }
-    
+
     // Skip hidden files if not configured to process them
     if (!_process_hidden_files) {
-        std::string filename = fs::path(path).filename().string();
+        std::string filename = path.filename().string();
         if (!filename.empty() && filename[0] == '.') {
             return false;
         }
@@ -179,10 +182,10 @@ bool FileProcessor::shouldProcessFile(const std::string& path) {
     return true;
 }
 
-FileMetadata FileProcessor::extractMetadata(const std::string& path) {
+FileMetadata FileProcessor::extractMetadata(const std::filesystem::path& path) {
     FileMetadata metadata;
-    metadata.path = path;
-    
+    metadata.path = path.string(); // FileMetadata::path is a narrow std::string field
+
     // Convert filesystem time to system_clock time
     auto ftime = fs::last_write_time(path);
     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
@@ -197,8 +200,8 @@ FileMetadata FileProcessor::extractMetadata(const std::string& path) {
     // Read file and calculate hash
     std::vector<char> content;
     qb::io::sys::file file;
-    
-    if (file.open(path.c_str(), O_RDONLY) >= 0) {
+
+    if (file.open(path, O_RDONLY) >= 0) {
         content.resize(metadata.size);
         auto bytes_read = file.read(content.data(), metadata.size);
         file.close();

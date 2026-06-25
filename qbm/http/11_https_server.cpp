@@ -20,6 +20,7 @@
 #include <fstream>
 #include <filesystem>
 #include <qb/main.h>
+#include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <http/http.h>
 #include <http/middleware/cors.h>
 #include <http/middleware/logging.h>
@@ -30,6 +31,10 @@ class HttpsServer : public qb::Actor, public qb::http::ssl::Server<> {
 private:
     std::unique_ptr<qb::http::Server<>> _http_redirect_server;
     bool _certificates_ready = false;
+    // Self-signed dev certificate, bundled under resources/ssl and staged next to
+    // the binary by CMake (loaded with a plain relative path).
+    std::filesystem::path _cert_file = "resources/ssl/cert.pem";
+    std::filesystem::path _key_file  = "resources/ssl/key.pem";
 
 public:
     HttpsServer() = default;
@@ -68,28 +73,17 @@ public:
 
 private:
     bool ensure_certificates_exist() {
-        // Check if certificates already exist
-        if (std::filesystem::exists("server.crt") && std::filesystem::exists("server.key")) {
-            std::cout << "Using existing SSL certificates" << std::endl;
-            _certificates_ready = true;
-            return true;
-        }
-        
-        std::cout << "Generating self-signed SSL certificate..." << std::endl;
-        
-        // Generate certificate using OpenSSL command
-        std::string cert_command = 
-            "openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.crt "
-            "-days 365 -nodes -subj '/C=US/ST=CA/L=San Francisco/O=QB Framework/CN=localhost' 2>/dev/null";
-        
-        int result = std::system(cert_command.c_str());
-        if (result != 0) {
-            std::cerr << "Failed to generate certificate. Please ensure openssl is installed." << std::endl;
+        // Resolve the bundled cert/key next to the executable so the server runs from any
+        // working directory (the HTTPS server applies the same resolution when loading them).
+        _cert_file = qb::io::sys::resolve_resource(_cert_file);
+        _key_file  = qb::io::sys::resolve_resource(_key_file);
+        if (!std::filesystem::exists(_cert_file) || !std::filesystem::exists(_key_file)) {
+            std::cerr << "SSL certificate not found (" << _cert_file << "). Run the "
+                         "example from its build output directory." << std::endl;
             return false;
         }
-        
+        std::cout << "Using SSL certificate: " << _cert_file << std::endl;
         _certificates_ready = true;
-        std::cout << "Self-signed certificate generated successfully" << std::endl;
         return true;
     }
     
@@ -138,9 +132,9 @@ private:
         
         // Start HTTPS server using proper SSL listen method
         qb::io::uri https_uri("https://0.0.0.0:8443");
-        std::filesystem::path cert_file("server.crt");
-        std::filesystem::path key_file("server.key");
-        
+        std::filesystem::path cert_file(_cert_file);
+        std::filesystem::path key_file(_key_file);
+
         if (!listen(https_uri, cert_file, key_file)) {
             std::cerr << "Failed to start HTTPS server on port 8443" << std::endl;
             return false;
