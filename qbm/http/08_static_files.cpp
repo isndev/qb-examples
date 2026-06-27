@@ -22,6 +22,7 @@
 #include <fstream>
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
+#include <qb/system/parse.h>   // qb::to_number (non-throwing string-to-number)
 #include <http/http.h>
 #include <http/middleware/static_files.h>
 #include <http/middleware/cors.h>
@@ -347,7 +348,10 @@ private:
             constexpr size_t MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
             std::string content_length_str = ctx->request().header("Content-Length");
             if (!content_length_str.empty()) {
-                size_t content_length = std::stoull(content_length_str);
+                // Content-Length is untrusted client input; parse without throwing.
+                // A malformed header yields 0, which skips this early check — the
+                // authoritative size enforcement happens after parsing (below).
+                size_t content_length = qb::to_number<size_t>(content_length_str).value_or(0);
                 if (content_length > MAX_FILE_SIZE) {
                     ctx->response().status() = qb::http::Status::PAYLOAD_TOO_LARGE;
                     ctx->response().add_header("Content-Type", "application/json");

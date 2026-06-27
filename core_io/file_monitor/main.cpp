@@ -52,6 +52,7 @@
 #include <qb/actor.h>
 #include <qb/io/async.h>
 #include <qb/io/system/file.h>
+#include <qb/system/parse.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -327,9 +328,10 @@ int main(int argc, char** argv) {
     }
     
     if (argc > 2) {
-        try {
-            duration = std::stoi(argv[2]);
-        } catch (...) {
+        // Strict parse of the duration argument; on bad input keep the default.
+        if (auto parsed = qb::to_number<int>(argv[2])) {
+            duration = *parsed;
+        } else {
             qb::io::cerr() << "Invalid duration parameter, using default" << std::endl;
         }
     }

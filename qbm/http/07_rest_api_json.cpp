@@ -18,6 +18,7 @@
 
 #include <iostream>
 #include <qb/main.h>
+#include <qb/system/parse.h>
 #include <http/http.h>
 #include <http/middleware/cors.h>
 #include <http/middleware/logging.h>
@@ -329,9 +330,9 @@ private:
         auto limit_str = ctx->request().query("limit");
         auto offset_str = ctx->request().query("offset");
 
-        // Parse pagination
-        int limit = limit_str.empty() ? 10 : std::stoi(limit_str);
-        int offset = offset_str.empty() ? 0 : std::stoi(offset_str);
+        // Parse pagination (untrusted query strings: never throw — fall back to the default)
+        int limit = qb::to_number<int>(limit_str).value_or(10);
+        int offset = qb::to_number<int>(offset_str).value_or(0);
         limit = std::max(1, std::min(limit, 100)); // Clamp between 1 and 100
 
         qb::json books = qb::json::array();
@@ -460,8 +461,20 @@ private:
 
     void handle_get_book(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         try {
-            int book_id = std::stoi(ctx->path_param("id"));
-            
+            // Untrusted path param: parse without throwing, reject a non-integer id with 400.
+            auto parsed_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!parsed_id) {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{
+                    {"error", "Invalid ID"},
+                    {"message", "Book ID must be a valid integer"}
+                };
+                ctx->complete();
+                return;
+            }
+            int book_id = *parsed_id;
+
             auto it = _books.find(book_id);
             if (it == _books.end()) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
@@ -492,9 +505,21 @@ private:
 
     void handle_update_book(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         try {
-            int book_id = std::stoi(ctx->path_param("id"));
+            // Untrusted path param: parse without throwing, reject a non-integer id with 400.
+            auto parsed_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!parsed_id) {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{
+                    {"error", "Invalid ID"},
+                    {"message", "Book ID must be a valid integer"}
+                };
+                ctx->complete();
+                return;
+            }
+            int book_id = *parsed_id;
             auto it = _books.find(book_id);
-            
+
             if (it == _books.end()) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
                 ctx->response().add_header("Content-Type", "application/json");
@@ -548,9 +573,21 @@ private:
 
     void handle_patch_book(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         try {
-            int book_id = std::stoi(ctx->path_param("id"));
+            // Untrusted path param: parse without throwing, reject a non-integer id with 400.
+            auto parsed_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!parsed_id) {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{
+                    {"error", "Invalid ID"},
+                    {"message", "Book ID must be a valid integer"}
+                };
+                ctx->complete();
+                return;
+            }
+            int book_id = *parsed_id;
             auto it = _books.find(book_id);
-            
+
             if (it == _books.end()) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
                 ctx->response().add_header("Content-Type", "application/json");
@@ -597,9 +634,21 @@ private:
 
     void handle_delete_book(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         try {
-            int book_id = std::stoi(ctx->path_param("id"));
+            // Untrusted path param: parse without throwing, reject a non-integer id with 400.
+            auto parsed_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!parsed_id) {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{
+                    {"error", "Invalid ID"},
+                    {"message", "Book ID must be a valid integer"}
+                };
+                ctx->complete();
+                return;
+            }
+            int book_id = *parsed_id;
             auto it = _books.find(book_id);
-            
+
             if (it == _books.end()) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
                 ctx->response().add_header("Content-Type", "application/json");

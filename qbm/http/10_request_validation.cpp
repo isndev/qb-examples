@@ -19,6 +19,7 @@
 
 #include <iostream>
 #include <qb/main.h>
+#include <qb/system/parse.h>
 #include <http/http.h>
 #include <http/middleware/cors.h>
 #include <http/middleware/logging.h>
@@ -196,12 +197,12 @@ private:
             auto page_str = ctx->request().query_or("page", "1");
             auto limit_str = ctx->request().query_or("limit", "10");
             
-            // Basic validation: clamp page >= 1, limit in [1, 100]
-            int page = 1, limit = 10;
-            try {
-                page  = std::max(1, std::stoi(page_str));
-                limit = std::max(1, std::min(100, std::stoi(limit_str)));
-            } catch (...) {
+            // Basic validation: parse without throwing, then clamp.
+            // qb::to_number<int> rejects non-numeric input by returning nullopt
+            // (no try/catch, no crash on malformed query strings).
+            auto page_num  = qb::to_number<int>(page_str);
+            auto limit_num = qb::to_number<int>(limit_str);
+            if (!page_num || !limit_num) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
                 ctx->response().add_header("Content-Type", "application/json");
                 ctx->response().body() = qb::json{
@@ -211,6 +212,9 @@ private:
                 ctx->complete();
                 return;
             }
+            // Clamp page >= 1, limit in [1, 100]
+            int page  = std::max(1, *page_num);
+            int limit = std::max(1, std::min(100, *limit_num));
 
             // Store validated+clamped pagination for use in the handler
             ctx->set("validated_page",  page);
@@ -225,12 +229,10 @@ private:
         
         // GET /api/users/:id - Get user by ID with path parameter validation
         users_group->get("/:id", [this](auto ctx) {
-            // Validate path parameter
-            int user_id;
-            try {
-                user_id = std::stoi(ctx->path_param("id"));
-                if (user_id < 1) throw std::invalid_argument("ID must be positive");
-            } catch (...) {
+            // Validate path parameter: parse without throwing, reject if not a
+            // positive integer. qb::to_number<int> returns nullopt on bad input.
+            auto user_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!user_id || *user_id < 1) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
                 ctx->response().add_header("Content-Type", "application/json");
                 ctx->response().body() = qb::json{
@@ -240,18 +242,16 @@ private:
                 ctx->complete();
                 return;
             }
-            
+
             handle_get_user(ctx);
         });
         
         // PUT /api/users/:id - Update user
         users_group->put("/:id", [this](auto ctx) {
-            // Validate path parameter
-            int user_id;
-            try {
-                user_id = std::stoi(ctx->path_param("id"));
-                if (user_id < 1) throw std::invalid_argument("ID must be positive");
-            } catch (...) {
+            // Validate path parameter: parse without throwing, reject if not a
+            // positive integer. qb::to_number<int> returns nullopt on bad input.
+            auto user_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!user_id || *user_id < 1) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
                 ctx->response().add_header("Content-Type", "application/json");
                 ctx->response().body() = qb::json{
@@ -261,18 +261,16 @@ private:
                 ctx->complete();
                 return;
             }
-            
+
             handle_update_user_with_validation(ctx);
         });
         
         // DELETE /api/users/:id - Delete user
         users_group->del("/:id", [this](auto ctx) {
-            // Validate path parameter
-            int user_id;
-            try {
-                user_id = std::stoi(ctx->path_param("id"));
-                if (user_id < 1) throw std::invalid_argument("ID must be positive");
-            } catch (...) {
+            // Validate path parameter: parse without throwing, reject if not a
+            // positive integer. qb::to_number<int> returns nullopt on bad input.
+            auto user_id = qb::to_number<int>(ctx->path_param("id"));
+            if (!user_id || *user_id < 1) {
                 ctx->response().status() = qb::http::Status::BAD_REQUEST;
                 ctx->response().add_header("Content-Type", "application/json");
                 ctx->response().body() = qb::json{
@@ -282,7 +280,7 @@ private:
                 ctx->complete();
                 return;
             }
-            
+
             handle_delete_user(ctx);
         });
     }
@@ -388,10 +386,12 @@ private:
         // falling back to raw query params if called without prior validation.
         auto validated_page  = ctx->template get<int>("validated_page");
         auto validated_limit = ctx->template get<int>("validated_limit");
-        int page  = validated_page.value_or(
-            std::max(1, std::stoi(ctx->request().query_or("page",  "1"))));
-        int limit = validated_limit.value_or(
-            std::max(1, std::min(100, std::stoi(ctx->request().query_or("limit", "10")))));
+        // Fall back to the raw query params if called without prior validation.
+        // qb::to_number<int> never throws; default to 1/10 on malformed input.
+        int page  = validated_page.value_or(std::max(
+            1, qb::to_number<int>(ctx->request().query_or("page", "1")).value_or(1)));
+        int limit = validated_limit.value_or(std::max(
+            1, std::min(100, qb::to_number<int>(ctx->request().query_or("limit", "10")).value_or(10))));
         auto active_filter = ctx->request().query("active");
         auto search = ctx->request().query("search");
 
@@ -526,9 +526,10 @@ private:
     }
     
     void handle_get_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Path parameter has been validated by ValidationMiddleware
-        int user_id = std::stoi(ctx->path_param("id"));
-        
+        // Path parameter has already been validated by the route handler;
+        // parse defensively (0 simply won't match any user -> 404).
+        int user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
+
         auto it = _users.find(user_id);
         if (it == _users.end()) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
@@ -548,7 +549,8 @@ private:
     
     void handle_update_user_with_validation(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         try {
-            int user_id = std::stoi(ctx->path_param("id"));
+            // Already validated by the route handler; 0 won't match any user -> 404.
+            int user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
             auto it = _users.find(user_id);
             
             if (it == _users.end()) {
@@ -687,9 +689,10 @@ private:
     }
     
     void handle_delete_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Path parameter has been validated by ValidationMiddleware
-        int user_id = std::stoi(ctx->path_param("id"));
-        
+        // Path parameter has already been validated by the route handler;
+        // parse defensively (0 simply won't match any user -> 404).
+        int user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
+
         auto it = _users.find(user_id);
         if (it == _users.end()) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
@@ -723,8 +726,8 @@ private:
         qb::json response = {
             {"products", qb::json::array()},
             {"pagination", {
-                {"page", std::stoi(page)},
-                {"limit", std::stoi(limit)},
+                {"page", qb::to_number<int>(page).value_or(1)},
+                {"limit", qb::to_number<int>(limit).value_or(20)},
                 {"total", static_cast<int>(_products.size())}
             }},
             {"filters", {
@@ -901,7 +904,7 @@ private:
             {"query", query},
                 {"type", type},
                 {"sort", sort},
-            {"limit", std::stoi(limit)},
+            {"limit", qb::to_number<int>(limit).value_or(10)},
             {"results", results},
             {"total", results.size()},
             {"api_key_provided", !api_key.empty()}

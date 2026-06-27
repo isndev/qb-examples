@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
+#include <qb/system/parse.h>   // qb::to_number
 #include <http/http.h>
 #include <http/middleware/cors.h>
 #include <http/middleware/logging.h>
@@ -521,7 +522,9 @@ private:
             
             size_t content_length = 0;
             if (!content_length_str.empty()) {
-                content_length = std::stoull(content_length_str);
+                // Content-Length is untrusted client input: parse without throwing
+                // and fall back to 0 on a malformed header.
+                content_length = qb::to_number<size_t>(content_length_str).value_or(0);
             }
             
             // Mock secure file upload processing

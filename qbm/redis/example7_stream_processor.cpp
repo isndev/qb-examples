@@ -65,6 +65,7 @@
 #include <qb/io/async/coroutine.h>
 #include <qb/string.h>
 #include <qb/json.h>
+#include <qb/system/parse.h>
 #include <chrono>
 
 // Redis Configuration
@@ -571,7 +572,7 @@ public:
                                         if (temp_str.front() == '"' && temp_str.back() == '"') {
                                             temp_str = temp_str.substr(1, temp_str.size() - 2);
                                         }
-                                        temperature = std::stod(temp_str);
+                                        temperature = qb::to_number<double>(temp_str).value_or(0.0);
                                     }
                                     
                                     if (fields.contains("humidity")) {
@@ -580,7 +581,7 @@ public:
                                         if (humid_str.front() == '"' && humid_str.back() == '"') {
                                             humid_str = humid_str.substr(1, humid_str.size() - 2);
                                         }
-                                        humidity = std::stod(humid_str);
+                                        humidity = qb::to_number<double>(humid_str).value_or(0.0);
                                     }
                                     
                                     if (fields.contains("pressure")) {
@@ -589,7 +590,7 @@ public:
                                         if (press_str.front() == '"' && press_str.back() == '"') {
                                             press_str = press_str.substr(1, press_str.size() - 2);
                                         }
-                                        pressure = std::stod(press_str);
+                                        pressure = qb::to_number<double>(press_str).value_or(0.0);
                                     }
                                     
                                     // If we have a sensor ID, process the data

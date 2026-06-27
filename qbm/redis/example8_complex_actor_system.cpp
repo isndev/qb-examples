@@ -62,6 +62,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/json.h>
+#include <qb/system/parse.h>
 #include <chrono>
 #undef ERROR
 #undef DELETE
@@ -344,11 +345,11 @@ public:
         std::string result;
         
         if (job_type == "compute") {
-            // Simulate computation
-            try {
-                int value = std::stoi(data);
-                result = std::to_string(value * value);
-            } catch (...) {
+            // Simulate computation. qb::to_number returns std::nullopt on bad input
+            // instead of throwing, so there is no try/catch ceremony.
+            if (auto value = qb::to_number<int>(data)) {
+                result = std::to_string(*value * *value);
+            } else {
                 success = false;
                 result = "ERROR: Invalid input for computation";
             }

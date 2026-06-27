@@ -24,6 +24,7 @@
 #include <condition_variable>
 #include <qb/main.h>
 #include <qb/actor.h>
+#include <qb/system/parse.h>
 #include <qb/io/async.h>
 #include <qb/io/protocol/text.h>
 #include <qb/io/system/file.h>
@@ -190,7 +191,9 @@ public:
         
         // Extract host and port from URI
         std::string host = std::string(uri.host());
-        uint16_t port = uri.port().empty() ? 80 : std::stoi(std::string(uri.port()));
+        uint16_t port = uri.port().empty()
+                            ? 80
+                            : qb::to_number<uint16_t>(uri.port()).value_or(80);
         
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connecting to " + host + ":" + std::to_string(port), "info");
         
@@ -289,7 +292,9 @@ private:
     void send_websocket_handshake(const qb::io::uri& uri) {
         qb::http::WebSocketRequest request(_ws_key);
         request.uri() = uri;
-        uint16_t port = uri.port().empty() ? 80 : std::stoi(std::string(uri.port()));
+        uint16_t port = uri.port().empty()
+                            ? 80
+                            : qb::to_number<uint16_t>(uri.port()).value_or(80);
         request.headers()["Host"].emplace_back(std::string(uri.host()) + ":" + std::to_string(port));
         
         push<DisplayMessageEvent>(_cmdline_actor_id, "Sending WebSocket handshake...", "info");
