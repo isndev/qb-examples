@@ -49,6 +49,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/main.h>
+#include <qb/system/parse.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -232,7 +233,9 @@ public:
                 co_return;
             }
 
-            int current_qty = std::stoi(*qty_r.result());
+            // The quantity field is read back from Redis; tolerate a malformed
+            // value instead of throwing — a bad parse yields 0 (out of stock).
+            int current_qty = qb::to_number<int>(*qty_r.result()).value_or(0);
 
             if (current_qty < order_qty) {
                 cout << "Not enough stock for " << product_id << ". Available: " << current_qty << ", Requested: " << order_qty << std::endl;

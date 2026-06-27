@@ -22,6 +22,7 @@
 #include <qb/main.h>
 #include <qb/actor.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
+#include <qb/system/parse.h>   // qb::to_number
 #include <qb/system/time.h>
 #include <http/http.h>
 #include <http/ws.h>
@@ -641,7 +642,10 @@ std::pair<std::filesystem::path, uint16_t> parse_command_line_arguments(int argc
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--port" && i + 1 < argc) {
-            port = static_cast<uint16_t>(std::atoi(argv[++i]));
+            // Untrusted CLI input: a bad value yields nullopt, so fall back to the
+            // current default port instead of crashing (std::stoi/atoi would throw
+            // or silently return 0).
+            port = qb::to_number<uint16_t>(argv[++i]).value_or(port);
         } else if (arg == "--static-root" && i + 1 < argc) {
             static_root = argv[++i];
         } else if (arg == "--help" || arg == "-h") {

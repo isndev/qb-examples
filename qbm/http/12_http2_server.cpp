@@ -12,6 +12,7 @@
 
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
+#include <qb/system/parse.h>   // qb::to_number
 #include <http/http.h>
 #include <http/middleware/all.h>
 #include <http/2/http2.h>
@@ -39,19 +40,16 @@ resolve_static_root() {
 // out-of-range, or trailing-garbage input so handlers can answer 400 instead of
 // letting std::stoi throw into the framework (which surfaced as a 500).
 static bool
-parse_bounded_int(const std::string &s, int lo, int hi, int &out) {
-    if (s.empty())
+parse_bounded_int(std::string_view s, int lo, int hi, int &out) {
+    // qb::to_number is STRICT: the whole field must be one canonical integer
+    // (no surrounding whitespace, no leading '+', no trailing garbage) and an
+    // out-of-range magnitude yields nullopt — exactly the contract above, with
+    // no throw to catch.
+    const std::optional<long> v = qb::to_number<long>(s);
+    if (!v || *v < lo || *v > hi)
         return false;
-    try {
-        std::size_t pos = 0;
-        const long  v   = std::stol(s, &pos);
-        if (pos != s.size() || v < lo || v > hi)
-            return false;
-        out = static_cast<int>(v);
-        return true;
-    } catch (const std::exception &) {
-        return false;
-    }
+    out = static_cast<int>(*v);
+    return true;
 }
 
 // Reply 400 Bad Request with a small JSON error body and complete the context.

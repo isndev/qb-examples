@@ -17,6 +17,7 @@
 
 #include <iostream>
 #include <qb/main.h>
+#include <qb/system/parse.h>
 #include <http/http.h>
 
 // User Controller - manages user-related operations
@@ -74,9 +75,17 @@ public:
     }
     
     void get_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it != _users.end()) {
             ctx->response().status() = qb::http::Status::OK;
             ctx->response().add_header("Content-Type", "application/json");
@@ -126,9 +135,17 @@ public:
     }
     
     void update_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it == _users.end()) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
             ctx->response().add_header("Content-Type", "application/json");
@@ -158,9 +175,17 @@ public:
     }
     
     void delete_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it != _users.end()) {
             _users.erase(it);
             ctx->response().status() = qb::http::Status::NO_CONTENT;
@@ -228,9 +253,17 @@ public:
     }
     
     void get_product(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int product_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _products.find(product_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto product_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!product_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid product id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _products.find(*product_id);
         if (it != _products.end()) {
             ctx->response().status() = qb::http::Status::OK;
             ctx->response().add_header("Content-Type", "application/json");
@@ -303,9 +336,17 @@ public:
     }
     
     void update_product(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int product_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _products.find(product_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto product_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!product_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid product id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _products.find(*product_id);
         if (it == _products.end()) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
             ctx->response().add_header("Content-Type", "application/json");
@@ -335,9 +376,17 @@ public:
     }
     
     void delete_product(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int product_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _products.find(product_id);
+        // Path params are untrusted: parse without throwing and reject bad input with 400.
+        const auto product_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!product_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid product id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _products.find(*product_id);
         if (it != _products.end()) {
             _products.erase(it);
             ctx->response().status() = qb::http::Status::NO_CONTENT;

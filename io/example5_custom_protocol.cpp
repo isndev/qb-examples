@@ -63,6 +63,7 @@
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/system/allocator/pipe.h>
+#include <qb/system/parse.h>
 
 // ═══════════════════════════════════════════════════════════════════
 // Custom Protocol Definition
@@ -702,7 +703,8 @@ int main(int argc, char* argv[]) {
         // Run as server
         uint16_t port = DEFAULT_PORT;
         if (argc > 2) {
-            port = static_cast<uint16_t>(std::stoi(argv[2]));
+            // argv is untrusted: fall back to the default port on bad input.
+            port = qb::to_number<uint16_t>(argv[2]).value_or(DEFAULT_PORT);
         }
         runServer(port);
     } 
@@ -715,8 +717,14 @@ int main(int argc, char* argv[]) {
         }
         
         std::string host = argv[2];
-        uint16_t port = static_cast<uint16_t>(std::stoi(argv[3]));
-        runClient(host, port);
+        // argv is untrusted: reject a malformed/out-of-range port instead of crashing.
+        auto port = qb::to_number<uint16_t>(argv[3]);
+        if (!port) {
+            qb::io::cerr() << "Invalid port: " << argv[3] << std::endl;
+            displayHelp();
+            return 1;
+        }
+        runClient(host, *port);
     }
     else {
         qb::io::cerr() << "Invalid mode: " << mode << std::endl;

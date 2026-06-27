@@ -17,6 +17,7 @@
 
 #include <iostream>
 #include <qb/main.h>
+#include <qb/system/parse.h>
 #include <http/http.h>
 
 // HTTP Server Actor with advanced routing
@@ -209,9 +210,18 @@ private:
     }
     
     void handle_get_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path parameters are untrusted input: reject a non-numeric ":id" with 400
+        // instead of letting a throwing parse crash the handler.
+        auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it != _users.end()) {
             ctx->response().status() = qb::http::Status::OK;
             ctx->response().add_header("Content-Type", "application/json");
@@ -226,9 +236,18 @@ private:
     }
     
     void handle_update_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path parameters are untrusted input: reject a non-numeric ":id" with 400
+        // instead of letting a throwing parse crash the handler.
+        auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it == _users.end()) {
             ctx->response().status() = qb::http::Status::NOT_FOUND;
             ctx->response().add_header("Content-Type", "application/json");
@@ -259,9 +278,18 @@ private:
     }
     
     void handle_delete_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        int user_id = std::stoi(ctx->path_param("id"));
-        
-        auto it = _users.find(user_id);
+        // Path parameters are untrusted input: reject a non-numeric ":id" with 400
+        // instead of letting a throwing parse crash the handler.
+        auto user_id = qb::to_number<int>(ctx->path_param("id"));
+        if (!user_id) {
+            ctx->response().status() = qb::http::Status::BAD_REQUEST;
+            ctx->response().add_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"error", "Invalid user id"}};
+            ctx->complete(qb::http::AsyncTaskResult::COMPLETE);
+            return;
+        }
+
+        auto it = _users.find(*user_id);
         if (it != _users.end()) {
             _users.erase(it);
             ctx->response().status() = qb::http::Status::NO_CONTENT;
