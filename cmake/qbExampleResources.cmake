@@ -49,45 +49,45 @@
 function(qb_stage_example_resources)
     cmake_parse_arguments(QSER "" "STAGE_NAME;RESOURCES_DIR" "TARGETS" ${ARGN})
 
-    if(NOT QSER_STAGE_NAME)
+    if (NOT QSER_STAGE_NAME)
         message(FATAL_ERROR "qb_stage_example_resources: STAGE_NAME is required")
-    endif()
-    if(NOT QSER_TARGETS)
+    endif ()
+    if (NOT QSER_TARGETS)
         message(FATAL_ERROR "qb_stage_example_resources: at least one TARGET is required")
-    endif()
-    if(NOT QSER_RESOURCES_DIR)
+    endif ()
+    if (NOT QSER_RESOURCES_DIR)
         set(QSER_RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
-    endif()
-    if(NOT IS_DIRECTORY "${QSER_RESOURCES_DIR}")
+    endif ()
+    if (NOT IS_DIRECTORY "${QSER_RESOURCES_DIR}")
         message(FATAL_ERROR
-            "qb_stage_example_resources: resources directory not found: ${QSER_RESOURCES_DIR}")
-    endif()
+                "qb_stage_example_resources: resources directory not found: ${QSER_RESOURCES_DIR}")
+    endif ()
 
     set(_stage_dir "${CMAKE_CURRENT_BINARY_DIR}")
 
     # One copy for the whole example directory — no per-target race on shared files.
     add_custom_target(${QSER_STAGE_NAME} ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${QSER_RESOURCES_DIR}" "${_stage_dir}/resources"
-        COMMENT "Staging example resources next to the executables (${QSER_STAGE_NAME})"
-        VERBATIM)
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${QSER_RESOURCES_DIR}" "${_stage_dir}/resources"
+            COMMENT "Staging example resources next to the executables (${QSER_STAGE_NAME})"
+            VERBATIM)
 
-    foreach(_tgt IN LISTS QSER_TARGETS)
-        if(NOT TARGET ${_tgt})
+    foreach (_tgt IN LISTS QSER_TARGETS)
+        if (NOT TARGET ${_tgt})
             message(FATAL_ERROR "qb_stage_example_resources: no such target '${_tgt}'")
-        endif()
+        endif ()
 
         add_dependencies(${_tgt} ${QSER_STAGE_NAME})
 
         # Pin the binary next to the staged resources for the single-config default and
         # for every multi-config configuration (which would otherwise append /<Config>).
         set_target_properties(${_tgt} PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY "${_stage_dir}"
-            VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${_tgt}>")
-        foreach(_cfg IN LISTS CMAKE_CONFIGURATION_TYPES)
+                RUNTIME_OUTPUT_DIRECTORY "${_stage_dir}"
+                VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${_tgt}>")
+        foreach (_cfg IN LISTS CMAKE_CONFIGURATION_TYPES)
             string(TOUPPER "${_cfg}" _CFG)
             set_target_properties(${_tgt} PROPERTIES
-                RUNTIME_OUTPUT_DIRECTORY_${_CFG} "${_stage_dir}")
-        endforeach()
-    endforeach()
+                    RUNTIME_OUTPUT_DIRECTORY_${_CFG} "${_stage_dir}")
+        endforeach ()
+    endforeach ()
 endfunction()
