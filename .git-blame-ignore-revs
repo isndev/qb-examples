@@ -1,0 +1,5 @@
+# Commits to skip in git blame (bulk formatting / license-header sweeps).
+# Configure: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: clang-format sweep + condense license headers (2026-06-29)
+0995457bfdf82704260bf0fe35e62c2759dec318
