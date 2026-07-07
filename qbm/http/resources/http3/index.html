@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <meta name="color-scheme" content="dark">
+    <title>QB · HTTP/3 Demo</title>
+    <link href="/static/styles.css" rel="stylesheet">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="logo">QB</span>
+        <span>HTTP/3 <small>· QUIC over the qb framework</small></span>
+    </div>
+    <div class="status">
+        <span class="badge" id="proto-badge" data-proto=""><span class="dot"></span><span id="proto-text">detecting…</span></span>
+        <span class="badge live" id="conn-badge"><span class="dot"></span><span id="conn-text">connected</span></span>
+    </div>
+</header>
+
+<main class="wrap">
+    <section class="hero">
+        <span class="eyebrow">RFC 9114 · QUIC · TLS 1.3</span>
+        <h1>The same app, served over HTTP/2 and HTTP/3</h1>
+        <p>A dual-stack server: your browser loaded this page over HTTP/2, then upgrades to HTTP/3 (QUIC)
+           via <code>Alt-Svc</code> — exactly how h3 is deployed in production.</p>
+    </section>
+
+    <div class="info">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div>
+            <b>How the upgrade works.</b>
+            <small> Browsers never speak h3 first. This page arrived over HTTP/2 on TCP; the server sent
+            <code>Alt-Svc: h3=":8444"</code>, so the API calls below move to HTTP/3 over QUIC. Accept the
+            self-signed certificate once, then watch the badge (top-right) — or DevTools → Network → the
+            <em>Protocol</em> column — flip to <code>h3</code> (Chrome may need one reload).</small>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card">
+            <h2><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> What HTTP/3 adds over HTTP/2</h2>
+            <p class="sub">Fetched live from <code>/api/h3-features</code></p>
+            <ul class="feat" id="features"><li>loading…</li></ul>
+        </section>
+
+        <section class="card">
+            <h2><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg> API playground</h2>
+            <p class="sub">Each call rides the negotiated protocol (h2 or h3).</p>
+            <div class="row">
+                <button class="btn" data-get="/api/transport-info"><span class="verb">GET</span>transport-info</button>
+                <button class="btn" data-get="/api/connection-info"><span class="verb">GET</span>connection-info</button>
+                <button class="btn" data-get="/api/no-hol-blocking"><span class="verb">GET</span>no-hol-blocking</button>
+                <button class="btn" data-get="/api/h3-features"><span class="verb">GET</span>h3-features</button>
+            </div>
+            <div class="resp-head" id="pg-head"><span class="st pending" id="pg-status">idle</span></div>
+            <pre class="out" id="pg-out">Pick an endpoint above.</pre>
+        </section>
+
+        <section class="card span2">
+            <h2><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg> Independent streams</h2>
+            <p class="sub">Over HTTP/3 every request rides its own QUIC stream — a lost packet stalls only its own lane, never the others. Fire a burst and watch each resolve independently.</p>
+            <div class="row">
+                <label>requests <input id="burst" type="number" min="1" max="120" value="24"></label>
+                <button class="btn primary" id="burst-btn">Fire concurrent requests</button>
+            </div>
+            <div class="lanes" id="lanes"></div>
+            <div class="lanes-meta" id="lanes-meta">—</div>
+        </section>
+
+        <section class="card">
+            <h2><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg> Echo over a stream</h2>
+            <p class="sub"><code>POST /api/echo</code> — round-trips a body over a single stream.</p>
+            <textarea id="echo-body" rows="3">{ "hello": "http3", "from": "browser" }</textarea>
+            <div class="row" style="margin-top:8px"><button class="btn primary" id="echo-btn"><span class="verb">POST</span>send</button></div>
+            <div class="resp-head" id="echo-head"><span class="st pending" id="echo-status">idle</span></div>
+            <pre class="out" id="echo-out">…</pre>
+        </section>
+
+        <section class="card">
+            <h2><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 4v3"/></svg> Connection</h2>
+            <p class="sub">A QUIC connection is keyed by a Connection ID, so it survives client IP/port change (migration).</p>
+            <div class="row">
+                <span class="chip" id="proto-chip">protocol: …</span>
+                <span class="chip" id="rtt-chip">last call: …</span>
+            </div>
+        </section>
+    </div>
+
+    <div class="footer">
+        Powered by the qb C++ actor framework — <code>qb::http::dual_stack_server</code> over
+        <code>qb::io::async::quic</code>. Self-signed dev certificate; localhost demo only.
+    </div>
+</main>
+<script src="/static/h3-demo.js"></script>
+</body>
+</html>
