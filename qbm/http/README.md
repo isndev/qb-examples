@@ -231,6 +231,39 @@ Below is a list of the available examples and the key features they showcase:
     * HTTP/2 server on `https://localhost:8443`
 * **Static Resources**: `examples/qbm/http/resources/http2/` contains the frontend HTML, JS, CSS for the demo.
 
+### 14. `14_http3_server.cpp`
+
+* **Description**: A browser-testable **HTTP/3** demo, served as a **dual stack** (HTTP/2 over
+  TCP + HTTP/3 over QUIC on the same port) so a browser can actually reach it. Same routing
+  engine, static-files middleware, and interactive frontend as the HTTP/2 example.
+* **Why dual-stack**: browsers never speak HTTP/3 first — they connect over TCP (HTTP/2 or
+  HTTP/1.1), read an `Alt-Svc: h3=...` header, and only then upgrade to HTTP/3. A pure-h3
+  (UDP-only) server therefore can't even be *loaded* by a browser. This example uses
+  `qb::http::dual_stack_server`: HTTP/2 (TCP/TLS, ALPN `h2` + `http/1.1`) and HTTP/3 (QUIC/UDP,
+  ALPN `h3`) with one set of routes mirrored onto both, and the h2 responses advertise
+  `Alt-Svc` — exactly how HTTP/3 is deployed in production.
+* **Features**:
+    * `qb::http::dual_stack_server` owned by a `qb::Actor`; middleware installed on both routers.
+    * **Interactive demo frontend** from `resources/http3/` (`index.html` + `static_files_middleware`
+      for `/static/*`). The page live-fetches the API, shows the **negotiated protocol** (via
+      `performance.nextHopProtocol`), and fires a concurrent burst to illustrate independent streams.
+    * JSON API: `/api/h3-features`, `/api/transport-info`, `/api/connection-info`,
+      `/api/no-hol-blocking`, `/api/stream-demo/:count`, `POST /api/echo`.
+    * Graceful shutdown (HTTP/3 GOAWAY + HTTP/2 close) on teardown; self-signed dev cert under
+      `resources/ssl/`.
+* **Server**: `https://127.0.0.1:8444` — HTTP/2 on TCP **and** HTTP/3 on UDP.
+* **Browser testing** (no special flags):
+    1. Open **`https://127.0.0.1:8444/`** and accept the self-signed-certificate warning once.
+    2. The page loads over HTTP/2, then upgrades to HTTP/3 via `Alt-Svc`.
+    3. DevTools → Network → the *Protocol* column flips to `h3` on the API calls (Chrome may need
+       one reload). The pill at the top of the page shows the negotiated protocol live.
+    * Use `127.0.0.1`, not `localhost` (the server binds IPv4; `localhost` may resolve to IPv6 `::1`).
+    * CLI check of each stack: `curl -k --http2 https://127.0.0.1:8444/api/h3-features` (TCP/h2),
+      and an HTTP/3-capable curl for the QUIC side.
+* **Requires**: qbm-http built with HTTP/3 (SSL + QUIC + nghttp3, i.e. `QBM_HTTP_HAS_HTTP3`);
+  otherwise the example prints how to enable it and exits.
+* **Static Resources**: `examples/qbm/http/resources/http3/` — the frontend HTML/CSS/JS.
+
 ---
 
 See the individual `.cpp` files for detailed code and comments.

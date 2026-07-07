@@ -45,6 +45,7 @@ set(QB_HTTP_EXAMPLES
         11_https_server
         12_http2_server
         13_coroutine_handlers
+        14_http3_server
 )
 
 # Build each HTTP example
@@ -57,13 +58,13 @@ foreach (EXAMPLE_NAME ${QB_HTTP_EXAMPLES})
 endforeach ()
 
 # Some examples read assets at runtime: the static site (08), the HTTP/2 site (12),
-# and the self-signed dev TLS certificate under resources/ssl (11 + 12). They load
-# them with a plain "resources/..." relative path; qb_stage_example_resources stages the
-# resources/ tree right next to the built executables so that just works everywhere,
-# keeping the example sources free of any path plumbing.
+# and the self-signed dev TLS certificate under resources/ssl (11, 12, and the
+# TLS-only HTTP/3 server 14). They load them with a plain "resources/..." relative
+# path; qb_stage_example_resources stages the resources/ tree right next to the built
+# executables so that just works everywhere, keeping the sources free of path plumbing.
 qb_stage_example_resources(
         STAGE_NAME qb_http_examples_resources
-        TARGETS 08_static_files 11_https_server 12_http2_server)
+        TARGETS 08_static_files 11_https_server 12_http2_server 14_http3_server)
 
 list(LENGTH QB_HTTP_EXAMPLES QB_HTTP_EXAMPLES_COUNT)
 qb_status_message("HTTP examples configured with ${QB_HTTP_EXAMPLES_COUNT} targets")
