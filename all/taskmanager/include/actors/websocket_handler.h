@@ -27,8 +27,8 @@
  */
 #pragma once
 
-#include <http/http.h>
-#include <http/ws.h>
+#include <qbm/http/http.h>
+#include <qbm/http/ws.h>
 #include <redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/json.h>

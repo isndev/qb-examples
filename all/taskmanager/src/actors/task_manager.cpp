@@ -13,7 +13,7 @@
  */
 
 #include "actors/task_manager.h"
-#include <http/middleware/all.h>
+#include <qbm/http/middleware/all.h>
 #include <qb/io.h>
 
 namespace taskmanager {

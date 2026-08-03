@@ -18,14 +18,14 @@
 
 #include <iostream>
 #include <qb/main.h>
-#include <http/http.h>
-#include <http/middleware/cors.h>
-#include <http/middleware/logging.h>
-#include <http/middleware/auth.h>
-#include <http/middleware/error_handling.h>
-#include <http/auth/manager.h>
-#include <http/auth/options.h>
-#include <http/auth/user.h>
+#include <qbm/http/http.h>
+#include <qbm/http/middleware/cors.h>
+#include <qbm/http/middleware/logging.h>
+#include <qbm/http/middleware/auth.h>
+#include <qbm/http/middleware/error_handling.h>
+#include <qbm/http/auth/manager.h>
+#include <qbm/http/auth/options.h>
+#include <qbm/http/auth/user.h>
 
 // Simple user database simulation
 struct UserAccount {

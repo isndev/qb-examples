@@ -19,13 +19,13 @@
 #include <iostream>
 #include <qb/main.h>
 #include <qb/system/parse.h>
-#include <http/http.h>
-#include <http/middleware/cors.h>
-#include <http/middleware/logging.h>
-#include <http/middleware/compression.h>
-#include <http/middleware/security_headers.h>
-#include <http/middleware/rate_limit.h>
-#include <http/middleware/error_handling.h>
+#include <qbm/http/http.h>
+#include <qbm/http/middleware/cors.h>
+#include <qbm/http/middleware/logging.h>
+#include <qbm/http/middleware/compression.h>
+#include <qbm/http/middleware/security_headers.h>
+#include <qbm/http/middleware/rate_limit.h>
+#include <qbm/http/middleware/error_handling.h>
 
 // Book model for our REST API
 struct Book {

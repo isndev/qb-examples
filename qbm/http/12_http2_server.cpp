@@ -13,9 +13,9 @@
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/parse.h>   // qb::to_number
-#include <http/http.h>
-#include <http/middleware/all.h>
-#include <http/2/http2.h>
+#include <qbm/http/http.h>
+#include <qbm/http/middleware/all.h>
+#include <qbm/http/2/http2.h>
 #include <iostream>
 #include <filesystem>
 #include <fstream>

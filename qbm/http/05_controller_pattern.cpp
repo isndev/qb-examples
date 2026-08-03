@@ -18,7 +18,7 @@
 #include <iostream>
 #include <qb/main.h>
 #include <qb/system/parse.h>
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 // User Controller - manages user-related operations
 class UserController : public qb::http::Controller<qb::http::DefaultSession> {

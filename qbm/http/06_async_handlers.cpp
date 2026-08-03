@@ -19,8 +19,8 @@
 #include <iostream>
 #include <random>
 #include <qb/main.h>
-#include <http/coro.h>
-#include <http/http.h>
+#include <qbm/http/coro.h>
+#include <qbm/http/http.h>
 
 // Async HTTP Server Actor demonstrating various async patterns
 class AsyncServerActor : public qb::Actor, public qb::http::Server<> {

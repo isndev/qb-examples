@@ -19,7 +19,7 @@
  */
 #pragma once
 
-#include <http/ws.h>
+#include <qbm/http/ws.h>
 #include <qb/json.h>
 
 namespace taskmanager {

@@ -20,15 +20,15 @@
 #include <iostream>
 #include <qb/main.h>
 #include <qb/system/parse.h>
-#include <http/http.h>
-#include <http/middleware/cors.h>
-#include <http/middleware/logging.h>
-#include <http/middleware/validation.h>
-#include <http/middleware/error_handling.h>
-#include <http/validation/request_validator.h>
-#include <http/validation/schema_validator.h>
-#include <http/validation/parameter_validator.h>
-#include <http/validation/sanitizer.h>
+#include <qbm/http/http.h>
+#include <qbm/http/middleware/cors.h>
+#include <qbm/http/middleware/logging.h>
+#include <qbm/http/middleware/validation.h>
+#include <qbm/http/middleware/error_handling.h>
+#include <qbm/http/validation/request_validator.h>
+#include <qbm/http/validation/schema_validator.h>
+#include <qbm/http/validation/parameter_validator.h>
+#include <qbm/http/validation/sanitizer.h>
 
 class ValidationServer : public qb::Actor, public qb::http::Server<> {
 private:
