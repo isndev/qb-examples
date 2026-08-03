@@ -56,7 +56,7 @@
  * - `qb::string<N>`, `qb::json` (implicitly for stream results), `qb::io::cout()`.
  */
 
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io/async.h>
