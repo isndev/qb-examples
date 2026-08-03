@@ -10,7 +10,7 @@
 
 #include <qbm/http/http.h>
 #include <qbm/http/ws.h>
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/json.h>
 #include "ws_session.h"

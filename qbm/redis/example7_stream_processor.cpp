@@ -58,7 +58,7 @@
  * - `qb::Main::stop()`.
  */
 
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io/async.h>

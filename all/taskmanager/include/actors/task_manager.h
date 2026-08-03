@@ -40,7 +40,7 @@
 #include <qbm/http/http.h>
 #include <memory>
 #include <qbm/pgsql/pgsql.h>
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/io/async.h>
 #include "actors/http_session.h"

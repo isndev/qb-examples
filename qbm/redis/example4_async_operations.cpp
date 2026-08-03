@@ -36,7 +36,7 @@
 
 #include <chrono>
 #include <iostream>
-#include <redis/redis.h>
+#include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
