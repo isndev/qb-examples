@@ -5,12 +5,20 @@
  * This example demonstrates using C++23 coroutines with qb-io
  * without the Actor system. It shows basic timer operations.
  *
+ * "Standalone" means no actor framework -- not a hand-rolled compile. The build is the
+ * ordinary one; this file is registered as the `standalone_timer_example` target in
+ * examples/coroutine/CMakeLists.txt (DEPENDS qb-core qb-io).
+ *
  * Build:
- *   g++ -std=c++23 -I qb/include -I /path/to/libev standalone_timer_example.cpp \
- *       -o standalone_timer_example -lev
+ *   cmake --preset dev && cmake --build --preset dev --target standalone_timer_example
  *
  * Run:
- *   ./standalone_timer_example
+ *   ./build/presets/dev/bin/standalone_timer_example
+ *
+ * The previous note here gave `g++ -I qb/include -I /path/to/libev ... -lev`, which cannot
+ * work: qb's include root is qb/src, the libev fork lives INSIDE it (reached as
+ * <qb/vendor/qev/qev.h>, so it needs no -I of its own), the archive is libqev.a, and
+ * linking qb-io also pulls OpenSSL/zlib -- flags a one-line example cannot enumerate.
  */
 
 #include <chrono>
