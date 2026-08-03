@@ -48,6 +48,9 @@ set(SOURCES
 
 # ── Target ────────────────────────────────────────────────────────────────────
 
+# REQUIRES ssl: the live-bidding feed is WebSocket, and ws/ws.h #errors without
+# qb::io::crypto (SHA-1 + base64 for Sec-WebSocket-Accept). Not a TLS requirement —
+# a crypto-link one. Without it the target is not created at all.
 qb_add_executable(
         NAME auction_house
         SOURCES ${SOURCES}
@@ -55,7 +58,13 @@ qb_add_executable(
         qbm-http
         qbm-pgsql
         qbm-redis
+        REQUIRES ssl
 )
+
+# Gated out (QB_HAS_SSL=OFF): nothing below has a target to attach to.
+if (NOT TARGET auction_house)
+    return()
+endif ()
 
 target_include_directories(auction_house PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include

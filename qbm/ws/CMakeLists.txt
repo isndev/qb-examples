@@ -36,20 +36,34 @@ set(QB_WS_EXAMPLES
         02_chat_client
 )
 
-# Build each WebSocket example
+# Build each WebSocket example.
+#
+# ALL of them REQUIRE ssl — not for TLS (these speak plaintext ws://) but at LINK level:
+# ws/ws.h #errors with "websocket protocol requires OpenSSL crypto library" because the
+# Sec-WebSocket-Accept handshake is SHA-1 + base64 from qb::io::crypto. Same crypto-link
+# reasoning as the `REQUIRES ssl` on the ws unit tests in qbm/http/tests/CMakeLists.txt.
 foreach (EXAMPLE_NAME ${QB_WS_EXAMPLES})
     qb_add_executable(
             NAME ${EXAMPLE_NAME}
             SOURCES ${EXAMPLE_NAME}.cpp
             DEPENDS qbm-http
+            REQUIRES ssl
     )
 endforeach ()
 
 # Stage the chat web assets next to the built executable so the example loads them with
-# a plain "resources/chat/..." relative path (see qb_stage_example_resources).
-qb_stage_example_resources(
-        STAGE_NAME qb_ws_examples_resources
-        TARGETS 01_chat_server)
+# a plain "resources/chat/..." relative path (see qb_stage_example_resources). Skipped
+# entirely when the server was gated out — the helper requires at least one live target.
+if (TARGET 01_chat_server)
+    qb_stage_example_resources(
+            STAGE_NAME qb_ws_examples_resources
+            TARGETS 01_chat_server)
+endif ()
 
-list(LENGTH QB_WS_EXAMPLES QB_WS_EXAMPLES_COUNT)
+set(QB_WS_EXAMPLES_COUNT 0)
+foreach (EXAMPLE_NAME ${QB_WS_EXAMPLES})
+    if (TARGET ${EXAMPLE_NAME})
+        math(EXPR QB_WS_EXAMPLES_COUNT "${QB_WS_EXAMPLES_COUNT} + 1")
+    endif ()
+endforeach ()
 qb_status_message("WebSocket examples configured with ${QB_WS_EXAMPLES_COUNT} targets") 
