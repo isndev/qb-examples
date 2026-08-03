@@ -18,7 +18,7 @@
 #include <iostream>
 #include <chrono>
 #include <qb/main.h>
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 // HTTP Server Actor with middleware demonstration
 class MiddlewareServerActor : public qb::Actor, public qb::http::Server<> {

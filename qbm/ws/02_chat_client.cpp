@@ -30,7 +30,7 @@
 #include <qb/io/system/file.h>
 #include <qb/io/transport/file.h>
 #include <qb/io/protocol/text.h>
-#include <http/ws.h>
+#include <qbm/http/ws.h>
 #include <qb/json.h>
 
 // Forward declarations

@@ -12,7 +12,7 @@
 
 #include "auction_house/actors/auction_manager.h"
 #include <ctime>
-#include <http/middleware/all.h>
+#include <qbm/http/middleware/all.h>
 #include <iomanip>
 #include <sstream>
 #include <qb/io.h>

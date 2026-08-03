@@ -29,7 +29,7 @@
  * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
  */
 
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 #ifdef QBM_HTTP_HAS_HTTP3
 
@@ -37,9 +37,9 @@
 #include <qb/main.h>
 #include <qb/system/parse.h> // qb::to_number
 
-#include <http/2/http2.h>
-#include <http/3/dual_stack.h>
-#include <http/middleware/all.h>
+#include <qbm/http/2/http2.h>
+#include <qbm/http/3/dual_stack.h>
+#include <qbm/http/middleware/all.h>
 
 #include <chrono>
 #include <cstdlib>

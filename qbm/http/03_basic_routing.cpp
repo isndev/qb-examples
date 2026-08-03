@@ -18,7 +18,7 @@
 #include <iostream>
 #include <qb/main.h>
 #include <qb/system/parse.h>
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 // HTTP Server Actor with advanced routing
 class RoutingServerActor : public qb::Actor, public qb::http::Server<> {

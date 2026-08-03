@@ -16,8 +16,8 @@
  * @ingroup Examples
  */
 
-#include <http/coro.h>
-#include <http/http.h>
+#include <qbm/http/coro.h>
+#include <qbm/http/http.h>
 #include <iostream>
 #include <qb/main.h>
 

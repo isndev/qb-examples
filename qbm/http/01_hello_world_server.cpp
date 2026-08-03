@@ -16,7 +16,7 @@
 
 #include <iostream>
 #include <qb/main.h>
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 // Define our HTTP server actor
 class HelloWorldServer : public qb::Actor

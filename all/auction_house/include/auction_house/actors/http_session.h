@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include <http/http.h>
+#include <qbm/http/http.h>
 
 namespace auction_house {
 namespace actors {

@@ -19,7 +19,7 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
 ### 2. WebSocket Examples (`./ws/`)
 
 * **Focus**: Advanced WebSocket implementations with separated server architectures and real-time communication.
-  WebSocket is not a standalone module — it ships inside qbm-http as `qb::http::ws` (header `<http/ws.h>`), so these
+  WebSocket is not a standalone module — it ships inside qbm-http as `qb::http::ws` (header `<qbm/http/ws.h>`), so these
   examples depend on `qbm-http`.
 * **Content**: Features a complete chat system demonstrating socket extraction, actor-based responsibility separation,
   clean message dispatch systems, and both web browser and command-line clients. Showcases implicit multithreading via

@@ -51,7 +51,7 @@ set(QB_HTTP_EXAMPLES
 # Examples that cannot even COMPILE without OpenSSL, and are therefore gated out of an
 # SSL-off build instead of breaking it (qb_add_executable REQUIRES — same vocabulary and
 # same resolver as the test suite's):
-#   09_jwt_auth    — <http/auth/manager.h>; auth.h #errors "requires OpenSSL crypto library"
+#   09_jwt_auth    — <qbm/http/auth/manager.h>; auth.h #errors "requires OpenSSL crypto library"
 #   11_https_server— qb::http::ssl::Server<> / qb::http::ssl::DefaultSecureSession
 #   12_http2_server— h2 is TLS+ALPN only: qb::io::transport::stcp, no h2c path
 # 14_http3_server is deliberately NOT listed: it guards itself with #ifdef
