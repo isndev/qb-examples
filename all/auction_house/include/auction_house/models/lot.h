@@ -5,7 +5,7 @@
 #pragma once
 
 #include <chrono>
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <string>
 #include <qb/json.h>
 

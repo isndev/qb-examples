@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <string>
 #include <qb/json.h>
 

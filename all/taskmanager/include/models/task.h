@@ -13,7 +13,7 @@
 #pragma once
 
 #include <cstdint>
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <string>
 #include <vector>
 #include <qb/json.h>
