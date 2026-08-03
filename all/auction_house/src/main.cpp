@@ -18,7 +18,7 @@
 #include <csignal>
 #include <filesystem>
 #include <iostream>
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/io/async.h>

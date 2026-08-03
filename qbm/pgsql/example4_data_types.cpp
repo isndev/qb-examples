@@ -22,7 +22,7 @@
  * - `qb::json` — JSON / JSONB columns.
  */
 
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/json.h>        // qb::json

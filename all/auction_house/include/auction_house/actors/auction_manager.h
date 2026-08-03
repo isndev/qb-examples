@@ -24,7 +24,7 @@
 #include <filesystem>
 #include <qbm/http/http.h>
 #include <memory>
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <redis/redis.h>
 #include <qb/actor.h>
 #include <qb/io/async.h>

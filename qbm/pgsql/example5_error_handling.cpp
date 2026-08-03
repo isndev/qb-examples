@@ -31,7 +31,7 @@
  * - `Reply::ok()`, `Reply::result()`, `Reply::error()` and the `db_error` field set.
  * - Driving an SQL-issuing coroutine from a sync handler via `spawn(...)`.
  */
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/io/async.h>

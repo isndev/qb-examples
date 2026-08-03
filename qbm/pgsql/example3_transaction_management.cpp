@@ -21,7 +21,7 @@
  * - `co_await db.prepare(name, sql, types)` → `Reply<PreparedQuery>`.
  */
 
-#include <pgsql/pgsql.h>
+#include <qbm/pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 
