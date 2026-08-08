@@ -200,7 +200,7 @@ private:
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = new_user;
             
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{{"error", "Invalid JSON data"}};
@@ -268,7 +268,7 @@ private:
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = it->second;
             
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{{"error", "Invalid JSON data"}};
