@@ -256,7 +256,7 @@ public:
                 push<DisplayMessageEvent>(_cmdline_actor_id, 
                     "[UNKNOWN] " + message_data, "warning");
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             push<DisplayMessageEvent>(_cmdline_actor_id, 
                 "[PARSE ERROR] " + std::string(event.data, event.size), "error");
         }

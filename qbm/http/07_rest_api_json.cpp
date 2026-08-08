@@ -492,7 +492,7 @@ private:
             ctx->response().body() = it->second.to_json();
             ctx->complete();
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{
@@ -673,7 +673,7 @@ private:
             ctx->response().body() = response;
             ctx->complete();
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{

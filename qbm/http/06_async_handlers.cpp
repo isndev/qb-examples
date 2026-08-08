@@ -359,7 +359,7 @@ private:
         qb::json request_data;
         try {
             request_data = ctx->request().body().as<qb::json>();
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{{"error", "Invalid JSON data"}};

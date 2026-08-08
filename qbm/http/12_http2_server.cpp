@@ -336,7 +336,7 @@ private:
                 qb::json request_body = qb::json::parse(ctx->request().body().template as<std::string>());
                 response["echoed_data"] = request_body;
                 response["data_size_bytes"] = ctx->request().body().template as<std::string>().length();
-            } catch (const std::exception& e) {
+            } catch (const std::exception&) {
                 response["echoed_data"] = ctx->request().body().template as<std::string>();
                 response["note"] = "Non-JSON data echoed as string";
             }
