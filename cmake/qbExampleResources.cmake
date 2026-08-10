@@ -65,10 +65,30 @@ function(qb_stage_example_resources)
 
     set(_stage_dir "${CMAKE_CURRENT_BINARY_DIR}")
 
+    # Declare the staged files so they are NODES IN THE BUILD GRAPH, not just bytes some
+    # command happened to write. Without BYPRODUCTS -- which appeared zero times in this tree
+    # until 3.0 -- `ninja -t clean` leaves every staged asset behind, so a resource deleted or
+    # renamed in the source tree survives a clean and keeps satisfying an example that should
+    # by then be failing to find it. It also means nothing can express a dependency on the
+    # FILE; ordering rests entirely on the add_dependencies() edge below.
+    #
+    # The glob is CONFIGURE_DEPENDS so adding an asset re-runs CMake: a stale declared list is
+    # the same quiet drift in a new place. It cannot make the copy incremental -- a custom
+    # TARGET is always out of date -- and that is deliberate, because converting one writer of
+    # a path to add_custom_command(OUTPUT ...) while another stays a bare target makes ninja
+    # think the file is up to date while the other writer overwrites it every build.
+    file(GLOB_RECURSE _qser_files LIST_DIRECTORIES false RELATIVE "${QSER_RESOURCES_DIR}"
+         CONFIGURE_DEPENDS "${QSER_RESOURCES_DIR}/*")
+    set(_qser_byproducts "")
+    foreach (_qser_f IN LISTS _qser_files)
+        list(APPEND _qser_byproducts "${_stage_dir}/resources/${_qser_f}")
+    endforeach ()
+
     # One copy for the whole example directory — no per-target race on shared files.
     add_custom_target(${QSER_STAGE_NAME} ALL
             COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${QSER_RESOURCES_DIR}" "${_stage_dir}/resources"
+            BYPRODUCTS ${_qser_byproducts}
             COMMENT "Staging example resources next to the executables (${QSER_STAGE_NAME})"
             VERBATIM)
 
