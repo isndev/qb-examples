@@ -249,7 +249,10 @@ cmake --build build/presets/dev --target taskmanager -j4
 ```
 
 The binary is placed in `build/presets/dev/examples/all/taskmanager/taskmanager`.
-The static files are copied to `build/presets/dev/bin/resources/static/`.
+The static files are copied to `build/presets/dev/bin/taskmanager/resources/static/` — the
+per-example destination `CMakeLists.txt` passes to `qb_copy_resources`, so two examples
+building in parallel never stage into the same directory. (This line used to name the shared
+`bin/resources/static/`, which the build stopped using when that workaround was added.)
 
 ### Prerequisites
 
