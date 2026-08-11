@@ -40,43 +40,49 @@ class CommandLineActor;
 // Events for communication between actors
 struct UserInputEvent : qb::Event {
     std::string message;
-    explicit UserInputEvent(std::string msg) : message(std::move(msg)) {}
+    explicit UserInputEvent(std::string msg)
+        : message(std::move(msg)) {}
 };
 
 struct UsernameChangeEvent : qb::Event {
     std::string new_username;
-    explicit UsernameChangeEvent(std::string username) : new_username(std::move(username)) {}
+    explicit UsernameChangeEvent(std::string username)
+        : new_username(std::move(username)) {}
 };
 
 struct ConnectEvent : qb::Event {
     std::string server_url;
-    explicit ConnectEvent(std::string url) : server_url(std::move(url)) {}
+    explicit ConnectEvent(std::string url)
+        : server_url(std::move(url)) {}
 };
 
 struct DisconnectEvent : qb::Event {};
 
 struct SetWebSocketActorEvent : qb::Event {
     qb::ActorId websocket_actor_id;
-    explicit SetWebSocketActorEvent(qb::ActorId id) : websocket_actor_id(id) {}
+    explicit SetWebSocketActorEvent(qb::ActorId id)
+        : websocket_actor_id(id) {}
 };
 
 struct DisplayMessageEvent : qb::Event {
     std::string message;
     std::string type;
-    explicit DisplayMessageEvent(std::string msg, std::string msg_type = "info") 
-        : message(std::move(msg)), type(std::move(msg_type)) {}
+    explicit DisplayMessageEvent(std::string msg, std::string msg_type = "info")
+        : message(std::move(msg))
+        , type(std::move(msg_type)) {}
 };
 
 // Thread-safe input queue for cross-platform stdin handling
 class InputQueue {
 private:
     std::queue<std::string> _queue;
-    std::mutex _mutex;
+    std::mutex              _mutex;
     std::condition_variable _cv;
-    std::atomic<bool> _shutdown{false};
+    std::atomic<bool>       _shutdown{false};
 
 public:
-    void push(const std::string& input) {
+    void
+    push(const std::string &input) {
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (!_shutdown) {
@@ -86,7 +92,8 @@ public:
         _cv.notify_one();
     }
 
-    bool try_pop(std::string& input) {
+    bool
+    try_pop(std::string &input) {
         std::lock_guard<std::mutex> lock(_mutex);
         if (!_queue.empty()) {
             input = _queue.front();
@@ -96,7 +103,8 @@ public:
         return false;
     }
 
-    void shutdown() {
+    void
+    shutdown() {
         {
             std::lock_guard<std::mutex> lock(_mutex);
             _shutdown = true;
@@ -104,7 +112,8 @@ public:
         _cv.notify_all();
     }
 
-    bool is_shutdown() const {
+    bool
+    is_shutdown() const {
         return _shutdown.load();
     }
 };
@@ -114,30 +123,34 @@ static InputQueue g_input_queue;
 
 /**
  * @brief WebSocket client actor for chat communication
- * 
+ *
  * This actor handles:
  * - WebSocket connection to the chat server
  * - Sending/receiving chat messages
  * - Protocol event handling (connect, disconnect, errors)
  * - Message parsing and formatting
  */
-class WebSocketClientActor : public qb::Actor, public qb::io::use<WebSocketClientActor>::tcp::client<> {
+class WebSocketClientActor
+    : public qb::Actor
+    , public qb::io::use<WebSocketClientActor>::tcp::client<> {
 private:
     std::string _username = "CLIUser";
     std::string _server_url;
     qb::ActorId _cmdline_actor_id;
-    bool _connected = false;
-    bool _user_announced = false;
+    bool        _connected      = false;
+    bool        _user_announced = false;
     std::string _ws_key;
 
 public:
     using Protocol    = qb::http::protocol<WebSocketClientActor>;
     using WS_Protocol = qb::http::ws::protocol<WebSocketClientActor>;
 
-    explicit WebSocketClientActor(qb::ActorId cmdline_id) 
-        : _cmdline_actor_id(cmdline_id), _ws_key(qb::http::ws::generateKey()) {}
+    explicit WebSocketClientActor(qb::ActorId cmdline_id)
+        : _cmdline_actor_id(cmdline_id)
+        , _ws_key(qb::http::ws::generateKey()) {}
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "[CLIENT] WebSocket client actor started" << std::endl;
 
         // Register events
@@ -155,7 +168,8 @@ public:
     }
 
     // Handle user input from command line
-    void on(const UserInputEvent& event) {
+    void
+    on(const UserInputEvent &event) {
         if (!_connected) {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Not connected to server!", "error");
             return;
@@ -165,20 +179,21 @@ public:
     }
 
     // Handle username changes
-    void on(const UsernameChangeEvent& event) {
+    void
+    on(const UsernameChangeEvent &event) {
         std::string old_username = _username;
-        _username = event.new_username;
-        
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "Username changed from '" + old_username + "' to '" + _username + "'", "info");
-        
+        _username                = event.new_username;
+
+        push<DisplayMessageEvent>(_cmdline_actor_id, "Username changed from '" + old_username + "' to '" + _username + "'", "info");
+
         if (_connected && _user_announced) {
             send_username_update();
         }
     }
 
     // Handle connection requests
-    void on(const ConnectEvent& event) {
+    void
+    on(const ConnectEvent &event) {
         if (_connected) {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Already connected!", "warning");
             return;
@@ -186,17 +201,15 @@ public:
 
         _server_url = event.server_url;
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connecting to " + _server_url + "...", "info");
-        
+
         qb::io::uri uri(_server_url);
-        
+
         // Extract host and port from URI
         std::string host = std::string(uri.host());
-        uint16_t port = uri.port().empty()
-                            ? 80
-                            : qb::to_number<uint16_t>(uri.port()).value_or(80);
-        
+        uint16_t    port = uri.port().empty() ? 80 : qb::to_number<uint16_t>(uri.port()).value_or(80);
+
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connecting to " + host + ":" + std::to_string(port), "info");
-        
+
         // Connect to the server
         if (transport().connect(uri) == qb::io::SocketStatus::Done) {
             start();
@@ -207,7 +220,8 @@ public:
     }
 
     // Handle disconnect requests
-    void on(const DisconnectEvent& event) {
+    void
+    on(const DisconnectEvent &event) {
         if (_connected) {
             disconnect();
         } else {
@@ -216,9 +230,9 @@ public:
     }
 
     // Handle HTTP response to WebSocket handshake
-    void on(Protocol::response &&response) {
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "Received HTTP response: " + std::to_string(response.status()), "info");
+    void
+    on(Protocol::response &&response) {
+        push<DisplayMessageEvent>(_cmdline_actor_id, "Received HTTP response: " + std::to_string(response.status()), "info");
 
         if (!this->switch_protocol<WS_Protocol>(*this, response, _ws_key)) {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Failed to switch to WebSocket protocol", "error");
@@ -226,20 +240,21 @@ public:
         } else {
             _connected = true;
             push<DisplayMessageEvent>(_cmdline_actor_id, "✓ Connected to WebSocket server!", "success");
-            
+
             // Send user joined notification
             send_user_joined();
         }
     }
 
     // Handle incoming WebSocket messages
-    void on(WS_Protocol::message &&event) {
+    void
+    on(WS_Protocol::message &&event) {
         try {
             std::string message_data(event.data, event.size);
-            auto message_json = qb::json::parse(message_data);
-            
+            auto        message_json = qb::json::parse(message_data);
+
             std::string type = message_json.value("type", "");
-            
+
             if (type == "message") {
                 handle_chat_message(message_json);
             } else if (type == "user_joined") {
@@ -253,152 +268,151 @@ public:
             } else if (type == "error") {
                 handle_error_message(message_json);
             } else {
-                push<DisplayMessageEvent>(_cmdline_actor_id, 
-                    "[UNKNOWN] " + message_data, "warning");
+                push<DisplayMessageEvent>(_cmdline_actor_id, "[UNKNOWN] " + message_data, "warning");
             }
-        } catch (const std::exception&) {
-            push<DisplayMessageEvent>(_cmdline_actor_id, 
-                "[PARSE ERROR] " + std::string(event.data, event.size), "error");
+        } catch (const std::exception &) {
+            push<DisplayMessageEvent>(_cmdline_actor_id, "[PARSE ERROR] " + std::string(event.data, event.size), "error");
         }
     }
 
     // Handle ping frames from the server
-    void on(WS_Protocol::ping &&event) {
+    void
+    on(WS_Protocol::ping &&event) {
         // Ping/pong is handled automatically by the WebSocket implementation
     }
 
     // Handle pong frames from the server
-    void on(WS_Protocol::pong &&event) {
+    void
+    on(WS_Protocol::pong &&event) {
         // Automatic pong handling
     }
 
     // Handle close frames from the server
-    void on(WS_Protocol::close &&event) {
+    void
+    on(WS_Protocol::close &&event) {
         std::string close_reason(event.data, event.size);
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "Connection closed: " + close_reason, "warning");
-        _connected = false;
+        push<DisplayMessageEvent>(_cmdline_actor_id, "Connection closed: " + close_reason, "warning");
+        _connected      = false;
         _user_announced = false;
     }
 
     // Handle TCP disconnection
-    void on(qb::io::async::event::disconnected &&) {
+    void
+    on(qb::io::async::event::disconnected &&) {
         push<DisplayMessageEvent>(_cmdline_actor_id, "✗ Disconnected from server", "warning");
-        _connected = false;
+        _connected      = false;
         _user_announced = false;
     }
 
 private:
-    void send_websocket_handshake(const qb::io::uri& uri) {
+    void
+    send_websocket_handshake(const qb::io::uri &uri) {
         qb::http::WebSocketRequest request(_ws_key);
         request.uri() = uri;
-        uint16_t port = uri.port().empty()
-                            ? 80
-                            : qb::to_number<uint16_t>(uri.port()).value_or(80);
+        uint16_t port = uri.port().empty() ? 80 : qb::to_number<uint16_t>(uri.port()).value_or(80);
         request.headers()["Host"].emplace_back(std::string(uri.host()) + ":" + std::to_string(port));
-        
+
         push<DisplayMessageEvent>(_cmdline_actor_id, "Sending WebSocket handshake...", "info");
         *this << request;
     }
 
-    void send_chat_message(const std::string& message) {
+    void
+    send_chat_message(const std::string &message) {
         qb::json message_obj = {
             {"type", "message"},
             {"username", _username},
             {"message", message},
-            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count()}
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()}
         };
-        
+
         qb::http::ws::MessageText ws_message;
         ws_message.masked = true;
         ws_message << message_obj.dump();
         *this << ws_message;
     }
 
-    void send_user_joined() {
-        if (_user_announced) return;
-        
+    void
+    send_user_joined() {
+        if (_user_announced)
+            return;
+
         qb::json message_obj = {
             {"type", "user_joined"},
             {"username", _username},
-            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count()}
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()}
         };
-        
+
         qb::http::ws::MessageText ws_message;
         ws_message.masked = true;
         ws_message << message_obj.dump();
         *this << ws_message;
-        
+
         _user_announced = true;
         push<DisplayMessageEvent>(_cmdline_actor_id, "Announced presence to chat", "info");
     }
 
-    void send_username_update() {
+    void
+    send_username_update() {
         qb::json message_obj = {
             {"type", "username_update"},
             {"username", _username},
-            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count()}
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()}
         };
-        
+
         qb::http::ws::MessageText ws_message;
         ws_message.masked = true;
         ws_message << message_obj.dump();
         *this << ws_message;
     }
 
-    void handle_chat_message(const qb::json& msg) {
+    void
+    handle_chat_message(const qb::json &msg) {
         std::string username = msg.value("username", "Unknown");
-        std::string message = msg.value("message", "");
-        
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "<" + username + "> " + message, "chat");
+        std::string message  = msg.value("message", "");
+
+        push<DisplayMessageEvent>(_cmdline_actor_id, "<" + username + "> " + message, "chat");
     }
 
-    void handle_user_joined(const qb::json& msg) {
+    void
+    handle_user_joined(const qb::json &msg) {
         std::string username = msg.value("username", "Unknown");
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "★ " + username + " joined the chat", "system");
+        push<DisplayMessageEvent>(_cmdline_actor_id, "★ " + username + " joined the chat", "system");
     }
 
-    void handle_user_left(const qb::json& msg) {
+    void
+    handle_user_left(const qb::json &msg) {
         std::string username = msg.value("username", "Unknown");
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "★ " + username + " left the chat", "system");
+        push<DisplayMessageEvent>(_cmdline_actor_id, "★ " + username + " left the chat", "system");
     }
 
-    void handle_username_changed(const qb::json& msg) {
+    void
+    handle_username_changed(const qb::json &msg) {
         // Try different possible field names
-        std::string old_username = msg.value("old_username", 
-                                    msg.value("oldUsername", "Unknown"));
-        std::string new_username = msg.value("new_username", 
-                                    msg.value("newUsername", 
-                                    msg.value("username", "Unknown")));
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "★ " + old_username + " is now known as " + new_username, "system");
+        std::string old_username = msg.value("old_username", msg.value("oldUsername", "Unknown"));
+        std::string new_username = msg.value("new_username", msg.value("newUsername", msg.value("username", "Unknown")));
+        push<DisplayMessageEvent>(_cmdline_actor_id, "★ " + old_username + " is now known as " + new_username, "system");
     }
 
-    void handle_system_message(const qb::json& msg) {
+    void
+    handle_system_message(const qb::json &msg) {
         std::string message = msg.value("message", "");
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "[SYSTEM] " + message, "system");
+        push<DisplayMessageEvent>(_cmdline_actor_id, "[SYSTEM] " + message, "system");
     }
 
-    void handle_error_message(const qb::json& msg) {
+    void
+    handle_error_message(const qb::json &msg) {
         std::string message = msg.value("message", "Unknown error");
-        push<DisplayMessageEvent>(_cmdline_actor_id, 
-            "[ERROR] " + message, "error");
+        push<DisplayMessageEvent>(_cmdline_actor_id, "[ERROR] " + message, "error");
     }
 
-    void on(const qb::KillEvent& event) noexcept {
+    void
+    on(const qb::KillEvent &event) noexcept {
         if (_connected) {
             // Send close frame before disconnecting
             qb::http::ws::MessageClose close_msg(qb::http::ws::CloseStatus::Normal, "Client shutting down");
             *this << close_msg;
         }
-        
+
         disconnect();
         qb::Actor::kill();
     }
@@ -406,7 +420,7 @@ private:
 
 /**
  * @brief Command line interface actor for user interaction
- * 
+ *
  * This actor handles:
  * - Non-blocking user input via polling thread-safe queue
  * - Command parsing (/connect, /username, /quit, etc.)
@@ -415,13 +429,13 @@ private:
  */
 class CommandLineActor : public qb::Actor {
 private:
-    qb::ActorId _websocket_actor_id;
-    std::thread _input_thread;
+    qb::ActorId       _websocket_actor_id;
+    std::thread       _input_thread;
     std::atomic<bool> _running{true};
-    std::string _current_username = "CLIUser";
+    std::string       _current_username = "CLIUser";
 
 public:
-    explicit CommandLineActor(qb::ActorId& websocket_id) 
+    explicit CommandLineActor(qb::ActorId &websocket_id)
         : _websocket_actor_id(websocket_id) {}
 
     // Destructor to ensure thread is properly cleaned up
@@ -429,11 +443,13 @@ public:
         cleanup_thread();
     }
 
-    void set_websocket_actor_id(qb::ActorId websocket_id) {
+    void
+    set_websocket_actor_id(qb::ActorId websocket_id) {
         _websocket_actor_id = websocket_id;
     }
 
-    qb::io::async::task<bool> onInit() override {
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "=== QB WebSocket Chat Client ===\n";
         std::cout << "Type /help for available commands\n";
         std::cout << "Type /connect ws://localhost:8080/ws to connect to server\n\n";
@@ -459,34 +475,41 @@ public:
         co_return true;
     }
 
-    void on(const DisplayMessageEvent& event) {
+    void
+    on(const DisplayMessageEvent &event) {
         display_message(event.message, event.type);
     }
 
-    void on(const SetWebSocketActorEvent& event) {
+    void
+    on(const SetWebSocketActorEvent &event) {
         _websocket_actor_id = event.websocket_actor_id;
         display_message("WebSocket actor connected to CommandLine interface", "info");
     }
 
 private:
-    void schedule_input_check() {
-        if (!is_alive() || !_running) return;
-        
+    void
+    schedule_input_check() {
+        if (!is_alive() || !_running)
+            return;
+
         // Check for input non-blockingly
         std::string input;
         if (g_input_queue.try_pop(input)) {
             handle_input(input);
         }
-        
+
         // Schedule next check in 50ms
-        qb::io::async::callback([this]() {
-            if (is_alive()) {
-                schedule_input_check();
-            }
-        }, std::chrono::milliseconds(50));
+        qb::io::async::callback(
+            [this]() {
+                if (is_alive()) {
+                    schedule_input_check();
+                }
+            },
+            std::chrono::milliseconds(50));
     }
 
-    void handle_input(const std::string& input) {
+    void
+    handle_input(const std::string &input) {
         // Handle commands
         if (input[0] == '/') {
             handle_command(input);
@@ -501,24 +524,27 @@ private:
         }
     }
 
-    void handle_command(const std::string& command) {
+    void
+    handle_command(const std::string &command) {
         if (command == "/help") {
             show_help();
         } else if (command == "/quit" || command == "/exit") {
-            _running = false;  // Stop the input thread
+            _running = false; // Stop the input thread
             display_message("Shutting down chat client...", "info");
-            
+
             // Send disconnect to WebSocket first
             if (_websocket_actor_id.is_valid()) {
                 push<DisconnectEvent>(_websocket_actor_id);
             }
-            
+
             // Broadcast KillEvent to all actors to shutdown gracefully
-            qb::io::async::callback([this]() {
-                if (is_alive()) {
-                    broadcast<qb::KillEvent>();
-                }
-            }, std::chrono::milliseconds(500));  // Small delay to let disconnect finish
+            qb::io::async::callback(
+                [this]() {
+                    if (is_alive()) {
+                        broadcast<qb::KillEvent>();
+                    }
+                },
+                std::chrono::milliseconds(500)); // Small delay to let disconnect finish
         } else if (command.substr(0, 9) == "/connect ") {
             std::string url = command.substr(9);
             if (!url.empty() && _websocket_actor_id.is_valid()) {
@@ -551,7 +577,8 @@ private:
         }
     }
 
-    void show_help() {
+    void
+    show_help() {
         std::cout << "\n=== Available Commands ===\n";
         std::cout << "/connect <url>    - Connect to WebSocket server (e.g., ws://localhost:8080/ws)\n";
         std::cout << "/disconnect       - Disconnect from server\n";
@@ -562,7 +589,8 @@ private:
         std::cout << "\nType any other text to send a chat message\n\n";
     }
 
-    void display_message(const std::string& message, const std::string& type) {
+    void
+    display_message(const std::string &message, const std::string &type) {
         if (type == "error") {
             std::cout << "\033[31m" << message << "\033[0m\n"; // Red
         } else if (type == "success") {
@@ -588,10 +616,11 @@ private:
         }
     }
 
-    void cleanup_thread() {
+    void
+    cleanup_thread() {
         _running = false;
         g_input_queue.shutdown();
-        
+
         // Make sure thread is properly joined
         if (_input_thread.joinable()) {
             // Give the thread a moment to finish reading current line
@@ -600,40 +629,42 @@ private:
         }
     }
 
-    void on(const qb::KillEvent& event) noexcept {
+    void
+    on(const qb::KillEvent &event) noexcept {
         cleanup_thread();
         this->kill();
     }
 };
 
-int main(int argc, char* argv[]) {
+int
+main(int argc, char *argv[]) {
     qb::Main engine;
-    
+
     std::cout << "QB WebSocket Chat Client Configuration:\n";
-    
+
     // Create actors - CommandLine first since WebSocket needs its ID
     auto websocket_actor_id = qb::ActorId{};
-    auto cmdline_actor_id = engine.addActor<CommandLineActor>(0, websocket_actor_id);
-    websocket_actor_id = engine.addActor<WebSocketClientActor>(1, cmdline_actor_id);
-    
+    auto cmdline_actor_id   = engine.addActor<CommandLineActor>(0, websocket_actor_id);
+    websocket_actor_id      = engine.addActor<WebSocketClientActor>(1, cmdline_actor_id);
+
     std::cout << "WebSocket Actor ID: " << websocket_actor_id.index() << "\n";
     std::cout << "CommandLine Actor ID: " << cmdline_actor_id.index() << "\n\n";
-    
+
     // Handle command line arguments
     if (argc > 1) {
         std::string server_url = argv[1];
         std::cout << "Auto-connecting to: " << server_url << "\n";
         std::cout << "After startup, type: /connect " << server_url << " to connect\n\n";
     }
-    
+
     // Start the engine
     engine.start();
     engine.join();
-    
+
     if (engine.hasError()) {
         std::cerr << "Engine error occurred" << std::endl;
         return 1;
     }
-    
+
     return 0;
-} 
+}

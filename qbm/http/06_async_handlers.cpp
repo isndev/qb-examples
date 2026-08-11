@@ -23,16 +23,22 @@
 #include <qbm/http/http.h>
 
 // Async HTTP Server Actor demonstrating various async patterns
-class AsyncServerActor : public qb::Actor, public qb::http::Server<> {
+class AsyncServerActor
+    : public qb::Actor
+    , public qb::http::Server<> {
 private:
-    std::mt19937 _random_gen;
+    std::mt19937                           _random_gen;
     std::uniform_real_distribution<double> _delay_dist;
-    std::uniform_int_distribution<int> _success_dist;
-    
+    std::uniform_int_distribution<int>     _success_dist;
+
 public:
-    AsyncServerActor() : _random_gen(std::random_device{}()), _delay_dist(0.1, 2.0), _success_dist(1, 10) {}
-    
-    qb::io::async::task<bool> onInit() override {
+    AsyncServerActor()
+        : _random_gen(std::random_device{}())
+        , _delay_dist(0.1, 2.0)
+        , _success_dist(1, 10) {}
+
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "Initializing Async Handlers Server Actor..." << std::endl;
 
         setup_middleware();
@@ -54,122 +60,105 @@ public:
 
         co_return true;
     }
-    
+
 private:
-    void setup_middleware() {
+    void
+    setup_middleware() {
         // Request logging middleware
         router().use([](auto ctx, auto next) {
             auto start_time = std::chrono::high_resolution_clock::now();
-            std::cout << "[ASYNC] " << std::to_string(ctx->request().method())
-                      << " " << ctx->request().uri().path() << " - Starting" << std::endl;
-            
+            std::cout << "[ASYNC] " << std::to_string(ctx->request().method()) << " " << ctx->request().uri().path() << " - Starting"
+                      << std::endl;
+
             ctx->set("start_time", start_time);
             next();
         });
-        
+
         // Response timing middleware
         router().use([](auto ctx, auto next) {
             next();
-            
+
             if (ctx->has("start_time")) {
                 auto start_time_opt = ctx->template get<std::chrono::high_resolution_clock::time_point>("start_time");
                 if (start_time_opt.has_value()) {
                     auto end_time = std::chrono::high_resolution_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        end_time - start_time_opt.value());
-                    
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time_opt.value());
+
                     ctx->response().add_header("X-Response-Time", std::to_string(duration.count()) + "ms");
-                    
-                    std::cout << "[ASYNC] " << std::to_string(ctx->request().method())
-                              << " " << ctx->request().uri().path()
+
+                    std::cout << "[ASYNC] " << std::to_string(ctx->request().method()) << " " << ctx->request().uri().path()
                               << " - Completed in " << duration.count() << "ms" << std::endl;
                 }
             }
         });
     }
-    
-    void setup_routes() {
+
+    void
+    setup_routes() {
         // Home page with information
-        router().get("/", [this](auto ctx) {
-            handle_home(ctx);
-        });
-        
+        router().get("/", [this](auto ctx) { handle_home(ctx); });
+
         // Synchronous handler for comparison
-        router().get("/sync", [this](auto ctx) {
-            handle_sync(ctx);
-        });
-        
+        router().get("/sync", [this](auto ctx) { handle_sync(ctx); });
+
         // Async handlers demonstrating different patterns.
         // Each handler is a coroutine: it `co_await`s a simulated async
         // delay, then resumes linearly to build and complete the response.
-        router().get("/async/simple", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_simple(ctx);
-        });
+        router().get("/async/simple", [this](auto ctx) -> qb::io::async::task<void> { return handle_async_simple(ctx); });
 
-        router().get("/async/database", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_database(ctx);
-        });
+        router().get("/async/database", [this](auto ctx) -> qb::io::async::task<void> { return handle_async_database(ctx); });
 
-        router().get("/async/external-api", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_external_api(ctx);
-        });
+        router().get("/async/external-api", [this](auto ctx) -> qb::io::async::task<void> { return handle_async_external_api(ctx); });
 
-        router().get("/async/multiple-operations", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_multiple_operations(ctx);
-        });
+        router().get("/async/multiple-operations",
+                     [this](auto ctx) -> qb::io::async::task<void> { return handle_async_multiple_operations(ctx); });
 
-        router().get("/async/error-prone", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_error_prone(ctx);
-        });
+        router().get("/async/error-prone", [this](auto ctx) -> qb::io::async::task<void> { return handle_async_error_prone(ctx); });
 
-        router().post("/async/process-data", [this](auto ctx) -> qb::io::async::task<void> {
-            return handle_async_process_data(ctx);
-        });
+        router().post("/async/process-data", [this](auto ctx) -> qb::io::async::task<void> { return handle_async_process_data(ctx); });
     }
-    
-    void handle_home(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+
+    void
+    handle_home(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         ctx->response().status() = qb::http::Status::OK;
         ctx->response().add_header("Content-Type", "application/json");
-        
+
         qb::json response = {
             {"message", "QB HTTP Async Handlers Demo"},
             {"description", "Demonstrates various asynchronous request handling patterns"},
-            {"endpoints", {
-                "GET / - This home page",
-                "GET /sync - Synchronous handler (for comparison)",
-                "GET /async/simple - Basic async operation",
-                "GET /async/database - Simulated async database query",
-                "GET /async/external-api - Simulated external API call",
-                "GET /async/multiple-operations - Multiple concurrent async operations",
-                "GET /async/error-prone - Async operation that might fail",
-                "POST /async/process-data - Async data processing"
-            }},
+            {"endpoints",
+             {"GET / - This home page", "GET /sync - Synchronous handler (for comparison)", "GET /async/simple - Basic async operation",
+              "GET /async/database - Simulated async database query", "GET /async/external-api - Simulated external API call",
+              "GET /async/multiple-operations - Multiple concurrent async operations",
+              "GET /async/error-prone - Async operation that might fail", "POST /async/process-data - Async data processing"}},
             {"note", "All async endpoints simulate realistic delays and operations"}
         };
-        
+
         ctx->response().body() = response;
         ctx->complete();
     }
-    
-    void handle_sync(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+
+    void
+    handle_sync(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         // Synchronous handler - completes immediately
         std::cout << "[SYNC] Processing synchronous request" << std::endl;
-        
+
         ctx->response().status() = qb::http::Status::OK;
         ctx->response().add_header("Content-Type", "application/json");
-        
+
         qb::json response = {
             {"type", "synchronous"},
             {"message", "This response was generated synchronously"},
             {"timestamp", std::time(nullptr)},
             {"processing_time", "immediate"}
         };
-        
+
         ctx->response().body() = response;
         ctx->complete();
     }
-    
-    qb::io::async::task<void> handle_async_simple(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+
+    qb::io::async::task<void>
+    handle_async_simple(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::cout << "[ASYNC] Starting simple async operation" << std::endl;
 
         // Simulate an async operation with a delay
@@ -196,7 +185,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> handle_async_database(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+    qb::io::async::task<void>
+    handle_async_database(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::cout << "[ASYNC] Starting database query simulation" << std::endl;
 
         // Simulate database query with variable delay
@@ -209,21 +199,14 @@ private:
         // Simulate query results
         qb::json users = qb::json::array();
         for (int i = 1; i <= 5; ++i) {
-            users.push_back({
-                {"id", i},
-                {"name", "User" + std::to_string(i)},
-                {"email", "user" + std::to_string(i) + "@example.com"}
-            });
+            users.push_back({{"id", i}, {"name", "User" + std::to_string(i)}, {"email", "user" + std::to_string(i) + "@example.com"}});
         }
 
         ctx->response().status() = qb::http::Status::OK;
         ctx->response().add_header("Content-Type", "application/json");
 
         qb::json response = {
-            {"type", "database_query"},
-            {"query_time_seconds", query_time},
-            {"results", users},
-            {"total_records", users.size()}
+            {"type", "database_query"}, {"query_time_seconds", query_time}, {"results", users}, {"total_records", users.size()}
         };
 
         ctx->response().body() = response;
@@ -231,7 +214,8 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> handle_async_external_api(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+    qb::io::async::task<void>
+    handle_async_external_api(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::cout << "[ASYNC] Starting external API call simulation" << std::endl;
 
         // Simulate external API call with longer delay
@@ -248,12 +232,7 @@ private:
         qb::json response = {
             {"type", "external_api"},
             {"api_call_time_seconds", api_delay},
-            {"data", {
-                {"weather", "sunny"},
-                {"temperature", 23.5},
-                {"humidity", 65},
-                {"location", "Paris, France"}
-            }},
+            {"data", {{"weather", "sunny"}, {"temperature", 23.5}, {"humidity", 65}, {"location", "Paris, France"}}},
             {"cached", false},
             {"source", "external_weather_api"}
         };
@@ -262,8 +241,9 @@ private:
         ctx->complete();
         co_return;
     }
-    
-    qb::io::async::task<void> handle_async_multiple_operations(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+
+    qb::io::async::task<void>
+    handle_async_multiple_operations(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::cout << "[ASYNC] Starting multiple concurrent operations" << std::endl;
 
         qb::json results = qb::json::object();
@@ -271,29 +251,17 @@ private:
         // Operation 1: Database query
         double db_delay = _delay_dist(_random_gen);
         co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(db_delay)));
-        results["database"] = {
-            {"status", "completed"},
-            {"delay", db_delay},
-            {"records", 42}
-        };
+        results["database"] = {{"status", "completed"}, {"delay", db_delay}, {"records", 42}};
 
         // Operation 2: Cache lookup (faster)
         double cache_delay = _delay_dist(_random_gen) * 0.3;
         co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(cache_delay)));
-        results["cache"] = {
-            {"status", "completed"},
-            {"delay", cache_delay},
-            {"hit_rate", 0.85}
-        };
+        results["cache"] = {{"status", "completed"}, {"delay", cache_delay}, {"hit_rate", 0.85}};
 
         // Operation 3: External service
         double service_delay = _delay_dist(_random_gen) + 0.5;
         co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(service_delay)));
-        results["external_service"] = {
-            {"status", "completed"},
-            {"delay", service_delay},
-            {"data_size", 1024}
-        };
+        results["external_service"] = {{"status", "completed"}, {"delay", service_delay}, {"data_size", 1024}};
 
         std::cout << "[ASYNC] All 3 operations completed" << std::endl;
 
@@ -312,11 +280,12 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> handle_async_error_prone(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+    qb::io::async::task<void>
+    handle_async_error_prone(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::cout << "[ASYNC] Starting error-prone async operation" << std::endl;
 
-        double delay = _delay_dist(_random_gen);
-        bool will_succeed = _success_dist(_random_gen) > 3; // 70% success rate
+        double delay        = _delay_dist(_random_gen);
+        bool   will_succeed = _success_dist(_random_gen) > 3; // 70% success rate
 
         co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(delay)));
 
@@ -355,11 +324,12 @@ private:
         co_return;
     }
 
-    qb::io::async::task<void> handle_async_process_data(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
+    qb::io::async::task<void>
+    handle_async_process_data(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         qb::json request_data;
         try {
             request_data = ctx->request().body().as<qb::json>();
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             ctx->response().status() = qb::http::Status::BAD_REQUEST;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{{"error", "Invalid JSON data"}};
@@ -370,7 +340,7 @@ private:
         std::cout << "[ASYNC] Starting data processing operation" << std::endl;
 
         // Simulate processing time based on data size
-        int data_size = request_data.value("items", qb::json::array()).size();
+        int    data_size       = request_data.value("items", qb::json::array()).size();
         double processing_time = 0.1 + (data_size * 0.05); // Base + per-item time
 
         co_await qb::io::async::sleep(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(processing_time)));
@@ -380,9 +350,9 @@ private:
         // Simulate processing results
         qb::json processed_items = qb::json::array();
         if (request_data.contains("items")) {
-            for (const auto& item : request_data["items"]) {
-                qb::json processed_item = item;
-                processed_item["processed"] = true;
+            for (const auto &item : request_data["items"]) {
+                qb::json processed_item           = item;
+                processed_item["processed"]       = true;
                 processed_item["processing_time"] = data_size > 0 ? processing_time / data_size : processing_time;
                 processed_items.push_back(processed_item);
             }
@@ -403,8 +373,9 @@ private:
         ctx->complete();
         co_return;
     }
-    
-    void print_available_routes() {
+
+    void
+    print_available_routes() {
         std::cout << "Available async endpoints:" << std::endl;
         std::cout << "   GET  /                              - Home page with info" << std::endl;
         std::cout << "   GET  /sync                          - Synchronous handler (comparison)" << std::endl;
@@ -415,38 +386,40 @@ private:
         std::cout << "   GET  /async/error-prone             - Operation that might fail" << std::endl;
         std::cout << "   POST /async/process-data            - Async data processing" << std::endl;
     }
-    
-    void on(const qb::KillEvent& event) noexcept {
+
+    void
+    on(const qb::KillEvent &event) noexcept {
         std::cout << "Shutting down Async Server..." << std::endl;
         this->kill();
     }
 };
 
-int main() {
+int
+main() {
     try {
         // Initialize the QB Actor framework
         qb::Main engine;
-        
+
         // Add our HTTP server actor to core 0
         auto server_id = engine.addActor<AsyncServerActor>(0);
-        
+
         if (!server_id.is_valid()) {
             std::cerr << "Failed to create server actor" << std::endl;
             return 1;
         }
-        
+
         std::cout << "Async server actor created with ID: " << server_id.sid() << std::endl;
-        
+
         // Start the engine (blocks until stopped)
         engine.start();
         engine.join();
-        
+
         std::cout << "Async server stopped gracefully" << std::endl;
-        
-    } catch (const std::exception& e) {
+
+    } catch (const std::exception &e) {
         std::cerr << "Server error: " << e.what() << std::endl;
         return 1;
     }
-    
+
     return 0;
-} 
+}

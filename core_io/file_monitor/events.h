@@ -43,23 +43,24 @@ namespace file_monitor {
 /**
  * @brief Event types for file changes
  */
-enum class FileEventType {
-    CREATED,
-    MODIFIED,
-    DELETED,
-    ATTRIBUTES_CHANGED
-};
+enum class FileEventType { CREATED, MODIFIED, DELETED, ATTRIBUTES_CHANGED };
 
 /**
  * @brief Convert file event type to string
  */
-inline std::string eventTypeToString(FileEventType type) {
+inline std::string
+eventTypeToString(FileEventType type) {
     switch (type) {
-        case FileEventType::CREATED: return "CREATED";
-        case FileEventType::MODIFIED: return "MODIFIED";
-        case FileEventType::DELETED: return "DELETED";
-        case FileEventType::ATTRIBUTES_CHANGED: return "ATTRIBUTES_CHANGED";
-        default: return "UNKNOWN";
+        case FileEventType::CREATED:
+            return "CREATED";
+        case FileEventType::MODIFIED:
+            return "MODIFIED";
+        case FileEventType::DELETED:
+            return "DELETED";
+        case FileEventType::ATTRIBUTES_CHANGED:
+            return "ATTRIBUTES_CHANGED";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -67,9 +68,9 @@ inline std::string eventTypeToString(FileEventType type) {
  * @brief File metadata structure to store file information
  */
 struct FileMetadata {
-    std::string path;
-    size_t size = 0;
-    std::string content_hash;
+    std::string                           path;
+    size_t                                size = 0;
+    std::string                           content_hash;
     std::chrono::system_clock::time_point last_modified;
 };
 
@@ -77,12 +78,14 @@ struct FileMetadata {
  * @brief File change event information
  */
 struct FileEvent : public qb::Event {
-    std::string path;
-    FileEventType type;
+    std::string                           path;
+    FileEventType                         type;
     std::chrono::system_clock::time_point timestamp;
-    
-    FileEvent(const std::string& p, FileEventType t) 
-        : path(p), type(t), timestamp(std::chrono::system_clock::now()) {}
+
+    FileEvent(const std::string &p, FileEventType t)
+        : path(p)
+        , type(t)
+        , timestamp(std::chrono::system_clock::now()) {}
 };
 
 /**
@@ -90,11 +93,13 @@ struct FileEvent : public qb::Event {
  */
 struct WatchDirectoryRequest : public qb::Event {
     std::string path;
-    bool recursive;
+    bool        recursive;
     qb::ActorId requestor;
-    
-    WatchDirectoryRequest(const std::string& p, bool r, qb::ActorId req) 
-        : path(p), recursive(r), requestor(req) {}
+
+    WatchDirectoryRequest(const std::string &p, bool r, qb::ActorId req)
+        : path(p)
+        , recursive(r)
+        , requestor(req) {}
 };
 
 /**
@@ -102,11 +107,13 @@ struct WatchDirectoryRequest : public qb::Event {
  */
 struct WatchDirectoryResponse : public qb::Event {
     std::string path;
-    bool success;
+    bool        success;
     std::string error_message;
-    
-    WatchDirectoryResponse(const std::string& p, bool s, const std::string& err = "") 
-        : path(p), success(s), error_message(err) {}
+
+    WatchDirectoryResponse(const std::string &p, bool s, const std::string &err = "")
+        : path(p)
+        , success(s)
+        , error_message(err) {}
 };
 
 /**
@@ -115,9 +122,10 @@ struct WatchDirectoryResponse : public qb::Event {
 struct UnwatchDirectoryRequest : public qb::Event {
     std::string path;
     qb::ActorId requestor;
-    
-    UnwatchDirectoryRequest(const std::string& p, qb::ActorId req) 
-        : path(p), requestor(req) {}
+
+    UnwatchDirectoryRequest(const std::string &p, qb::ActorId req)
+        : path(p)
+        , requestor(req) {}
 };
 
 /**
@@ -125,13 +133,14 @@ struct UnwatchDirectoryRequest : public qb::Event {
  */
 struct MonitoringStats : public qb::Event {
     int directories_watched = 0;
-    int files_monitored = 0;
-    int created_events = 0;
-    int modified_events = 0;
-    int deleted_events = 0;
-    int attribute_events = 0;
-    
-    int total_events() const {
+    int files_monitored     = 0;
+    int created_events      = 0;
+    int modified_events     = 0;
+    int deleted_events      = 0;
+    int attribute_events    = 0;
+
+    int
+    total_events() const {
         return created_events + modified_events + deleted_events + attribute_events;
     }
 };
@@ -140,13 +149,14 @@ struct MonitoringStats : public qb::Event {
  * @brief Statistics on file processing
  */
 struct ProcessingStats : public qb::Event {
-    int files_processed = 0;
-    int files_created = 0;
-    int files_modified = 0;
-    int files_deleted = 0;
+    int files_processed    = 0;
+    int files_created      = 0;
+    int files_modified     = 0;
+    int files_deleted      = 0;
     int errors_encountered = 0;
-    
-    int total_operations() const {
+
+    int
+    total_operations() const {
         return files_created + files_modified + files_deleted;
     }
 };
@@ -156,7 +166,7 @@ struct ProcessingStats : public qb::Event {
  */
 struct SetProcessingConfigRequest : public qb::Event {
     bool process_hidden_files = false;
-    
+
     explicit SetProcessingConfigRequest(bool process_hidden = false)
         : process_hidden_files(process_hidden) {}
 };
@@ -168,4 +178,4 @@ struct GetProcessingStatsRequest : public qb::Event {
     GetProcessingStatsRequest() = default;
 };
 
-} // namespace file_monitor 
+} // namespace file_monitor

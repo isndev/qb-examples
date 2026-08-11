@@ -51,14 +51,14 @@ namespace broker {
 
 /**
  * @brief Container for managing message lifetimes with thread-safe reference counting
- * 
+ *
  * This class provides ownership management for message data, allowing:
  * - Zero-copy string_view references to message contents
  * - Safe lifetime management via atomic shared_ptr
  * - Efficient move semantics for large message payloads
  * - Thread-safe reference counting for multi-core environments
- * 
- * The container ensures that message memory is properly freed when the last 
+ *
+ * The container ensures that message memory is properly freed when the last
  * reference is destroyed, even when accessed from different CPU cores.
  */
 class MessageContainer {
@@ -86,7 +86,7 @@ public:
      *
      * @param other The container to share data with
      */
-    MessageContainer(const MessageContainer& other) = default;
+    MessageContainer(const MessageContainer &other) = default;
 
     /**
      * @brief Copy assignment
@@ -94,17 +94,17 @@ public:
      * @param other The container to share data with
      * @return Reference to this container
      */
-    MessageContainer& operator=(const MessageContainer& other) = default;
+    MessageContainer &operator=(const MessageContainer &other) = default;
 
     /**
      * @brief Move constructor
      */
-    MessageContainer(MessageContainer&& other) noexcept = default;
+    MessageContainer(MessageContainer &&other) noexcept = default;
 
     /**
      * @brief Move assignment
      */
-    MessageContainer& operator=(MessageContainer&& other) noexcept = default;
+    MessageContainer &operator=(MessageContainer &&other) noexcept = default;
 
     /**
      * @brief Constructs from an existing message
@@ -114,7 +114,7 @@ public:
      *
      * @param msg The message to take ownership of
      */
-    explicit MessageContainer(broker::Message&& msg)
+    explicit MessageContainer(broker::Message &&msg)
         : _message(std::make_shared<broker::Message>(std::move(msg))) {}
 
     /**
@@ -133,7 +133,8 @@ public:
      * @brief Gets the message type
      * @return Message type enum value
      */
-    broker::MessageType type() const {
+    broker::MessageType
+    type() const {
         return _message ? _message->type : broker::MessageType::ERROR;
     }
 
@@ -145,7 +146,8 @@ public:
      *
      * @return View of the message payload
      */
-    std::string_view payload() const {
+    std::string_view
+    payload() const {
         return _message ? std::string_view(_message->payload) : std::string_view{};
     }
 
@@ -157,7 +159,8 @@ public:
      *
      * @return Const reference to the message
      */
-    const broker::Message& message() const {
+    const broker::Message &
+    message() const {
         static const broker::Message empty_msg{};
         return _message ? *_message : empty_msg;
     }
@@ -166,7 +169,8 @@ public:
      * @brief Checks if the container holds a valid message
      * @return true if container has a message
      */
-    bool valid() const {
+    bool
+    valid() const {
         return _message != nullptr;
     }
 
@@ -174,58 +178,60 @@ public:
      * @brief Implicit conversion to bool for validity checks
      * @return true if container has a valid message
      */
-    operator bool() const { return valid(); }
+    operator bool() const {
+        return valid();
+    }
 };
 
 } // namespace broker
 
 /**
  * @brief Event triggered when a new TCP connection is accepted
- * 
+ *
  * Flow:
  * 1. AcceptActor receives new TCP connection
  * 2. Creates NewSessionEvent with connected socket
  * 3. Routes event to ServerActor for session creation
- * 
+ *
  * This event initiates the client connection lifecycle and enables
  * proper resource management through QB's RAII patterns.
  */
 struct NewSessionEvent : public qb::Event {
-    qb::io::tcp::socket socket;  ///< Connected client socket with RAII management
+    qb::io::tcp::socket socket; ///< Connected client socket with RAII management
 };
 
 /**
  * @brief Event for topic subscription requests
- * 
+ *
  * Flow:
  * 1. Client sends SUBSCRIBE message
  * 2. ServerActor creates SubscribeEvent
  * 3. TopicManagerActor processes subscription:
  *    - Registers client for the topic
  *    - Sends confirmation response
- * 
+ *
  * The event source (evt.getSource()) contains the ServerActor's ID,
  * enabling TopicManagerActor to route responses back to the correct client.
  */
 struct SubscribeEvent : public qb::Event {
-    qb::uuid session_id;                     ///< Unique session identifier
-    broker::MessageContainer message_data;   ///< Message container with shared ownership
-    std::string_view topic;                  ///< View of topic from message payload
-    
+    qb::uuid                 session_id;   ///< Unique session identifier
+    broker::MessageContainer message_data; ///< Message container with shared ownership
+    std::string_view         topic;        ///< View of topic from message payload
+
     /**
      * @brief Creates subscription event from session and message
-     * 
+     *
      * Optimized for zero-copy by using views into the message payload
      * while maintaining safe lifetime through shared ownership.
-     * 
+     *
      * @param id Session identifier
      * @param msg Message to process
      */
-    SubscribeEvent(qb::uuid id, broker::Message&& msg)
-        : session_id(id), 
-          message_data(std::move(msg)),
-          topic(message_data.payload()) {}
-    
+    SubscribeEvent(qb::uuid id, broker::Message &&msg)
+        : session_id(id)
+        , message_data(std::move(msg))
+        , topic(message_data.payload()) {}
+
     /**
      * @brief Default constructor for QB event system
      */
@@ -234,36 +240,36 @@ struct SubscribeEvent : public qb::Event {
 
 /**
  * @brief Event for topic unsubscription requests
- * 
+ *
  * Flow:
  * 1. Client sends UNSUBSCRIBE message
  * 2. ServerActor creates UnsubscribeEvent
  * 3. TopicManagerActor processes unsubscription:
  *    - Removes client from the topic
  *    - Sends confirmation response
- * 
+ *
  * The event source (evt.getSource()) identifies the ServerActor
  * that was handling the client.
  */
 struct UnsubscribeEvent : public qb::Event {
-    qb::uuid session_id;                     ///< Unique session identifier
-    broker::MessageContainer message_data;   ///< Message container with shared ownership
-    std::string_view topic;                  ///< View of topic from message payload
-    
+    qb::uuid                 session_id;   ///< Unique session identifier
+    broker::MessageContainer message_data; ///< Message container with shared ownership
+    std::string_view         topic;        ///< View of topic from message payload
+
     /**
      * @brief Creates unsubscription event from session and message
-     * 
+     *
      * Optimized for zero-copy by using views into the message payload
      * while maintaining safe lifetime through shared ownership.
-     * 
+     *
      * @param id Session identifier
      * @param msg Message to process
      */
-    UnsubscribeEvent(qb::uuid id, broker::Message&& msg)
-        : session_id(id), 
-          message_data(std::move(msg)),
-          topic(message_data.payload()) {}
-    
+    UnsubscribeEvent(qb::uuid id, broker::Message &&msg)
+        : session_id(id)
+        , message_data(std::move(msg))
+        , topic(message_data.payload()) {}
+
     /**
      * @brief Default constructor for QB event system
      */
@@ -272,138 +278,138 @@ struct UnsubscribeEvent : public qb::Event {
 
 /**
  * @brief Event for publishing messages to topics
- * 
+ *
  * Flow:
  * 1. Client sends PUBLISH message
  * 2. ServerActor creates PublishEvent
  * 3. TopicManagerActor processes publication:
  *    - Finds all topic subscribers
  *    - Broadcasts message to subscribers
- * 
+ *
  * Uses zero-copy techniques with shared ownership to efficiently
  * handle message content without unnecessary copying.
  */
 struct PublishEvent : public qb::Event {
-    qb::uuid session_id;                     ///< Message sender's session ID
-    broker::MessageContainer message_data;   ///< Message container with shared ownership
-    std::string_view topic;                  ///< View of topic from message payload
-    std::string_view content;                ///< View of message content
-    
+    qb::uuid                 session_id;   ///< Message sender's session ID
+    broker::MessageContainer message_data; ///< Message container with shared ownership
+    std::string_view         topic;        ///< View of topic from message payload
+    std::string_view         content;      ///< View of message content
+
     /**
      * @brief Default constructor for QB event system
      */
     PublishEvent() = default;
-    
+
     /**
      * @brief Creates publish event from pre-parsed message
-     * 
+     *
      * Used when message was already parsed into topic and content parts,
      * but still maintains shared ownership for safety.
-     * 
+     *
      * @param id Session identifier
      * @param msg Original message
      * @param t Topic string view
      * @param c Content string view
      */
-    PublishEvent(qb::uuid id, broker::Message&& msg, std::string_view t, std::string_view c)
-        : session_id(id), 
-          message_data(std::move(msg)),
-          topic(t),
-          content(c) {}
-          
+    PublishEvent(qb::uuid id, broker::Message &&msg, std::string_view t, std::string_view c)
+        : session_id(id)
+        , message_data(std::move(msg))
+        , topic(t)
+        , content(c) {}
+
     /**
      * @brief Creates publish event from a MessageContainer
-     * 
+     *
      * This constructor is designed to work with pre-created MessageContainer,
      * allowing safe use of string_view references.
-     * 
+     *
      * @param id Session identifier
      * @param container Message container with ownership
      * @param t Topic string view (must be view into container)
      * @param c Content string view (must be view into container)
      */
-    PublishEvent(qb::uuid id, broker::MessageContainer&& container, 
-                 std::string_view t, std::string_view c)
-        : session_id(id), 
-          message_data(std::move(container)),
-          topic(t),
-          content(c) {}
+    PublishEvent(qb::uuid id, broker::MessageContainer &&container, std::string_view t, std::string_view c)
+        : session_id(id)
+        , message_data(std::move(container))
+        , topic(t)
+        , content(c) {}
 };
 
 /**
  * @brief Event for targeted message delivery
- * 
+ *
  * Flow:
  * 1. TopicManagerActor creates SendMessageEvent
  * 2. Routes to specific ServerActor
  * 3. ServerActor sends through client's socket
- * 
+ *
  * Optimized to use shared ownership for message data to avoid
  * unnecessary copying during event routing.
  */
 struct SendMessageEvent : public qb::Event {
-    qb::uuid session_id;                     ///< Target client's session ID
-    broker::MessageContainer message_data;   ///< Message container with shared ownership
-    
+    qb::uuid                 session_id;   ///< Target client's session ID
+    broker::MessageContainer message_data; ///< Message container with shared ownership
+
     /**
      * @brief Creates message delivery event
-     * 
+     *
      * @param id Target session
      * @param type Message type
      * @param payload Message content
      */
     SendMessageEvent(qb::uuid id, broker::MessageType type, std::string payload)
-        : session_id(id),
-          message_data(type, std::move(payload)) {}
-    
+        : session_id(id)
+        , message_data(type, std::move(payload)) {}
+
     /**
      * @brief Creates message delivery event with a shared message container
-     * 
+     *
      * This constructor enables atomic sharing of the same message data
      * between multiple recipients. By sharing the underlying message container,
      * we avoid copying message data even when broadcasting to many clients.
-     * 
+     *
      * @param id Target session
      * @param shared_container A shared pointer to an existing message container
      */
-    SendMessageEvent(qb::uuid id, const broker::MessageContainer& shared_container)
-        : session_id(id),
-          message_data(shared_container) {}
-    
+    SendMessageEvent(qb::uuid id, const broker::MessageContainer &shared_container)
+        : session_id(id)
+        , message_data(shared_container) {}
+
     /**
      * @brief Default constructor for QB event system
      */
     SendMessageEvent() = default;
-    
+
     /**
      * @brief Gets the message to deliver
      * @return Const reference to the message
      */
-    const broker::Message& message() const {
+    const broker::Message &
+    message() const {
         return message_data.message();
     }
 };
 
 /**
  * @brief Event for client disconnection handling
- * 
+ *
  * Flow:
  * 1. Client disconnects or timeout occurs
  * 2. ServerActor detects disconnection
  * 3. TopicManagerActor processes cleanup:
  *    - Removes from all topic subscriptions
  *    - Cleans up session resources
- * 
+ *
  * The event source (evt.getSource()) identifies the ServerActor
  * that was handling the disconnected client.
  */
 struct DisconnectEvent : public qb::Event {
-    qb::uuid session_id;     ///< ID of the disconnected session
+    qb::uuid session_id; ///< ID of the disconnected session
 };
 
 /**
  * @brief Event for client-side user input handling
- * 
+ *
  * Flow:
  * 1. User enters command in client
  * 2. InputActor creates BrokerInputEvent
@@ -411,10 +417,10 @@ struct DisconnectEvent : public qb::Event {
  *    - Parses command format
  *    - Formats as protocol message
  *    - Sends to server if connected
- * 
+ *
  * This event separates input handling from network I/O,
  * enabling clean separation of concerns in the client.
  */
 struct BrokerInputEvent : public qb::Event {
-    qb::string<1024> command;    ///< User input command (max 1024 chars)
-}; 
+    qb::string<1024> command; ///< User input command (max 1024 chars)
+};

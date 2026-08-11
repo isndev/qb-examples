@@ -30,7 +30,7 @@
  *    - Uses QB's URI system for network setup
  *    - Supports flexible binding options
  *    - Enables runtime configuration
- * 
+ *
  * 2. Server Pool:
  *    - Manages multiple server instances
  *    - Enables load distribution
@@ -46,18 +46,19 @@ AcceptActor::AcceptActor(qb::io::uri listen_at, qb::ActorIdList pool)
  *    - Checks server pool
  *    - Validates configuration
  *    - Ensures proper setup
- * 
+ *
  * 2. Listener Setup:
  *    - Binds to specified address
  *    - Configures TCP listener
  *    - Starts accepting connections
- * 
+ *
  * 3. Error Handling:
  *    - Validates server pool
  *    - Handles bind failures
  *    - Reports initialization status
  */
-qb::io::async::task<bool> AcceptActor::onInit() {
+qb::io::async::task<bool>
+AcceptActor::onInit() {
     // Validate server pool
     if (_server_pool.empty()) {
         qb::io::cerr() << "Cannot init AcceptActor with empty server pool" << std::endl;
@@ -71,7 +72,7 @@ qb::io::async::task<bool> AcceptActor::onInit() {
     }
 
     qb::io::cout() << "AcceptActor listening on " << _listen_at.source() << std::endl;
-    start();  // Start accepting connections
+    start(); // Start accepting connections
     co_return true;
 }
 
@@ -81,23 +82,24 @@ qb::io::async::task<bool> AcceptActor::onInit() {
  *    - Round-robin distribution
  *    - Tracks connection count
  *    - Balances server load
- * 
+ *
  * 2. Socket Handling:
  *    - Moves connected socket
  *    - Creates session event
  *    - Routes to target server
- * 
+ *
  * 3. Event Creation:
  *    - Generates NewSessionEvent
  *    - Transfers socket ownership
  *    - Maintains proper lifecycle
  */
-void AcceptActor::on(accepted_socket_type&& new_io) {
+void
+AcceptActor::on(accepted_socket_type &&new_io) {
     // Distribute new connection to next server in pool (round-robin)
     auto server_id = _server_pool[_session_counter++ % _server_pool.size()];
-    
+
     // Forward socket to selected server
-    auto& evt = push<NewSessionEvent>(server_id);
+    auto &evt  = push<NewSessionEvent>(server_id);
     evt.socket = std::move(new_io);
 }
 
@@ -107,19 +109,20 @@ void AcceptActor::on(accepted_socket_type&& new_io) {
  *    - Detects acceptor failure
  *    - Initiates system shutdown
  *    - Ensures clean termination
- * 
+ *
  * 2. Notification:
  *    - Logs disconnection
  *    - Broadcasts shutdown
  *    - Coordinates cleanup
- * 
+ *
  * 3. System Management:
  *    - Handles unexpected failures
  *    - Maintains system state
  *    - Enables recovery
  */
-void AcceptActor::on(qb::io::async::event::disconnected const&) {
+void
+AcceptActor::on(qb::io::async::event::disconnected const &) {
     // Handle listener socket disconnection by shutting down the system
     qb::io::cout() << "AcceptActor disconnected" << std::endl;
-    broadcast<qb::KillEvent>();  // Broadcast shutdown signal to all actors
-} 
+    broadcast<qb::KillEvent>(); // Broadcast shutdown signal to all actors
+}

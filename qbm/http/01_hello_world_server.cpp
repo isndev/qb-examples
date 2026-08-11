@@ -19,12 +19,14 @@
 #include <qbm/http/http.h>
 
 // Define our HTTP server actor
-class HelloWorldServer : public qb::Actor
-                       , public qb::http::Server<> {
+class HelloWorldServer
+    : public qb::Actor
+    , public qb::http::Server<> {
 public:
     HelloWorldServer() = default;
-    
-    qb::io::async::task<bool> onInit() override {
+
+    qb::io::async::task<bool>
+    onInit() override {
         std::cout << "Initializing Hello World HTTP Server Actor..." << std::endl;
 
         // Set up routes
@@ -60,39 +62,41 @@ public:
 
         co_return true;
     }
-    
-    void on(const qb::KillEvent& event) noexcept {
+
+    void
+    on(const qb::KillEvent &event) noexcept {
         std::cout << "Shutting down Hello World Server..." << std::endl;
         // Clean shutdown
         this->kill();
     }
 };
 
-int main() {
+int
+main() {
     try {
         // Initialize the QB Actor framework
         qb::Main engine;
-        
+
         // Add our HTTP server actor to core 0
         auto server_id = engine.addActor<HelloWorldServer>(0);
-        
+
         if (!server_id.is_valid()) {
             std::cerr << "Failed to create server actor" << std::endl;
             return 1;
         }
-        
+
         std::cout << "Server actor created with ID: " << server_id.sid() << std::endl;
-        
+
         // Start the engine (blocks until stopped)
         engine.start();
         engine.join();
-        
+
         std::cout << "Server stopped gracefully" << std::endl;
-        
-    } catch (const std::exception& e) {
+
+    } catch (const std::exception &e) {
         std::cerr << "Server error: " << e.what() << std::endl;
         return 1;
     }
-    
+
     return 0;
-} 
+}

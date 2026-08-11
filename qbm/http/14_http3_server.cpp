@@ -132,7 +132,8 @@ private:
         _key_file    = qb::io::sys::resolve_resource(_key_file);
         _static_root = qb::io::sys::resolve_resource(_static_root);
         if (!std::filesystem::exists(_cert_file) || !std::filesystem::exists(_key_file)) {
-            std::cerr << "SSL certificate not found (" << _cert_file << "). Both stacks are TLS-only; run "
+            std::cerr << "SSL certificate not found (" << _cert_file
+                      << "). Both stacks are TLS-only; run "
                          "from the build output directory (resources/ssl is staged there)."
                       << std::endl;
             return false;
@@ -177,14 +178,12 @@ private:
         });
 
         router.use(std::make_shared<qb::http::LoggingMiddleware<Session>>(
-            [](qb::http::LogLevel, const std::string &message) { std::cout << "[dual] " << message << std::endl; },
-            qb::http::LogLevel::Info, qb::http::LogLevel::Info));
+            [](qb::http::LogLevel, const std::string &message) { std::cout << "[dual] " << message << std::endl; }, qb::http::LogLevel::Info,
+            qb::http::LogLevel::Info));
 
         qb::http::StaticFilesOptions static_options(_static_root);
-        static_options.with_path_prefix_to_strip("/static")
-            .with_etags(true)
-            .with_last_modified(true)
-            .with_cache_control(true, "public, max-age=3600");
+        static_options.with_path_prefix_to_strip("/static").with_etags(true).with_last_modified(true).with_cache_control(
+            true, "public, max-age=3600");
         router.use(qb::http::static_files_middleware<Session>(std::move(static_options)));
     }
 
@@ -202,8 +201,8 @@ private:
             j["timestamp"] = now_ms();
             j["features"]  = qb::json::array(
                 {"QUIC transport over UDP — always TLS 1.3, no cleartext", "No head-of-line blocking — independent streams per request",
-                  "1-RTT handshake, 0-RTT resumption (vs TCP+TLS 2–3 RTT)", "Connection migration — survives IP/port change via Connection ID",
-                  "QPACK header compression (HOL-blocking-free HPACK successor)", "Discovered by browsers via Alt-Svc after an HTTP/2 request"});
+                 "1-RTT handshake, 0-RTT resumption (vs TCP+TLS 2–3 RTT)", "Connection migration — survives IP/port change via Connection ID",
+                 "QPACK header compression (HOL-blocking-free HPACK successor)", "Discovered by browsers via Alt-Svc after an HTTP/2 request"});
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = j;
             ctx->complete();
@@ -224,11 +223,11 @@ private:
 
         r.get("/api/connection-info", [](auto ctx) {
             qb::json j;
-            j["feature"] = "QUIC connection identity";
-            j["note"]    = "A QUIC connection is keyed by a Connection ID (not the 4-tuple), so it survives a "
-                           "client IP/port change — the basis of connection migration.";
-            j["upgrade"] = "Served from a dual stack: HTTP/2 on TCP advertises Alt-Svc h3, the browser then "
-                           "moves to HTTP/3 over QUIC.";
+            j["feature"]   = "QUIC connection identity";
+            j["note"]      = "A QUIC connection is keyed by a Connection ID (not the 4-tuple), so it survives a "
+                             "client IP/port change — the basis of connection migration.";
+            j["upgrade"]   = "Served from a dual stack: HTTP/2 on TCP advertises Alt-Svc h3, the browser then "
+                             "moves to HTTP/3 over QUIC.";
             j["timestamp"] = now_ms();
             ctx->response().add_header("Content-Type", "application/json");
             ctx->response().body() = j;
@@ -237,9 +236,9 @@ private:
 
         r.get("/api/no-hol-blocking", [](auto ctx) {
             qb::json j;
-            j["feature"] = "No head-of-line blocking";
-            j["http2"]   = "One TCP byte stream: a single lost segment stalls ALL multiplexed streams until retransmit.";
-            j["http3"]   = "Independent QUIC streams: a lost packet only stalls its own stream; the rest keep flowing.";
+            j["feature"]     = "No head-of-line blocking";
+            j["http2"]       = "One TCP byte stream: a single lost segment stalls ALL multiplexed streams until retransmit.";
+            j["http3"]       = "Independent QUIC streams: a lost packet only stalls its own stream; the rest keep flowing.";
             j["your_stream"] = ctx->request().stream_id;
             j["timestamp"]   = now_ms();
             ctx->response().add_header("Content-Type", "application/json");
