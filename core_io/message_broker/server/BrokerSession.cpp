@@ -39,11 +39,11 @@
  * 3. Timeout setup ensures resource cleanup
  * 4. Logging helps with debugging and monitoring
  */
-BrokerSession::BrokerSession(ServerActor& server)
+BrokerSession::BrokerSession(ServerActor &server)
     : client(server) {
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
-    this->setTimeout(std::chrono::seconds(600));  // 120 second timeout
+    this->setTimeout(std::chrono::seconds(600)); // 120 second timeout
     qb::io::cout() << "New broker client connected" << std::endl;
 }
 
@@ -64,56 +64,52 @@ BrokerSession::~BrokerSession() {
  *    - Automatically parses incoming data
  *    - Validates message format
  *    - Routes to appropriate handler
- * 
+ *
  * 2. Message Routing with Zero-Copy:
  *    - SUBSCRIBE: Forward moved message to subscription handler
  *    - UNSUBSCRIBE: Forward moved message to unsubscription handler
  *    - PUBLISH: Forward moved message with parsed string_views
  *    - Handles unknown message types
- * 
+ *
  * 3. Server Integration:
  *    - Uses server() to access parent
  *    - Maintains proper actor hierarchy
  *    - Routes messages to correct handlers
  */
-void BrokerSession::on(broker::Message msg) {
+void
+BrokerSession::on(broker::Message msg) {
     // Route incoming messages to appropriate handlers in ServerActor
-    switch(msg.type) {
+    switch (msg.type) {
         case broker::MessageType::SUBSCRIBE:
             // Move the message directly to avoid any copies
             this->server().handleSubscribe(this->id(), std::move(msg));
             break;
-            
+
         case broker::MessageType::UNSUBSCRIBE:
             // Move the message directly to avoid any copies
             this->server().handleUnsubscribe(this->id(), std::move(msg));
             break;
-            
+
         case broker::MessageType::PUBLISH: {
             // Parse the publish message (format: "topic message")
             std::string_view payload_view = msg.payload;
-            size_t space_pos = payload_view.find(' ');
-            
+            size_t           space_pos    = payload_view.find(' ');
+
             if (space_pos != std::string_view::npos) {
                 // 1. Create a MessageContainer that takes ownership of the message
                 broker::MessageContainer container(std::move(msg));
-                
+
                 // 2. Create string_views from the container (guarantees data exists)
                 std::string_view container_payload = container.payload();
-                std::string_view topic = container_payload.substr(0, space_pos);
-                std::string_view content = container_payload.substr(space_pos + 1);
-                
+                std::string_view topic             = container_payload.substr(0, space_pos);
+                std::string_view content           = container_payload.substr(space_pos + 1);
+
                 // 3. Pass the container and views to the server
-                this->server().handlePublish(
-                    this->id(), 
-                    std::move(container),
-                    topic, 
-                    content
-                );
+                this->server().handlePublish(this->id(), std::move(container), topic, content);
             } else {
                 // Send error if format is incorrect
                 broker::Message error_msg;
-                error_msg.type = broker::MessageType::ERROR;
+                error_msg.type    = broker::MessageType::ERROR;
                 error_msg.payload = "Invalid publish format. Use: PUB <topic> <message>";
                 *this << error_msg;
             }
@@ -132,13 +128,14 @@ void BrokerSession::on(broker::Message msg) {
  *    - Automatic detection of disconnection
  *    - Clean notification system
  *    - Resource management
- * 
+ *
  * 2. Server Notification:
  *    - Informs server of disconnection
  *    - Allows for client cleanup
  *    - Maintains system consistency
  */
-void BrokerSession::on(qb::io::async::event::disconnected const &) {
+void
+BrokerSession::on(qb::io::async::event::disconnected const &) {
     // Notify server when client disconnects
     qb::io::cout() << "Broker client disconnected" << std::endl;
     this->server().handleDisconnect(this->id());
@@ -150,14 +147,15 @@ void BrokerSession::on(qb::io::async::event::disconnected const &) {
  *    - QB tracks session activity
  *    - Triggers on inactivity
  *    - Configurable duration
- * 
+ *
  * 2. Resource Protection:
  *    - Prevents resource leaks
  *    - Cleans up inactive sessions
  *    - Maintains system stability
  */
-void BrokerSession::on(qb::io::async::event::timer const &) {
+void
+BrokerSession::on(qb::io::async::event::timer const &) {
     // Handle session timeout by disconnecting the client
     qb::io::cout() << "Broker client timed out" << std::endl;
     this->disconnect();
-} 
+}

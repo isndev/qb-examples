@@ -41,12 +41,12 @@
 
 /**
  * @brief Application entry point
- * 
+ *
  * Command-line usage:
  * @code
  * chat_client <host> <port> <username>
  * @endcode
- * 
+ *
  * Initialization flow:
  * 1. Validates command-line arguments
  * 2. Creates QB engine instance
@@ -54,12 +54,13 @@
  *    - InputActor on core 0
  *    - ClientActor on core 1
  * 4. Starts engine and waits for completion
- * 
+ *
  * @param argc Number of command-line arguments
  * @param argv Command-line arguments array
  * @return 0 on success, 1 on error
  */
-int main(int argc, char* argv[]) {
+int
+main(int argc, char *argv[]) {
     // Validate command-line arguments
     if (argc != 4) {
         qb::io::cerr() << "Usage: " << argv[0] << " <host> <port> <username>" << std::endl;
@@ -74,20 +75,18 @@ int main(int argc, char* argv[]) {
         qb::io::uri server_uri("tcp://" + std::string(argv[1]) + ":" + std::string(argv[2]));
 
         // Create actor system with proper core distribution
-        auto client_id = qb::ActorId();  // Placeholder for client ID
-        
+        auto client_id = qb::ActorId(); // Placeholder for client ID
+
         // Create InputActor on core 0 for UI handling
-        auto input_id = engine.addActor<InputActor>(
-            0,              // Core 0: User interface
-            std::ref(client_id)  // Reference for message routing
+        auto input_id = engine.addActor<InputActor>(0,                  // Core 0: User interface
+                                                    std::ref(client_id) // Reference for message routing
         );
 
         // Create ClientActor on core 1 for network handling
-        client_id = engine.addActor<ClientActor>(
-            1,                    // Core 1: Network operations
-            std::string(argv[3]), // Username
-            input_id,             // Input actor reference
-            server_uri           // Server address
+        client_id = engine.addActor<ClientActor>(1,                    // Core 1: Network operations
+                                                 std::string(argv[3]), // Username
+                                                 input_id,             // Input actor reference
+                                                 server_uri            // Server address
         );
 
         // Start the engine and wait for completion
@@ -98,9 +97,9 @@ int main(int argc, char* argv[]) {
         // Return status based on engine state
         return engine.hasError() ? 1 : 0;
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         // Handle initialization and runtime errors
         qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
-} 
+}

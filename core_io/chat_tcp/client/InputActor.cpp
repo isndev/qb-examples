@@ -27,7 +27,8 @@
 InputActor::InputActor(qb::ActorId client_id)
     : _client_id(client_id) {}
 
-qb::io::async::task<bool> InputActor::onInit() {
+qb::io::async::task<bool>
+InputActor::onInit() {
     // Register for non-blocking input handling
     registerCallback(*this);
 
@@ -38,23 +39,24 @@ qb::io::async::task<bool> InputActor::onInit() {
     co_return true;
 }
 
-void InputActor::on(qb::LoopEvent const&) {
+void
+InputActor::on(qb::LoopEvent const &) {
     std::string line;
 
     // Read user input non-blockingly
     std::getline(std::cin, line);
-    
+
     // Handle quit command
     if (line == "quit") {
         _running = false;
-        push<qb::KillEvent>(_client_id);  // Signal client to shutdown
-        push<qb::KillEvent>(id());        // Schedule own termination
+        push<qb::KillEvent>(_client_id); // Signal client to shutdown
+        push<qb::KillEvent>(id());       // Schedule own termination
         return;
     }
 
     // Process non-empty input as chat message
     if (!line.empty()) {
-        auto& evt = push<ChatInputEvent>(_client_id);
+        auto &evt   = push<ChatInputEvent>(_client_id);
         evt.message = std::move(line);
     }
-} 
+}

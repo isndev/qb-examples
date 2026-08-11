@@ -51,45 +51,48 @@ FileProcessor::FileProcessor(std::filesystem::path base_path)
     registerEvent<qb::KillEvent>(*this);
 }
 
-qb::io::async::task<bool> FileProcessor::onInit() {
+qb::io::async::task<bool>
+FileProcessor::onInit() {
     qb::io::cout() << "FileProcessor initialized on core " << id().index() << std::endl;
     co_return true;
 }
 
-void FileProcessor::on(FileEvent& event) {
-    qb::io::cout() << "FileProcessor received " << eventTypeToString(event.type)
-              << " event for: " << event.path << std::endl;
-    
+void
+FileProcessor::on(FileEvent &event) {
+    qb::io::cout() << "FileProcessor received " << eventTypeToString(event.type) << " event for: " << event.path << std::endl;
+
     // Process based on event type
     switch (event.type) {
         case FileEventType::CREATED:
             processFileCreated(event.path);
             break;
-            
+
         case FileEventType::MODIFIED:
             processFileModified(event.path);
             break;
-            
+
         case FileEventType::DELETED:
             processFileDeleted(event.path);
             break;
-            
+
         case FileEventType::ATTRIBUTES_CHANGED:
             // We don't need special handling for attribute changes
             break;
     }
-    
+
     // Update statistics
     updateStats(event.type);
 }
 
-void FileProcessor::on(SetProcessingConfigRequest& request) {
+void
+FileProcessor::on(SetProcessingConfigRequest &request) {
     _process_hidden_files = request.process_hidden_files;
-    qb::io::cout() << "FileProcessor: Updated configuration - processing hidden files: "
-              << (_process_hidden_files ? "enabled" : "disabled") << std::endl;
+    qb::io::cout() << "FileProcessor: Updated configuration - processing hidden files: " << (_process_hidden_files ? "enabled" : "disabled")
+                   << std::endl;
 }
 
-void FileProcessor::on(GetProcessingStatsRequest& request) {
+void
+FileProcessor::on(GetProcessingStatsRequest &request) {
     qb::io::cout() << "FileProcessor: Stats request received" << std::endl;
     qb::io::cout() << "  Files processed: " << _stats.files_processed << std::endl;
     qb::io::cout() << "  Files created: " << _stats.files_created << std::endl;
@@ -98,12 +101,14 @@ void FileProcessor::on(GetProcessingStatsRequest& request) {
     qb::io::cout() << "  Errors: " << _stats.errors_encountered << std::endl;
 }
 
-void FileProcessor::on(qb::KillEvent&) {
+void
+FileProcessor::on(qb::KillEvent &) {
     qb::io::cout() << "FileProcessor shutting down" << std::endl;
     kill();
 }
 
-void FileProcessor::processFileCreated(const std::filesystem::path& path) {
+void
+FileProcessor::processFileCreated(const std::filesystem::path &path) {
     if (!shouldProcessFile(path)) {
         return;
     }
@@ -113,15 +118,15 @@ void FileProcessor::processFileCreated(const std::filesystem::path& path) {
         // _tracked_files is keyed by the path's narrow string form.
         _tracked_files[path.string()] = metadata;
 
-        qb::io::cout() << "Processed new file: " << path
-                  << " (" << metadata.size << " bytes)" << std::endl;
-    } catch (const std::exception& e) {
+        qb::io::cout() << "Processed new file: " << path << " (" << metadata.size << " bytes)" << std::endl;
+    } catch (const std::exception &e) {
         qb::io::cerr() << "Error processing created file: " << e.what() << std::endl;
         _stats.errors_encountered++;
     }
 }
 
-void FileProcessor::processFileModified(const std::filesystem::path& path) {
+void
+FileProcessor::processFileModified(const std::filesystem::path &path) {
     if (!shouldProcessFile(path)) {
         return;
     }
@@ -138,8 +143,7 @@ void FileProcessor::processFileModified(const std::filesystem::path& path) {
             // Check if content actually changed
             if (new_metadata.content_hash != old_metadata.content_hash) {
                 qb::io::cout() << "File content changed: " << path << std::endl;
-                qb::io::cout() << "  Old size: " << old_metadata.size
-                          << ", New size: " << new_metadata.size << std::endl;
+                qb::io::cout() << "  Old size: " << old_metadata.size << ", New size: " << new_metadata.size << std::endl;
 
                 // Update tracked files
                 _tracked_files[key] = new_metadata;
@@ -150,13 +154,14 @@ void FileProcessor::processFileModified(const std::filesystem::path& path) {
             // New file for us, treat as creation
             processFileCreated(path);
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         qb::io::cerr() << "Error processing modified file: " << e.what() << std::endl;
         _stats.errors_encountered++;
     }
 }
 
-void FileProcessor::processFileDeleted(const std::filesystem::path& path) {
+void
+FileProcessor::processFileDeleted(const std::filesystem::path &path) {
     // Remove from tracked files (keyed by the path's narrow string form).
     auto it = _tracked_files.find(path.string());
     if (it != _tracked_files.end()) {
@@ -165,7 +170,8 @@ void FileProcessor::processFileDeleted(const std::filesystem::path& path) {
     }
 }
 
-bool FileProcessor::shouldProcessFile(const std::filesystem::path& path) {
+bool
+FileProcessor::shouldProcessFile(const std::filesystem::path &path) {
     // Skip directories
     if (fs::is_directory(path)) {
         return false;
@@ -178,25 +184,24 @@ bool FileProcessor::shouldProcessFile(const std::filesystem::path& path) {
             return false;
         }
     }
-    
+
     return true;
 }
 
-FileMetadata FileProcessor::extractMetadata(const std::filesystem::path& path) {
+FileMetadata
+FileProcessor::extractMetadata(const std::filesystem::path &path) {
     FileMetadata metadata;
     metadata.path = path.string(); // FileMetadata::path is a narrow std::string field
 
     // Convert filesystem time to system_clock time
     auto ftime = fs::last_write_time(path);
-    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                 std::chrono::time_point<std::chrono::system_clock>(
-                   std::chrono::duration_cast<std::chrono::system_clock::duration>(
-                     ftime.time_since_epoch())));
+    auto sctp  = std::chrono::time_point_cast<std::chrono::system_clock::duration>(std::chrono::time_point<std::chrono::system_clock>(
+        std::chrono::duration_cast<std::chrono::system_clock::duration>(ftime.time_since_epoch())));
     metadata.last_modified = sctp;
-    
+
     // Get file size
     metadata.size = fs::file_size(path);
-    
+
     // Read file and calculate hash
     std::vector<char> content;
     qb::io::sys::file file;
@@ -205,7 +210,7 @@ FileMetadata FileProcessor::extractMetadata(const std::filesystem::path& path) {
         content.resize(metadata.size);
         auto bytes_read = file.read(content.data(), metadata.size);
         file.close();
-        
+
         if (bytes_read >= 0) {
             // Calculate simple hash
             size_t hash = 0;
@@ -215,13 +220,14 @@ FileMetadata FileProcessor::extractMetadata(const std::filesystem::path& path) {
             metadata.content_hash = std::to_string(hash);
         }
     }
-    
+
     return metadata;
 }
 
-void FileProcessor::updateStats(FileEventType event_type) {
+void
+FileProcessor::updateStats(FileEventType event_type) {
     _stats.files_processed++;
-    
+
     switch (event_type) {
         case FileEventType::CREATED:
             _stats.files_created++;
@@ -237,4 +243,4 @@ void FileProcessor::updateStats(FileEventType event_type) {
     }
 }
 
-} // namespace file_monitor 
+} // namespace file_monitor

@@ -54,59 +54,63 @@
 #include <iostream>
 #include <iomanip>
 #ifndef _WIN32
-#    include <sys/mman.h>
+#include <sys/mman.h>
 #endif
 
 namespace fs = std::filesystem;
 
 namespace {
-    // Constants for the example
-    constexpr const char* TEST_DIR = "qb_fileio_test";
-    constexpr const char* TEST_FILE = "test_file.dat";
-    constexpr const char* TEST_MMAP_FILE = "test_mmap.dat";
-    constexpr const char* TEST_COPY_FILE = "test_copy.dat";
-    constexpr size_t BUFFER_SIZE = 4096;
-    constexpr size_t FILE_SIZE = 1024 * 1024; // 1MB
-    
-    // Helper function to print section headers
-    void printSection(const std::string& title) {
-        qb::io::cout() << "\n=== " << title << " ===\n";
-    }
-    
-    // Utility function to get current timestamp
-    std::string getCurrentTimestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto now_c = std::chrono::system_clock::to_time_t(now);
-        char buf[64];
-        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
-        return std::string(buf);
-    }
-    
-    // Create a directory with appropriate error handling
-    bool createDirectory(const std::filesystem::path& path) {
-        try {
-            if (std::filesystem::exists(path)) {
-                qb::io::cout() << "Directory already exists: " << path << std::endl;
-                return true;
-            }
-            return std::filesystem::create_directory(path);
-        } catch (const std::filesystem::filesystem_error& e) {
-            qb::io::cerr() << "Error creating directory: " << e.what() << std::endl;
-            return false;
-        }
-    }
+// Constants for the example
+constexpr const char *TEST_DIR       = "qb_fileio_test";
+constexpr const char *TEST_FILE      = "test_file.dat";
+constexpr const char *TEST_MMAP_FILE = "test_mmap.dat";
+constexpr const char *TEST_COPY_FILE = "test_copy.dat";
+constexpr size_t      BUFFER_SIZE    = 4096;
+constexpr size_t      FILE_SIZE      = 1024 * 1024; // 1MB
 
-    // Get full path for a test file
-    std::filesystem::path getTestFilePath(const std::filesystem::path& dir, const std::filesystem::path& filename) {
-        std::filesystem::path path(dir);
-        path /= filename;
-        return path;
+// Helper function to print section headers
+void
+printSection(const std::string &title) {
+    qb::io::cout() << "\n=== " << title << " ===\n";
+}
+
+// Utility function to get current timestamp
+std::string
+getCurrentTimestamp() {
+    auto now   = std::chrono::system_clock::now();
+    auto now_c = std::chrono::system_clock::to_time_t(now);
+    char buf[64];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+    return std::string(buf);
+}
+
+// Create a directory with appropriate error handling
+bool
+createDirectory(const std::filesystem::path &path) {
+    try {
+        if (std::filesystem::exists(path)) {
+            qb::io::cout() << "Directory already exists: " << path << std::endl;
+            return true;
+        }
+        return std::filesystem::create_directory(path);
+    } catch (const std::filesystem::filesystem_error &e) {
+        qb::io::cerr() << "Error creating directory: " << e.what() << std::endl;
+        return false;
     }
 }
 
+// Get full path for a test file
+std::filesystem::path
+getTestFilePath(const std::filesystem::path &dir, const std::filesystem::path &filename) {
+    std::filesystem::path path(dir);
+    path /= filename;
+    return path;
+}
+} // namespace
+
 /**
  * @brief File Operations Manager
- * 
+ *
  * This class demonstrates various file operations using QB-IO
  */
 class FileOperationsManager {
@@ -114,101 +118,103 @@ private:
     std::filesystem::path _test_dir;
 
 public:
-    explicit FileOperationsManager(std::filesystem::path test_dir) : _test_dir(std::move(test_dir)) {
+    explicit FileOperationsManager(std::filesystem::path test_dir)
+        : _test_dir(std::move(test_dir)) {
         // Ensure test directory exists
         if (!createDirectory(_test_dir)) {
             qb::io::cerr() << "Failed to create test directory: " << _test_dir << std::endl;
         }
     }
-    
+
     ~FileOperationsManager() {
         // Clean up the test directory when done
         cleanupTestFiles();
     }
-    
+
     /**
      * @brief Run a comprehensive demonstration of file operations
      */
-    void runDemonstration() {
+    void
+    runDemonstration() {
         printSection("Starting File Operations Demo");
         qb::io::cout() << "Test directory: " << _test_dir << std::endl;
-        
+
         // Write a binary file with random data
         demonstrateWritingBinaryFile();
-        
+
         // Read back the file contents
         demonstrateReadingBinaryFile();
-        
+
         // Demonstrate memory-mapped file operations
         demonstrateMemoryMappedIO();
-        
+
         // Demonstrate file copy operations
         demonstrateFileCopy();
-        
+
         // Demonstrate file information
         demonstrateFileInfo();
-        
+
         printSection("File Operations Demo Completed");
     }
-    
+
 private:
     /**
      * @brief Demonstrate writing a binary file using QB-IO
-     * 
+     *
      * This method shows how to efficiently write binary data to a file
      */
-    void demonstrateWritingBinaryFile() {
+    void
+    demonstrateWritingBinaryFile() {
         printSection("Writing Binary File");
-        
+
         // Generate random data for the file
-        std::vector<uint8_t> data(FILE_SIZE);
-        std::mt19937 rng(std::random_device{}());
+        std::vector<uint8_t>                          data(FILE_SIZE);
+        std::mt19937                                  rng(std::random_device{}());
         std::uniform_int_distribution<unsigned short> dist(0, 255);
-        
+
         // Fill the data buffer with random bytes
         qb::io::cout() << "Generating " << FILE_SIZE << " bytes of random data..." << std::endl;
-        for (auto& byte : data) {
+        for (auto &byte : data) {
             byte = dist(rng);
         }
-        
+
         // Create the file path
         std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Writing data to: " << file_path << std::endl;
 
         // Use QB-IO file API to write the file
         qb::io::sys::file file;
-        auto start_time = std::chrono::high_resolution_clock::now();
+        auto              start_time = std::chrono::high_resolution_clock::now();
 
         if (file.open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0644) >= 0) {
             // Write the data - Cast unsigned char* to char* to match the API
-            auto written = file.write(reinterpret_cast<const char*>(data.data()), data.size());
+            auto written = file.write(reinterpret_cast<const char *>(data.data()), data.size());
             file.close();
-            
+
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-            
+
             if (written == static_cast<int>(data.size())) {
                 double throughput = (data.size() / 1024.0) / (duration.count() / 1000000.0);
-                qb::io::cout() << "Successfully wrote " << written << " bytes in "
-                          << duration.count() / 1000.0 << " ms" << std::endl;
+                qb::io::cout() << "Successfully wrote " << written << " bytes in " << duration.count() / 1000.0 << " ms" << std::endl;
                 qb::io::cout() << "Write throughput: " << throughput << " KB/s" << std::endl;
             } else {
-                qb::io::cerr() << "Failed to write all data. Only wrote " << written
-                          << " of " << data.size() << " bytes" << std::endl;
+                qb::io::cerr() << "Failed to write all data. Only wrote " << written << " of " << data.size() << " bytes" << std::endl;
             }
         } else {
             qb::io::cerr() << "Error opening file for writing: " << strerror(errno) << std::endl;
         }
     }
-    
+
     /**
      * @brief Demonstrate reading a binary file using QB-IO
-     * 
+     *
      * This method shows how to efficiently read binary data from a file
      */
-    void demonstrateReadingBinaryFile() {
+    void
+    demonstrateReadingBinaryFile() {
         printSection("Reading Binary File");
-        
+
         // Create the file path
         std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Reading data from: " << file_path << std::endl;
@@ -217,56 +223,55 @@ private:
         // stat() is a narrow `const char*` sink on every platform, so use
         // path.string().c_str() (path.c_str() is wchar_t* on Windows).
         const std::string file_path_str = file_path.string();
-        struct stat file_stat;
+        struct stat       file_stat;
         if (stat(file_path_str.c_str(), &file_stat) != 0) {
             qb::io::cerr() << "Error getting file stats: " << strerror(errno) << std::endl;
-                return;
-            }
+            return;
+        }
         size_t file_size = file_stat.st_size;
 
         // Use QB-IO file API to read the file
         qb::io::sys::file file;
-        auto start_time = std::chrono::high_resolution_clock::now();
+        auto              start_time = std::chrono::high_resolution_clock::now();
 
         if (file.open(file_path, O_RDONLY) >= 0) {
             // Allocate buffer for file content
             std::vector<char> buffer(file_size);
-            
+
             // Read the file
             auto bytes_read = file.read(buffer.data(), buffer.size());
             file.close();
-            
+
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-            
+
             if (bytes_read == static_cast<int>(file_size)) {
                 double throughput = (file_size / 1024.0) / (duration.count() / 1000000.0);
-                qb::io::cout() << "Successfully read " << bytes_read << " bytes in "
-                          << duration.count() / 1000.0 << " ms" << std::endl;
+                qb::io::cout() << "Successfully read " << bytes_read << " bytes in " << duration.count() / 1000.0 << " ms" << std::endl;
                 qb::io::cout() << "Read throughput: " << throughput << " KB/s" << std::endl;
-                
+
                 // Display a sample of the data
                 qb::io::cout() << "First 16 bytes: ";
                 for (size_t i = 0; i < std::min<size_t>(16, buffer.size()); ++i) {
-                    qb::io::cout() << std::hex << std::setw(2) << std::setfill('0')
-                              << static_cast<int>(static_cast<unsigned char>(buffer[i])) << " ";
+                    qb::io::cout() << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buffer[i]))
+                                   << " ";
                 }
                 qb::io::cout() << std::dec << std::endl;
             } else {
-                qb::io::cerr() << "Failed to read file. Read " << bytes_read
-                          << " of " << file_size << " bytes" << std::endl;
+                qb::io::cerr() << "Failed to read file. Read " << bytes_read << " of " << file_size << " bytes" << std::endl;
             }
         } else {
             qb::io::cerr() << "Error opening file for reading: " << strerror(errno) << std::endl;
         }
     }
-    
+
     /**
      * @brief Demonstrate memory-mapped file I/O using QB-IO
-     * 
+     *
      * This method shows how to use memory mapping for very efficient I/O
      */
-    void demonstrateMemoryMappedIO() {
+    void
+    demonstrateMemoryMappedIO() {
         printSection("Memory-Mapped File I/O");
 #ifndef _WIN32
         // Create the file path
@@ -288,8 +293,7 @@ private:
             return;
         }
 
-        void* mapped_region = mmap(nullptr, map_size, PROT_READ | PROT_WRITE,
-                                   MAP_SHARED, fd, 0);
+        void *mapped_region = mmap(nullptr, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (mapped_region == MAP_FAILED) {
             qb::io::cerr() << "Memory mapping failed: " << strerror(errno) << std::endl;
             close(fd);
@@ -298,8 +302,8 @@ private:
 
         qb::io::cout() << "File mapped to memory at address: " << mapped_region << std::endl;
 
-        auto start_time = std::chrono::high_resolution_clock::now();
-        uint8_t* data = static_cast<uint8_t*>(mapped_region);
+        auto     start_time = std::chrono::high_resolution_clock::now();
+        uint8_t *data       = static_cast<uint8_t *>(mapped_region);
         for (size_t i = 0; i < map_size; ++i) {
             data[i] = static_cast<uint8_t>(i % 256);
         }
@@ -308,16 +312,15 @@ private:
             qb::io::cerr() << "Error syncing mapped memory: " << strerror(errno) << std::endl;
         }
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        auto   end_time   = std::chrono::high_resolution_clock::now();
+        auto   duration   = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
         double throughput = (map_size / 1024.0) / (duration.count() / 1000000.0);
         qb::io::cout() << "Memory-mapped write completed in " << duration.count() / 1000.0 << " ms" << std::endl;
         qb::io::cout() << "Memory-mapped write throughput: " << throughput << " KB/s" << std::endl;
 
         qb::io::cout() << "First 16 bytes from memory-mapped file: ";
         for (size_t i = 0; i < 16; ++i) {
-            qb::io::cout() << std::hex << std::setw(2) << std::setfill('0')
-                           << static_cast<int>(data[i]) << " ";
+            qb::io::cout() << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(data[i]) << " ";
         }
         qb::io::cout() << std::dec << std::endl;
 
@@ -329,22 +332,23 @@ private:
         qb::io::cout() << "Memory-mapped I/O (mmap) is not supported on Windows — skipping." << std::endl;
 #endif
     }
-    
+
     /**
      * @brief Demonstrate file copy operation
      */
-    void demonstrateFileCopy() {
+    void
+    demonstrateFileCopy() {
         printSection("File Copy Operation");
-        
+
         std::filesystem::path source_path = getTestFilePath(_test_dir, TEST_FILE);
-        std::filesystem::path dest_path = getTestFilePath(_test_dir, TEST_COPY_FILE);
+        std::filesystem::path dest_path   = getTestFilePath(_test_dir, TEST_COPY_FILE);
 
         qb::io::cout() << "Copying " << source_path << " to " << dest_path << std::endl;
 
         // Get source file size using standard file operations. stat() is a narrow
         // `const char*` sink on every platform → use path.string().c_str().
         const std::string source_path_str = source_path.string();
-        struct stat file_stat;
+        struct stat       file_stat;
         if (stat(source_path_str.c_str(), &file_stat) != 0) {
             qb::io::cerr() << "Error getting source file stats: " << strerror(errno) << std::endl;
             return;
@@ -366,12 +370,12 @@ private:
             source_file.close();
             return;
         }
-        
+
         // Use a buffer for efficient copy
         std::vector<char> buffer(BUFFER_SIZE);
-        size_t total_bytes_copied = 0;
-        ssize_t bytes_read, bytes_written;
-        
+        size_t            total_bytes_copied = 0;
+        ssize_t           bytes_read, bytes_written;
+
         while ((bytes_read = source_file.read(buffer.data(), buffer.size())) > 0) {
             bytes_written = dest_file.write(buffer.data(), bytes_read);
             if (bytes_written != bytes_read) {
@@ -382,100 +386,98 @@ private:
             }
             total_bytes_copied += bytes_written;
         }
-        
+
         source_file.close();
         dest_file.close();
-        
+
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        
+
         if (total_bytes_copied == file_size) {
             double throughput = (file_size / 1024.0) / (duration.count() / 1000000.0);
-            qb::io::cout() << "Successfully copied " << total_bytes_copied << " bytes in "
-                      << duration.count() / 1000.0 << " ms" << std::endl;
+            qb::io::cout() << "Successfully copied " << total_bytes_copied << " bytes in " << duration.count() / 1000.0 << " ms" << std::endl;
             qb::io::cout() << "Copy throughput: " << throughput << " KB/s" << std::endl;
         } else {
-            qb::io::cerr() << "Failed to copy entire file. Copied " << total_bytes_copied
-                      << " of " << file_size << " bytes" << std::endl;
+            qb::io::cerr() << "Failed to copy entire file. Copied " << total_bytes_copied << " of " << file_size << " bytes" << std::endl;
         }
     }
-    
+
     /**
      * @brief Demonstrate file information retrieval
      */
-    void demonstrateFileInfo() {
+    void
+    demonstrateFileInfo() {
         printSection("File Information");
-        
+
         std::filesystem::path file_path = getTestFilePath(_test_dir, TEST_FILE);
         qb::io::cout() << "Getting information for: " << file_path << std::endl;
 
         // Use standard file operations to get file info. stat() is a narrow
         // `const char*` sink on every platform → use path.string().c_str().
         const std::string file_path_str = file_path.string();
-        struct stat file_stat;
+        struct stat       file_stat;
         if (stat(file_path_str.c_str(), &file_stat) == 0) {
             qb::io::cout() << "File size: " << file_stat.st_size << " bytes" << std::endl;
-            qb::io::cout() << "File permissions: " << std::oct << (file_stat.st_mode & 0777)
-                      << std::dec << std::endl;
-            
-            auto mtime = std::chrono::system_clock::from_time_t(file_stat.st_mtime);
+            qb::io::cout() << "File permissions: " << std::oct << (file_stat.st_mode & 0777) << std::dec << std::endl;
+
+            auto mtime   = std::chrono::system_clock::from_time_t(file_stat.st_mtime);
             auto mtime_c = std::chrono::system_clock::to_time_t(mtime);
             qb::io::cout() << "Last modified: " << std::ctime(&mtime_c);
-            
+
             qb::io::cout() << "Is regular file: " << (S_ISREG(file_stat.st_mode) ? "Yes" : "No") << std::endl;
             qb::io::cout() << "Is directory: " << (S_ISDIR(file_stat.st_mode) ? "Yes" : "No") << std::endl;
         } else {
             qb::io::cerr() << "Error getting file info: " << strerror(errno) << std::endl;
         }
     }
-    
+
     /**
      * @brief Clean up test files and directory
      */
-    void cleanupTestFiles() {
+    void
+    cleanupTestFiles() {
         printSection("Cleaning Up");
-        
+
         // List of files to clean up
         std::vector<std::filesystem::path> files_to_clean = {
-            getTestFilePath(_test_dir, TEST_FILE),
-            getTestFilePath(_test_dir, TEST_MMAP_FILE),
-            getTestFilePath(_test_dir, TEST_COPY_FILE)
+            getTestFilePath(_test_dir, TEST_FILE), getTestFilePath(_test_dir, TEST_MMAP_FILE), getTestFilePath(_test_dir, TEST_COPY_FILE)
         };
-        
+
         // Remove each test file
-        for (const auto& file : files_to_clean) {
+        for (const auto &file : files_to_clean) {
             if (std::filesystem::exists(file)) {
                 try {
                     std::filesystem::remove(file);
                     qb::io::cout() << "Removed: " << file << std::endl;
-                } catch (const std::filesystem::filesystem_error& e) {
+                } catch (const std::filesystem::filesystem_error &e) {
                     qb::io::cerr() << "Error removing file " << file << ": " << e.what() << std::endl;
                 }
             }
         }
-        
+
         // Remove the test directory
         try {
             if (std::filesystem::exists(_test_dir)) {
                 std::filesystem::remove(_test_dir);
                 qb::io::cout() << "Removed directory: " << _test_dir << std::endl;
             }
-        } catch (const std::filesystem::filesystem_error& e) {
+        } catch (const std::filesystem::filesystem_error &e) {
             qb::io::cerr() << "Error removing directory " << _test_dir << ": " << e.what() << std::endl;
         }
     }
 };
 
-int main() {
+int
+main() {
     printSection("QB-IO File I/O Operations Example");
     qb::io::cout() << "Starting at: " << getCurrentTimestamp() << std::endl;
-    
+
     // Create and run the file operations manager
     FileOperationsManager file_ops(TEST_DIR);
     file_ops.runDemonstration();
-    
+
     printSection("Example Completed");
     qb::io::cout() << "Finished at: " << getCurrentTimestamp() << std::endl;
-    
+
     return 0;
-} 
+}

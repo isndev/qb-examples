@@ -24,7 +24,8 @@
 InputActor::InputActor(qb::ActorId client_id)
     : _client_id(client_id) {}
 
-qb::io::async::task<bool> InputActor::onInit() {
+qb::io::async::task<bool>
+InputActor::onInit() {
     // Register for non-blocking input handling
     registerCallback(*this);
 
@@ -36,20 +37,21 @@ qb::io::async::task<bool> InputActor::onInit() {
     co_return true;
 }
 
-void InputActor::on(qb::LoopEvent const & /*loop*/) {
+void
+InputActor::on(qb::LoopEvent const & /*loop*/) {
     std::string line;
 
     // Read user input non-blockingly
     std::getline(std::cin, line);
-    
+
     // Handle special commands
     if (line == "quit") {
         _running = false;
-        push<qb::KillEvent>(_client_id);  // Signal client to shutdown
-        push<qb::KillEvent>(id());        // Schedule own termination
+        push<qb::KillEvent>(_client_id); // Signal client to shutdown
+        push<qb::KillEvent>(id());       // Schedule own termination
         return;
     }
-    
+
     if (line == "help") {
         displayHelp();
         return;
@@ -57,12 +59,13 @@ void InputActor::on(qb::LoopEvent const & /*loop*/) {
 
     // Process non-empty input as broker command
     if (!line.empty()) {
-        auto& evt = push<BrokerInputEvent>(_client_id);
+        auto &evt   = push<BrokerInputEvent>(_client_id);
         evt.command = std::move(line);
     }
 }
 
-void InputActor::displayHelp() {
+void
+InputActor::displayHelp() {
     qb::io::cout() << "\nAvailable commands:" << std::endl;
     qb::io::cout() << "  SUB <topic>            - Subscribe to a topic" << std::endl;
     qb::io::cout() << "  UNSUB <topic>          - Unsubscribe from a topic" << std::endl;
@@ -74,4 +77,4 @@ void InputActor::displayHelp() {
     qb::io::cout() << "  PUB news Hello World   - Publish 'Hello World' to the 'news' topic" << std::endl;
     qb::io::cout() << "  UNSUB news             - Unsubscribe from the 'news' topic" << std::endl;
     qb::io::cout() << "\nEnter commands below:" << std::endl;
-} 
+}

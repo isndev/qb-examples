@@ -52,21 +52,23 @@
 #include <atomic>
 #include <iostream>
 
-constexpr const unsigned short SERVER_PORT = 9090;
-constexpr const char* TEST_MESSAGE = "Hello from UDP client!";
-constexpr const size_t MESSAGE_COUNT = 5;
+constexpr const unsigned short SERVER_PORT   = 9090;
+constexpr const char          *TEST_MESSAGE  = "Hello from UDP client!";
+constexpr const size_t         MESSAGE_COUNT = 5;
 
 // Atomic counters for tracking messages
 std::atomic<std::size_t> server_received{0};
 std::atomic<std::size_t> client_received{0};
 
 // Check if client has received all responses
-bool client_done() {
+bool
+client_done() {
     return client_received >= MESSAGE_COUNT;
 }
 
 // Check if server has received all messages
-bool server_done() {
+bool
+server_done() {
     return server_received >= MESSAGE_COUNT;
 }
 
@@ -83,12 +85,13 @@ public:
     }
 
     // Handler for received messages
-    void on(Protocol::message&& msg) {
+    void
+    on(Protocol::message &&msg) {
         qb::io::cout() << "Server received: " << msg.text << std::endl;
-        
+
         // Echo the message back to the client
         *this << "Response to: " << msg.text << Protocol::end;
-        
+
         // Increment message counter
         ++server_received;
     }
@@ -107,18 +110,20 @@ public:
     }
 
     // Handler for received messages
-    void on(Protocol::message&& msg) {
+    void
+    on(Protocol::message &&msg) {
         qb::io::cout() << "Client received: " << msg.text << std::endl;
-        
+
         // Increment response counter
         ++client_received;
     }
 };
 
-int main() {
+int
+main() {
     // Initialize async system
     qb::io::async::init();
-    
+
     // Create and start the UDP server
     UDPServer server;
     if (server.transport().bind_v4(SERVER_PORT)) {
@@ -127,45 +132,45 @@ int main() {
     }
     server.start();
     qb::io::cout() << "UDP Server started on port " << SERVER_PORT << std::endl;
-    
+
     // Create and run the client in a separate thread
     std::thread client_thread([]() {
         // Initialize async system in this thread
         qb::io::async::init();
-        
+
         // Create the UDP client
         UDPClient client;
-        
+
         // Initialize the client transport
         client.transport().init();
         if (!client.transport().is_open()) {
             qb::io::cerr() << "Failed to initialize client socket" << std::endl;
             return;
         }
-        
+
         // Start the client
         client.start();
         qb::io::cout() << "UDP Client started" << std::endl;
-        
+
         // Send messages to the server
         for (size_t i = 0; i < MESSAGE_COUNT; ++i) {
             // Set the destination to the server
             client.setDestination(qb::io::endpoint().as_in("127.0.0.1", SERVER_PORT));
-            
+
             // Create the message with a sequence number
-            std::string message = std::string(TEST_MESSAGE) + " #" + std::to_string(i+1);
-            
+            std::string message = std::string(TEST_MESSAGE) + " #" + std::to_string(i + 1);
+
             // Send the message using the protocol's stream syntax
             client << message << UDPClient::Protocol::end;
             qb::io::cout() << "Client sent: " << message << std::endl;
-            
+
             // Process events to avoid backup
             qb::io::async::run(EVRUN_NOWAIT);
-            
+
             // Small delay between messages
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        
+
         // Wait for all responses or timeout
         qb::io::cout() << "Client waiting for responses..." << std::endl;
         for (int i = 0; i < 100 && !client_done(); ++i) {
@@ -173,21 +178,21 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     });
-    
+
     // Process server events until all expected messages are received
     qb::io::cout() << "Server processing events..." << std::endl;
     for (int i = 0; i < 100 && (!server_done() || !client_done()); ++i) {
         qb::io::async::run(EVRUN_NOWAIT);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    
+
     // Wait for client thread to finish
     client_thread.join();
-    
+
     // Print results
     qb::io::cout() << "Example completed: " << std::endl
-                  << "  - Server received: " << server_received << " messages" << std::endl
-                  << "  - Client received: " << client_received << " responses" << std::endl;
-    
+                   << "  - Server received: " << server_received << " messages" << std::endl
+                   << "  - Client received: " << client_received << " responses" << std::endl;
+
     return 0;
-} 
+}

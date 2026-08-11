@@ -41,11 +41,11 @@
  * 3. Timeout setup ensures resource cleanup
  * 4. Logging helps with debugging and monitoring
  */
-ChatSession::ChatSession(ServerActor& server)
+ChatSession::ChatSession(ServerActor &server)
     : client(server) {
     // Set up protocol handler and timeout
     this->template switch_protocol<Protocol>(*this);
-    this->setTimeout(std::chrono::seconds(120));  // 120 second timeout
+    this->setTimeout(std::chrono::seconds(120)); // 120 second timeout
     qb::io::cout() << "New chat client connected" << std::endl;
 }
 
@@ -66,20 +66,21 @@ ChatSession::~ChatSession() {
  *    - Automatically parses incoming data
  *    - Validates message format
  *    - Routes to appropriate handler
- * 
+ *
  * 2. Message Routing:
  *    - AUTH_REQUEST: Forward to authentication handler
  *    - CHAT_MESSAGE: Forward to chat handler
  *    - Handles unknown message types
- * 
+ *
  * 3. Server Integration:
  *    - Uses server() to access parent
  *    - Maintains proper actor hierarchy
  *    - Routes messages to correct handlers
  */
-void ChatSession::on(const chat::Message& msg) {
+void
+ChatSession::on(const chat::Message &msg) {
     // Route incoming messages to appropriate handlers in ServerActor
-    switch(msg.type) {
+    switch (msg.type) {
         case chat::MessageType::AUTH_REQUEST:
             this->server().handleAuth(this->id(), msg.payload);
             break;
@@ -99,13 +100,14 @@ void ChatSession::on(const chat::Message& msg) {
  *    - Automatic detection of disconnection
  *    - Clean notification system
  *    - Resource management
- * 
+ *
  * 2. Server Notification:
  *    - Informs server of disconnection
  *    - Allows for user cleanup
  *    - Maintains system consistency
  */
-void ChatSession::on(qb::io::async::event::disconnected const &) {
+void
+ChatSession::on(qb::io::async::event::disconnected const &) {
     // Notify server when client disconnects
     qb::io::cout() << "Chat client disconnected" << std::endl;
     this->server().handleDisconnect(this->id());
@@ -117,14 +119,15 @@ void ChatSession::on(qb::io::async::event::disconnected const &) {
  *    - QB tracks session activity
  *    - Triggers on inactivity
  *    - Configurable duration
- * 
+ *
  * 2. Resource Protection:
  *    - Prevents resource leaks
  *    - Cleans up inactive sessions
  *    - Maintains system stability
  */
-void ChatSession::on(qb::io::async::event::timer const &) {
+void
+ChatSession::on(qb::io::async::event::timer const &) {
     // Handle session timeout by disconnecting the client
     qb::io::cout() << "Chat client timed out" << std::endl;
     this->disconnect();
-} 
+}
