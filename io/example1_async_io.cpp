@@ -15,7 +15,12 @@
  *         between writing to and reading from a test file (`qb_io_example.txt`).
  *     -   File operations are performed using `qb::io::system::file` (synchronous file API),
  *         but their execution is driven by asynchronous timer events.
- *     -   Reschedules itself using `updateTimeout()`.
+ *     -   Reschedules itself using `setTimeout()`. `with_timeout` is an *inactivity
+ *         watchdog*, not a periodic timer: its one-shot libev watcher is re-armed only on
+ *         the branch where the deadline has NOT yet elapsed. `updateTimeout()` merely
+ *         stamps the last-activity time and does not restart the watcher, so it cannot
+ *         re-arm a timer that has just fired — `setTimeout()` is the call that does
+ *         (`qb::io::async::with_timeout::setTimeout` sets and starts the watcher).
  * 2.  `TimerDemonstration`:
  *     -   Also inherits from `qb::io::async::with_timeout<TimerDemonstration>`.
  *     -   Provides a simple demonstration of a recurring timer that logs a "tick" message
@@ -38,7 +43,7 @@
  * QB-IO Features Demonstrated:
  * - Asynchronous System Initialization: `qb::io::async::init()`.
  * - Event Loop Integration: `qb::io::async::run()`.
- * - Timer-Based Operations: `qb::io::async::with_timeout<T>`, `on(qb::io::async::event::timer const&)`, `updateTimeout()`.
+ * - Timer-Based Operations: `qb::io::async::with_timeout<T>`, `on(qb::io::async::event::timer const&)`, `setTimeout()`.
  * - Basic File I/O: `qb::io::system::file` for synchronous file read/write operations, orchestrated asynchronously.
  * - Low-Level File Watching: Direct use of `ev::stat` with `qb::io::async::listener::current.loop()` to monitor file attribute changes.
  * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
@@ -117,6 +122,7 @@ private:
     std::filesystem::path _filename;
     int                   _operation_count = 0;
     const int             _max_operations;
+    const qb::duration    _interval; // kept so the handler can re-arm with the same period
     std::string           _content;
 
 public:
@@ -124,7 +130,8 @@ public:
         : with_timeout(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(TIMER_INTERVAL)))
         , // 1 second timeout
         _filename(std::move(filename))
-        , _max_operations(max_ops) {
+        , _max_operations(max_ops)
+        , _interval(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(TIMER_INTERVAL))) {
         printSectionHeader("File Processor Initialized");
         qb::io::cout() << "Processor will handle " << _max_operations << " operations on file: " << _filename << std::endl;
     }
@@ -155,8 +162,10 @@ public:
 
         _operation_count++;
 
-        // Schedule the next operation
-        updateTimeout();
+        // Schedule the next operation. `setTimeout()`, not `updateTimeout()`: the watcher
+        // that just fired is one-shot and is NOT re-armed on this branch, and
+        // `updateTimeout()` only stamps the last-activity time — it never restarts it.
+        setTimeout(_interval);
     }
 
     /**
@@ -239,12 +248,14 @@ public:
  */
 class TimerDemonstration : public qb::io::async::with_timeout<TimerDemonstration> {
 private:
+    static constexpr std::chrono::milliseconds TICK_INTERVAL{500};
+
     int       _count = 0;
     const int _max_ticks;
 
 public:
     explicit TimerDemonstration(int max_ticks = 10)
-        : with_timeout(std::chrono::milliseconds(500))
+        : with_timeout(TICK_INTERVAL)
         , // 500ms timeout
         _max_ticks(max_ticks) {
         printSectionHeader("Timer Demonstration Initialized");
@@ -264,8 +275,9 @@ public:
 
         // Check termination conditions
         if (_count < _max_ticks && g_running) {
-            // Continue with the next tick
-            updateTimeout();
+            // Continue with the next tick. See FileProcessor::on() — `setTimeout()` is
+            // what re-arms the one-shot watcher; `updateTimeout()` would not.
+            setTimeout(TICK_INTERVAL);
         } else {
             qb::io::cout() << "TimerDemonstration: " << (_count >= _max_ticks ? "Completed all ticks" : "Termination requested") << ", stopping"
                            << std::endl;
@@ -368,22 +380,27 @@ main() {
     TimerDemonstration timer_demo;
     FileWatcher        watcher(filename);
 
+    // Budget: enough for both demos to finish what they advertise. TimerDemonstration
+    // needs 10 x 500ms and FileProcessor 5 x 1s, and each re-arms from the moment it
+    // fires, so the 200ms poll granularity below adds up over the run — hence the margin.
+    const int POLL_MS        = 200;
+    const int MAX_ITERATIONS = 40; // 40 * 200ms = 8 seconds
+
     printSectionHeader("Starting Event Loop");
-    qb::io::cout() << "Running event loop for approximately 6 seconds..." << std::endl;
+    qb::io::cout() << "Running event loop for approximately " << (MAX_ITERATIONS * POLL_MS) / 1000.0 << " seconds..." << std::endl;
     qb::io::cout() << "Press Ctrl+C to terminate the example early" << std::endl;
 
     // Run the event loop until completion or termination request
-    int       iterations     = 0;
-    const int MAX_ITERATIONS = 30; // 30 * 200ms = 6 seconds
+    int iterations = 0;
 
     while (g_running && iterations < MAX_ITERATIONS) {
         qb::io::async::run(EVRUN_NOWAIT);
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
         iterations++;
     }
 
     printSectionHeader("Event Loop Completed");
-    qb::io::cout() << "Event loop ran for " << (iterations * 200) / 1000.0 << " seconds" << std::endl;
+    qb::io::cout() << "Event loop ran for " << (iterations * POLL_MS) / 1000.0 << " seconds" << std::endl;
 
     // Clean up the test file
     if (std::remove(filename.c_str()) == 0) {

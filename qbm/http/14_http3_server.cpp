@@ -101,6 +101,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "Initializing HTTP/2 + HTTP/3 dual-stack server..." << std::endl;
         if (!resolve_paths())
             co_return false;
@@ -115,6 +122,14 @@ public:
         _server->router().compile();
 
         co_return start_listening();
+    }
+
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
     }
 
     void

@@ -15,7 +15,7 @@
  *         BUTTON_PRESSED, CANCEL).
  *     -   Uses a `std::map` as a transition table to define state-specific event handlers.
  *     -   Simulates timed operations like brewing and dispensing by scheduling `DelayedActionMessage`s
- *         to itself using `qb::io::async::callback(func, delay_seconds)`.
+ *         to itself with `spawn(...)` + `co_await ctx.sleep(delay)`.
  *     -   Responds to `StatusRequestMessage` with its current operational status.
  *     -   Publishes `StateChangeMessage` to notify subscribers of state transitions.
  * 2.  `UserInterfaceActor`:
@@ -25,17 +25,26 @@
  *         `StateChangeMessage` notifications.
  *     -   Requests and displays machine status by sending `StatusRequestMessage` and
  *         handling `StatusResponseMessage`.
- *     -   Orchestrates a multi-step demo sequence using `qb::io::async::callback` and
- *         self-sent `DelayedActionMessage`s to showcase various FSM scenarios.
+ *     -   Orchestrates a multi-step demo sequence with the same delayed self-messaging.
  *     -   Initiates a system-wide shutdown using `broadcast<qb::KillEvent>()`.
  *
  * This example highlights how actors can encapsulate complex stateful logic and
  * manage timed events effectively.
  *
+ * @note DELAYS HERE USED TO BE `qb::io::async::callback([this]() { ... }, delay)`, at SEVENTEEN
+ *       sites. That overload is a real timer, but it is not bound to any actor's lifetime: it
+ *       captures a raw `this`, and if the actor dies before the timer fires the callback runs
+ *       anyway and dereferences freed memory. Nothing here ever killed an actor with a timer
+ *       outstanding, so the defect was latent -- the SAME shape in
+ *       `example9_trading_system.cpp` is a heap-use-after-free that AddressSanitizer reports on
+ *       3 runs out of 3. `spawn(...)` + `co_await ctx.sleep(d)` is the lifetime-bound form and
+ *       is what `qb/src/qb/core/Actor.h` tells you to prefer. See `scheduleAction()`.
+ *
  * QB Features Demonstrated:
  * - Finite State Machine (FSM) Implementation: Actor (`CoffeeMachineActor`) managing internal states and transitions.
  * - Event-Driven State Changes: Using custom `InputEventMessage`s to drive the FSM.
- * - Asynchronous Timed Operations: `qb::io::async::callback(func, delay)` for simulating processes like brewing.
+ * - Asynchronous Timed Operations: `spawn(...)` + `co_await ctx.sleep(delay)` for simulating
+ *   processes like brewing, cancelled automatically if the actor is killed.
  * - State Notification/Subscription: `SubscribeMessage` and `StateChangeMessage` for observers.
  * - Status Reporting: `StatusRequestMessage` and `StatusResponseMessage`.
  * - Actor Communication: `push<EventType>(...)`, `event.getSource()`.
@@ -43,6 +52,8 @@
  * - Engine and Actor Management: `qb::Main`, `engine.addActor<ActorType>()`, `kill()`.
  */
 
+#include <iomanip>
+#include <sstream>
 #include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
@@ -156,6 +167,22 @@ coffeeTypeToString(CoffeeType type) {
     }
 }
 
+// The FSM's internal input, and the type the transition table is written against.
+//
+// A PLAIN STRUCT, not the event below. The machine synthesises transitions that never travel
+// through a pipe -- BREW_FINISHED and DISPENSE_FINISHED are produced by its own timers -- and the
+// previous version built an `InputEventMessage` ON THE STACK for those and passed it straight to
+// the handler, bypassing the event system. A `qb::Event` carries a routing header (type id,
+// source, destination, bucket size) that only the engine fills in; a stack-constructed one has
+// none of it, and any handler that later called `getSource()` or `reply()` on it would read
+// uninitialised memory. Keep the event for what crosses actors, and a plain struct for what does
+// not.
+struct InputCommand {
+    InputEvent event;
+    CoffeeType coffee_type = CoffeeType::ESPRESSO; // Optional, used for BUTTON_PRESSED
+    double     amount      = 0.0;                  // Optional, used for COIN_INSERTED
+};
+
 // Input event message
 struct InputEventMessage : public Event {
     InputEvent event;
@@ -166,7 +193,21 @@ struct InputEventMessage : public Event {
         : event(ev)
         , coffee_type(type)
         , amount(amt) {}
+
+    [[nodiscard]] InputCommand
+    command() const noexcept {
+        return InputCommand{event, coffee_type, amount};
+    }
 };
+
+// `std::to_string(double)` formats with `%f` -- six decimals -- so a $2.75 cappuccino printed as
+// "$2.750000" everywhere money appeared in this file.
+std::string
+formatMoney(double amount) {
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2) << amount;
+    return ss.str();
+}
 
 // NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
 // destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
@@ -262,7 +303,7 @@ private:
     std::map<CoffeeType, double> _coffee_prices;
 
     // Transition table: maps current state and input event to a handler function
-    using TransitionHandler = std::function<void(const InputEventMessage &)>;
+    using TransitionHandler = std::function<void(const InputCommand &)>;
     std::map<MachineState, std::map<InputEvent, TransitionHandler>> _transition_table;
 
     // List of subscribers to state changes
@@ -305,7 +346,7 @@ public:
 
     void
     on(InputEventMessage &msg) {
-        handleInputEvent(msg);
+        handleInput(msg.command());
     }
 
     void
@@ -332,41 +373,60 @@ public:
     }
 
 private:
+    // Schedule a self-addressed action after `delay`.
+    //
+    // THIS IS THE ONE THING TO COPY OUT OF THIS FILE. `spawn` binds the wait to this actor's
+    // cancellation scope: kill the actor while the sleep is pending and the coroutine throws
+    // `qb::io::async::cancelled_error` and unwinds, touching nothing. The seventeen
+    // `qb::io::async::callback([this]() { ... }, delay)` calls this replaced are NOT lifetime
+    // bound -- the timer holds a raw `this`, fires after the actor is gone, and reads freed
+    // memory. It never fired here only because this demo happens never to kill an actor with a
+    // timer outstanding; the identical shape in example9 is a heap-use-after-free that
+    // AddressSanitizer reports on 3 runs out of 3. `Actor.h` says it directly: "Prefer spawn()
+    // ... it is cancelled automatically when the actor is killed."
+    void
+    scheduleAction(DelayedActionMessage::Action action, qb::duration delay, int step = 0) const {
+        spawn([action, delay, step](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(delay);
+            ctx.template push<DelayedActionMessage>(action, step);
+        });
+    }
+
     // Set up the state transition table
     void
     setupTransitionTable() {
         // IDLE state transitions
-        _transition_table[MachineState::IDLE][InputEvent::BUTTON_PRESSED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::IDLE][InputEvent::BUTTON_PRESSED] = [this](const InputCommand &msg) {
             // Transition to SELECTING when a button is pressed from IDLE
             _selected_coffee  = msg.coffee_type;
             _payment_required = _coffee_prices[_selected_coffee];
             changeState(MachineState::SELECTING, "Coffee type selected: " + coffeeTypeToString(_selected_coffee));
         };
 
-        _transition_table[MachineState::IDLE][InputEvent::MAINTENANCE_KEY] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::IDLE][InputEvent::MAINTENANCE_KEY] = [this](const InputCommand &msg) {
             // Transition to MAINTENANCE when maintenance key is used
             changeState(MachineState::MAINTENANCE, "Maintenance mode activated");
         };
 
-        _transition_table[MachineState::IDLE][InputEvent::ERROR_DETECTED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::IDLE][InputEvent::ERROR_DETECTED] = [this](const InputCommand &msg) {
             // Transition to ERROR when an error is detected
             _error_message = "Unknown error detected";
             changeState(MachineState::FAULT, _error_message);
         };
 
         // SELECTING state transitions
-        _transition_table[MachineState::SELECTING][InputEvent::COIN_INSERTED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::SELECTING][InputEvent::COIN_INSERTED] = [this](const InputCommand &msg) {
             // Transition to PAYMENT when money is inserted
             _payment_received = msg.amount;
-            changeState(MachineState::PAYMENT, "Payment received: $" + std::to_string(_payment_received));
+            changeState(MachineState::PAYMENT, "Payment received: $" + formatMoney(_payment_received));
         };
 
-        _transition_table[MachineState::SELECTING][InputEvent::CANCEL] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::SELECTING][InputEvent::CANCEL] = [this](const InputCommand &msg) {
             // Return to IDLE if user cancels
             changeState(MachineState::IDLE, "Selection cancelled");
         };
 
-        _transition_table[MachineState::SELECTING][InputEvent::BUTTON_PRESSED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::SELECTING][InputEvent::BUTTON_PRESSED] = [this](const InputCommand &msg) {
             // Change coffee selection
             _selected_coffee  = msg.coffee_type;
             _payment_required = _coffee_prices[_selected_coffee];
@@ -377,7 +437,7 @@ private:
         };
 
         // PAYMENT state transitions
-        _transition_table[MachineState::PAYMENT][InputEvent::COIN_INSERTED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::PAYMENT][InputEvent::COIN_INSERTED] = [this](const InputCommand &msg) {
             // Add to payment
             _payment_received += msg.amount;
 
@@ -389,12 +449,11 @@ private:
                 changeState(MachineState::BREWING, "Payment complete, brewing started");
 
                 // Schedule brewing completion with a delayed action after 3 seconds
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::BREW_COMPLETE); },
-                                        std::chrono::seconds(3)); // 3 seconds
+                scheduleAction(DelayedActionMessage::Action::BREW_COMPLETE, std::chrono::seconds(3));
             }
         };
 
-        _transition_table[MachineState::PAYMENT][InputEvent::CANCEL] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::PAYMENT][InputEvent::CANCEL] = [this](const InputCommand &msg) {
             // Return money and go back to IDLE
             qb::io::cout() << "Returning $" << _payment_received << std::endl;
             _payment_received = 0.0;
@@ -402,36 +461,35 @@ private:
         };
 
         // BREWING state transitions
-        _transition_table[MachineState::BREWING][InputEvent::BREW_FINISHED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::BREWING][InputEvent::BREW_FINISHED] = [this](const InputCommand &msg) {
             // Brewing finished, transition to dispensing
             changeState(MachineState::DISPENSING, "Brewing complete, dispensing coffee");
 
             // Schedule dispensing completion with a delayed action after 2 seconds
-            qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::DISPENSE_COMPLETE); },
-                                    std::chrono::seconds(2)); // 2 seconds
+            scheduleAction(DelayedActionMessage::Action::DISPENSE_COMPLETE, std::chrono::seconds(2));
         };
 
-        _transition_table[MachineState::BREWING][InputEvent::ERROR_DETECTED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::BREWING][InputEvent::ERROR_DETECTED] = [this](const InputCommand &msg) {
             // Error during brewing
             _error_message = "Brewing error: Water supply issue";
             changeState(MachineState::FAULT, _error_message);
         };
 
         // DISPENSING state transitions
-        _transition_table[MachineState::DISPENSING][InputEvent::DISPENSE_FINISHED] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::DISPENSING][InputEvent::DISPENSE_FINISHED] = [this](const InputCommand &msg) {
             // Reset payment and return to IDLE
             _payment_received = 0.0;
             changeState(MachineState::IDLE, "Coffee dispensed, ready for next order");
         };
 
         // MAINTENANCE state transitions
-        _transition_table[MachineState::MAINTENANCE][InputEvent::RESET] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::MAINTENANCE][InputEvent::RESET] = [this](const InputCommand &msg) {
             // Return to IDLE after maintenance
             changeState(MachineState::IDLE, "Maintenance completed");
         };
 
         // ERROR state transitions
-        _transition_table[MachineState::FAULT][InputEvent::RESET] = [this](const InputEventMessage &msg) {
+        _transition_table[MachineState::FAULT][InputEvent::RESET] = [this](const InputCommand &msg) {
             // Reset after error
             _error_message = "";
             changeState(MachineState::IDLE, "Error cleared");
@@ -445,7 +503,7 @@ private:
 
                 // Add default handler if no specific handler exists
                 if (_transition_table[machine_state].find(input_event) == _transition_table[machine_state].end()) {
-                    _transition_table[machine_state][input_event] = [machine_state, input_event](const InputEventMessage &msg) {
+                    _transition_table[machine_state][input_event] = [machine_state, input_event](const InputCommand &msg) {
                         // Default is to ignore the event and log it
                         qb::io::cout() << "Ignored event " << eventToString(input_event) << " in state " << stateToString(machine_state)
                                        << std::endl;
@@ -457,7 +515,7 @@ private:
 
     // Handle input events and perform state transitions
     void
-    handleInputEvent(const InputEventMessage &msg) {
+    handleInput(const InputCommand &msg) {
         qb::io::cout() << "Received event: " << eventToString(msg.event) << " in state: " << stateToString(_current_state) << std::endl;
 
         // Look up the appropriate handler for this state and event
@@ -480,16 +538,14 @@ private:
             case DelayedActionMessage::Action::BREW_COMPLETE: {
                 // Brewing completed
                 qb::io::cout() << "Brewing completed" << std::endl;
-                InputEventMessage brew_finished(InputEvent::BREW_FINISHED);
-                handleInputEvent(brew_finished);
+                handleInput(InputCommand{InputEvent::BREW_FINISHED});
                 break;
             }
 
             case DelayedActionMessage::Action::DISPENSE_COMPLETE: {
                 // Dispensing completed
                 qb::io::cout() << "Dispensing completed" << std::endl;
-                InputEventMessage dispense_finished(InputEvent::DISPENSE_FINISHED);
-                handleInputEvent(dispense_finished);
+                handleInput(InputCommand{InputEvent::DISPENSE_FINISHED});
                 break;
             }
 
@@ -511,11 +567,10 @@ private:
                 status_message = "Ready to take orders";
                 break;
             case MachineState::SELECTING:
-                status_message = "Selected: " + coffeeTypeToString(_selected_coffee) + ", price: $" + std::to_string(_payment_required);
+                status_message = "Selected: " + coffeeTypeToString(_selected_coffee) + ", price: $" + formatMoney(_payment_required);
                 break;
             case MachineState::PAYMENT:
-                status_message =
-                    "Payment received: $" + std::to_string(_payment_received) + ", required: $" + std::to_string(_payment_required);
+                status_message = "Payment received: $" + formatMoney(_payment_received) + ", required: $" + formatMoney(_payment_required);
                 break;
             case MachineState::BREWING:
                 status_message = "Brewing " + coffeeTypeToString(_selected_coffee) + "...";
@@ -580,8 +635,7 @@ public:
         push<SubscribeMessage>(_machine_id, id());
 
         // Start the demo sequence after a short delay
-        qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::START_DEMO); },
-                                std::chrono::seconds(1)); // 1 second
+        scheduleAction(DelayedActionMessage::Action::START_DEMO, std::chrono::seconds(1));
 
         co_return true;
     }
@@ -608,6 +662,15 @@ public:
     }
 
 private:
+    // Same helper, same reason, as CoffeeMachineActor::scheduleAction above.
+    void
+    scheduleAction(DelayedActionMessage::Action action, qb::duration delay, int step = 0) const {
+        spawn([action, delay, step](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(delay);
+            ctx.template push<DelayedActionMessage>(action, step);
+        });
+    }
+
     // Handle status response
     void
     handleStatusResponse(const StatusResponseMessage &msg) {
@@ -665,8 +728,7 @@ private:
         qb::io::cout() << "\n----- Starting Demo Sequence -----" << std::endl;
 
         // Start with step 0
-        qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 0); },
-                                std::chrono::milliseconds(100)); // 100 ms
+        scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::milliseconds(100), 0);
     }
 
     // Run a specific step of the demo
@@ -679,8 +741,7 @@ private:
                 requestStatus();
 
                 // Schedule next step
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 1); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::milliseconds(500), 1);
                 break;
             }
 
@@ -690,12 +751,10 @@ private:
                 sendEvent(InputEvent::BUTTON_PRESSED, CoffeeType::CAPPUCCINO);
 
                 // Check status after selection
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::milliseconds(500));
 
                 // Schedule next step
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 2); },
-                                        std::chrono::seconds(1)); // 1 second
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(1), 2);
                 break;
             }
 
@@ -705,12 +764,10 @@ private:
                 sendEvent(InputEvent::COIN_INSERTED, CoffeeType::ESPRESSO, 1.00);
 
                 // Check status after partial payment
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::milliseconds(500));
 
                 // Schedule next step
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 3); },
-                                        std::chrono::seconds(1)); // 1 second
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(1), 3);
                 break;
             }
 
@@ -722,16 +779,13 @@ private:
                 // This will trigger brewing automatically
 
                 // Check brewing status after a delay
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::milliseconds(500));
 
                 // Check status during brewing
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::seconds(2)); // 2 seconds
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::seconds(2));
 
                 // Schedule next step (after brewing and dispensing should be complete)
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 4); },
-                                        std::chrono::seconds(6)); // 6 seconds
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(6), 4);
                 break;
             }
 
@@ -741,8 +795,7 @@ private:
                 requestStatus();
 
                 // Schedule next step
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 5); },
-                                        std::chrono::seconds(1)); // 1 second
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(1), 5);
                 break;
             }
 
@@ -752,12 +805,10 @@ private:
                 sendEvent(InputEvent::ERROR_DETECTED);
 
                 // Check status after error
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::milliseconds(500));
 
                 // Schedule next step
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 6); },
-                                        std::chrono::seconds(1)); // 1 second
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(1), 6);
                 break;
             }
 
@@ -767,12 +818,10 @@ private:
                 sendEvent(InputEvent::RESET);
 
                 // Final status check
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::CHECK_STATUS); },
-                                        std::chrono::milliseconds(500)); // 500 ms
+                scheduleAction(DelayedActionMessage::Action::CHECK_STATUS, std::chrono::milliseconds(500));
 
                 // Schedule end of demo
-                qb::io::async::callback([this]() { push<DelayedActionMessage>(id(), DelayedActionMessage::Action::RUN_DEMO_STEP, 7); },
-                                        std::chrono::seconds(1)); // 1 second
+                scheduleAction(DelayedActionMessage::Action::RUN_DEMO_STEP, std::chrono::seconds(1), 7);
                 break;
             }
 

@@ -27,6 +27,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "Initializing Hello World HTTP Server Actor..." << std::endl;
 
         // Set up routes
@@ -63,6 +70,14 @@ public:
         co_return true;
     }
 
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
+    }
+
     void
     on(const qb::KillEvent &event) noexcept {
         std::cout << "Shutting down Hello World Server..." << std::endl;
@@ -90,6 +105,14 @@ main() {
         // Start the engine (blocks until stopped)
         engine.start();
         engine.join();
+
+        // A failed onInit() (bind refused, missing certificate, ...) removes the actor
+        // but does not make the process fail. Report it, so a supervisor cannot read a
+        // server that never bound its port as a clean shutdown.
+        if (engine.hasError()) {
+            std::cerr << "Engine reported an error" << std::endl;
+            return 1;
+        }
 
         std::cout << "Server stopped gracefully" << std::endl;
 

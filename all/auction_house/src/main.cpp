@@ -176,6 +176,14 @@ main(int argc, char *argv[]) {
     engine.start();
     engine.join();
 
+    // TcpListener::onInit() reports a failed bind and returns false, but that only fails
+    // the actor — the process still gets here. Without this check a server that never
+    // bound its port exits 0 and a supervisor reads it as a clean shutdown.
+    if (engine.hasError()) {
+        qb::io::cerr() << "\n[Main] Engine reported an error — see the log above\n";
+        return 1;
+    }
+
     qb::io::cout() << "\n[Main] Server stopped. Goodbye!\n";
     return 0;
 }

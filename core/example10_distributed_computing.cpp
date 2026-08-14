@@ -11,15 +11,16 @@
  * 1.  `TaskGeneratorActor`:
  *     -   Periodically creates computational `Task` objects with varying types, priorities, and complexities.
  *     -   Sends these tasks as `TaskMessage` events to the `TaskSchedulerActor`.
- *     -   Uses `qb::ICallback` for periodic task generation.
+ *     -   Paces generation with `spawn(...)` + `co_await ctx.sleep(...)`.
  * 2.  `TaskSchedulerActor`:
  *     -   Manages a queue of pending tasks, prioritizing them.
  *     -   Receives `WorkerStatusMessage` and `WorkerHeartbeatMessage` from `WorkerNodeActor`s
  *         to monitor their load and availability.
- *     -   Implements a load balancing strategy to assign tasks (`TaskAssignmentMessage`)
- *         to the most suitable (e.g., least busy) `WorkerNodeActor`.
- *     -   Tracks active tasks and handles `TaskStatusUpdateMessage`s.
- *     -   Receives `ResultMessage`s to know when workers become free.
+ *     -   Assigns tasks (`TaskAssignmentMessage`) only to workers it knows to be idle, tracking
+ *         that itself rather than inferring it from a metric that lags by seconds.
+ *     -   Tracks active tasks and handles `TaskStatusUpdateMessage`s, requeueing a task a worker
+ *         rejects.
+ *     -   Learns that a worker is free from its `TaskStatusUpdateMessage`.
  * 3.  `WorkerNodeActor` (multiple instances):
  *     -   Represents a computational node capable of executing tasks.
  *     -   Receives `TaskAssignmentMessage` from the scheduler.
@@ -27,37 +28,76 @@
  *     -   Sends `ResultMessage` (containing success/failure and output) to the `ResultCollectorActor`.
  *     -   Periodically sends `WorkerHeartbeatMessage` and `WorkerStatusMessage` (with metrics like
  *         utilization) to the `TaskSchedulerActor`.
- *     -   Uses `qb::ICallback` for its internal processing loop/heartbeats.
  * 4.  `ResultCollectorActor`:
  *     -   Aggregates `TaskResult` events received from all `WorkerNodeActor`s.
  *     -   Can provide summary statistics on task completion, success rates, and average processing times.
  * 5.  `SystemMonitorActor` (acts as a coordinator):
- *     -   Initializes and launches all other actors in the system, potentially using `addRefActor`.
  *     -   Distributes actors across different CPU cores.
  *     -   Sends `InitializeMessage` to start other actors.
- *     -   Receives `ProcessingCompleteEvent` from worker/producer type actors.
- *     -   Collects overall system statistics (`SystemStatsMessage`) and displays them periodically.
- *     -   Manages the lifecycle of the simulation, initiating a system-wide shutdown
- *         (e.g., by broadcasting `ShutdownEvent` or `qb::KillEvent`) after a set duration or
- *         once all work is deemed complete.
+ *     -   Polls the generator, scheduler and collector for the counters they own and displays the
+ *         merged `StatsReportMessage`s periodically.
+ *     -   Manages the lifecycle of the simulation, initiating a system-wide shutdown after a set
+ *         duration.
  *
  * This example showcases dynamic load balancing, worker health monitoring, task prioritization,
  * result validation (conceptual), and real-time performance metrics within a QB actor system.
  *
+ * @note WHAT THIS FILE USED TO GET WRONG. Every item below was measured on a full 30-second run,
+ *       and every one of them exited 0.
+ *
+ *       (1) IT ABORTED UNDER THE `sanitize` PRESET, 3 runs of 3 --
+ *       `AddressSanitizer: heap-use-after-free` inside a
+ *       `qb::io::async::callback([this]{ if (_is_active) ... }, delay)` lambda (reported at
+ *       `WorkerNodeActor::scheduleMetricsUpdate()` twice and at
+ *       `TaskGeneratorActor::scheduleTaskGeneration()` once). That overload's timer is not bound
+ *       to any actor's lifetime; it fires after the actor is destroyed and the `_is_active`
+ *       guard is itself the read of freed memory. All eight sites are now `spawn(...)` +
+ *       `co_await ctx.sleep(d)`, which the actor's cancellation scope cancels on kill.
+ *
+ *       (2) HALF THE FLEET GOT NOTHING. In one measured run, of 1497 assignments Worker 3 took
+ *       1198, Worker 65537 took 299, and the two workers on cores 2 and 3 took ZERO. The
+ *       scheduler walked `_worker_ids` in fixed order and asked `isWorkerAvailable()`, which
+ *       answers from a `utilization` figure the workers report every 2 seconds -- so during the
+ *       20ms between two tasks every worker still looked idle and the first one in the list took
+ *       everything. A scheduler knows perfectly well who it just gave work to; it now tracks
+ *       that (`_busy_workers`) and hands out round-robin from where it left off.
+ *
+ *       (3) A REJECTED TASK WAS DROPPED ON THE FLOOR. A busy worker answered
+ *       `TaskStatusUpdateMessage` with status PENDING, and the scheduler's handler only updated
+ *       a map entry -- it never put the task back in the queue. Combined with (2) that is where
+ *       most of the 94% incompletion went.
+ *
+ *       (4) THE TASK GENERATOR PRODUCED ENUM VALUES THAT DO NOT EXIST.
+ *       `static_cast<ComplexityLevel>(1 << complexity_dist(_rng))` yields 1, 2, 4, 8 while
+ *       `ComplexityLevel` enumerates 1, 5, 10, 20 -- so three of every four tasks carried a
+ *       value with no enumerator, and every `switch` over it fell to `default`.
+ *
+ *       (5) THE THROUGHPUT TARGET WAS ARITHMETICALLY UNREACHABLE. `TASKS_PER_SECOND` was 50
+ *       against a fleet of 4 workers whose mean task takes ~0.875s -- a ceiling of ~4.6
+ *       tasks/sec, i.e. the target was 11x the capacity provisioned for it. "6% completed" was
+ *       the design, not a defect to debug. It is now set just above capacity, so the queue grows
+ *       slowly and the backlog the scheduler reports means something.
+ *
+ *       (6) FIVE CROSS-CORE GLOBALS, plus a `static std::mt19937` in `generateProcessingTime()`
+ *       driven from four worker cores at once (`std::mt19937::operator()` is not thread-safe).
+ *       Actors own their counters and report them by event.
+ *
  * QB Features Demonstrated:
  * - Multi-Core Actor System: Actors strategically deployed across cores for performance.
  * - Advanced Actor Communication: Complex interaction patterns for work distribution, status updates, and results.
- * - Dynamic Load Balancing: `TaskSchedulerActor` making decisions based on `WorkerMetrics`.
+ * - Dynamic Load Balancing: `TaskSchedulerActor` assigning round-robin over the workers it knows are idle.
  * - Health Monitoring: `WorkerHeartbeatMessage` and `WorkerStatusMessage`.
- * - Asynchronous Operations: Extensive use of `qb::ICallback` and `qb::io::async::callback` for periodic tasks,
- *   simulated processing, and system orchestration.
+ * - Lifetime-Bound Timers: `spawn(...)` + `co_await ctx.sleep(...)` for every periodic task,
+ *   simulated processing step, and orchestration delay.
+ * - No Shared Mutable State: each actor owns its counters and reports them by event.
  * - Comprehensive Event System: Numerous custom events for detailed system control and information flow.
  * - System Orchestration and Lifecycle Management: `SystemMonitorActor` overseeing the simulation.
  * - Fixed-Size Strings: `qb::string<N>` used in event/model definitions for potentially performance-sensitive data.
- * - Referenced Actors: `addRefActor` for potentially closer coupling where appropriate (though the example uses it broadly).
  */
 
+#include <array>
 #include <deque>
+#include <set>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
@@ -69,17 +109,20 @@ namespace {
 constexpr int NUM_WORKERS                 = 4;
 constexpr int NUM_TASK_TYPES              = 3;
 constexpr int SIMULATION_DURATION_SECONDS = 30;
-constexpr int TASKS_PER_SECOND            = 50;
 
 // Task complexity levels (affects processing time)
 enum class ComplexityLevel { SIMPLE = 1, MEDIUM = 5, COMPLEX = 10, VERY_COMPLEX = 20 };
 
-// Performance tracking
-std::atomic<uint64_t> g_total_tasks{0};
-std::atomic<uint64_t> g_completed_tasks{0};
-std::atomic<uint64_t> g_failed_tasks{0};
-std::atomic<uint64_t> g_total_task_messages{0};
-std::atomic<uint64_t> g_total_result_messages{0};
+// The four levels, in one place, so the generator draws an actual enumerator instead of
+// synthesising `static_cast<ComplexityLevel>(1 << k)` values that are not in the enumeration.
+constexpr std::array<ComplexityLevel, 4> COMPLEXITY_LEVELS{
+    ComplexityLevel::SIMPLE, ComplexityLevel::MEDIUM, ComplexityLevel::COMPLEX, ComplexityLevel::VERY_COMPLEX
+};
+
+// Offered load. This is deliberately just ABOVE what the fleet can serve, so the scheduler's
+// backlog is a real number: a task's base cost is `complexity * 0.1s`, the four levels average
+// 0.875s, and NUM_WORKERS of them therefore top out near 4.6 tasks/sec.
+constexpr double TASKS_PER_SECOND = 5.0;
 
 // System-wide timestamp for simulation time tracking
 uint64_t
@@ -100,12 +143,13 @@ generateTaskId() {
 // Available task types
 const std::vector<qb::string<32>> TASK_TYPES = {"MATRIX_MULTIPLICATION", "PRIME_FACTORIZATION", "IMAGE_PROCESSING"};
 
-// Generate random processing time based on complexity
+// Generate random processing time based on complexity.
+//
+// `gen` is a PARAMETER, supplied by the calling worker. It used to be a function-local
+// `static std::mt19937` mutated concurrently by the four workers, which sit on four different
+// cores; `std::mt19937::operator()` is not thread-safe and a release build will never say so.
 double
-generateProcessingTime(ComplexityLevel level) {
-    static std::random_device rd;
-    static std::mt19937       gen(rd());
-
+generateProcessingTime(ComplexityLevel level, std::mt19937 &gen) {
     double                           base_time = static_cast<int>(level) * 0.1; // base time in seconds
     std::uniform_real_distribution<> dist(base_time * 0.8, base_time * 1.2);
 
@@ -307,23 +351,36 @@ struct WorkerHeartbeatMessage : public qb::Event {
 };
 
 // System messages
-struct SystemStatsMessage : public qb::Event {
-    uint64_t total_tasks;
-    uint64_t completed_tasks;
-    uint64_t failed_tasks;
-    double   elapsed_seconds;
-    double   tasks_per_second;
+struct InitializeMessage : public qb::Event {};
+struct ShutdownMessage : public qb::Event {};
 
-    SystemStatsMessage(uint64_t total, uint64_t completed, uint64_t failed, double seconds, double throughput)
+// Telemetry, done the actor way: the monitor ASKS, each component ANSWERS with the counters it
+// owns. This replaces five `std::atomic<uint64_t>` globals written from four cores.
+struct StatsRequestMessage : public qb::Event {};
+
+struct StatsReportMessage : public qb::Event {
+    uint64_t total_tasks{0};     // produced by the generator
+    uint64_t completed_tasks{0}; // counted by the collector
+    uint64_t failed_tasks{0};    // counted by the collector
+    uint64_t queued_tasks{0};    // scheduler backlog
+    uint64_t active_tasks{0};    // scheduler in-flight
+
+    StatsReportMessage(uint64_t total, uint64_t completed, uint64_t failed, uint64_t queued, uint64_t active)
         : total_tasks(total)
         , completed_tasks(completed)
         , failed_tasks(failed)
-        , elapsed_seconds(seconds)
-        , tasks_per_second(throughput) {}
+        , queued_tasks(queued)
+        , active_tasks(active) {}
 };
 
-struct InitializeMessage : public qb::Event {};
-struct ShutdownMessage : public qb::Event {};
+// Self-addressed wake-ups produced by each actor's own coroutine timers.
+struct GenerateTickMessage : public qb::Event {};
+struct TaskCompleteTickMessage : public qb::Event {};
+struct HeartbeatTickMessage : public qb::Event {};
+struct MetricsTickMessage : public qb::Event {};
+struct ReportTickMessage : public qb::Event {};
+struct ShutdownTickMessage : public qb::Event {};
+struct FinalStopTickMessage : public qb::Event {};
 
 // Define UpdateWorkersMessage at the global level so both main and TaskSchedulerActor can use it
 struct UpdateWorkersMessage : public qb::Event {
@@ -356,6 +413,8 @@ public:
         // Register for message types
         registerEvent<InitializeMessage>(*this);
         registerEvent<ShutdownMessage>(*this);
+        registerEvent<GenerateTickMessage>(*this);
+        registerEvent<StatsRequestMessage>(*this);
     }
 
     qb::io::async::task<bool>
@@ -374,8 +433,22 @@ public:
     }
 
     void
+    on(GenerateTickMessage const &) {
+        if (!_is_active)
+            return;
+
+        generateTask();
+        scheduleTaskGeneration();
+    }
+
+    void
+    on(StatsRequestMessage &msg) {
+        push<StatsReportMessage>(msg.getSource(), _tasks_generated, 0, 0, 0, 0);
+    }
+
+    void
     on(ShutdownMessage &) {
-        qb::io::cout() << "TaskGeneratorActor shutting down" << std::endl;
+        qb::io::cout() << "TaskGeneratorActor shutting down after generating " << _tasks_generated << " tasks" << std::endl;
         _is_active = false;
         kill();
     }
@@ -387,17 +460,15 @@ private:
             return;
 
         // Calculate time for next batch of tasks
-        double seconds_per_task = 1.0 / TASKS_PER_SECOND;
+        const auto period = std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(1.0 / TASKS_PER_SECOND));
 
-        // Schedule next task generation
-        qb::io::async::callback(
-            [this]() {
-                if (_is_active) {
-                    generateTask();
-                    scheduleTaskGeneration();
-                }
-            },
-            std::chrono::duration<double>(seconds_per_task));
+        // Schedule next task generation. `spawn` binds the timer to this actor's cancellation
+        // scope; the `qb::io::async::callback([this]{...}, d)` this replaced was one of the three
+        // sites AddressSanitizer caught reading freed memory at shutdown.
+        spawn([period](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(period);
+            ctx.template push<GenerateTickMessage>();
+        });
     }
 
     void
@@ -418,9 +489,9 @@ private:
             data_ss << data_dist(_rng);
         }
 
-        // Create the task
-        ComplexityLevel complexity = static_cast<ComplexityLevel>(1 << complexity_dist(_rng) // 1, 2, 4, 8
-        );
+        // Create the task. Draw an actual enumerator: `static_cast<ComplexityLevel>(1 << k)`
+        // produced 1, 2, 4 and 8, and only the first of those is a `ComplexityLevel`.
+        ComplexityLevel complexity = COMPLEXITY_LEVELS[static_cast<std::size_t>(complexity_dist(_rng))];
 
         std::shared_ptr<Task> task =
             std::make_shared<Task>(TASK_TYPES[type_dist(_rng)].c_str(), priority_dist(_rng), complexity, data_ss.str().c_str());
@@ -428,10 +499,10 @@ private:
         // Send to scheduler
         push<TaskMessage>(_scheduler_id, task);
 
-        // Update global statistics
-        g_total_tasks++;
-        g_total_task_messages++;
+        _tasks_generated++;
     }
+
+    uint64_t _tasks_generated{0};
 };
 
 /**
@@ -445,9 +516,12 @@ private:
     std::map<qb::string<64>, std::shared_ptr<Task>> _active_tasks;
     bool                                            _is_active{false};
 
-    // Load balancing parameters
-    uint64_t       _last_load_assessment{0};
-    const uint64_t LOAD_ASSESSMENT_INTERVAL = 1000000; // 1 second
+    // Who the scheduler has handed work to and not yet heard back from. THIS is what makes an
+    // assignment decision correct: `WorkerMetrics::utilization` arrives every two seconds, so in
+    // the 200ms between two tasks it says every worker is idle, and a fixed-order first-fit over
+    // that answer gives the first worker in the list everything.
+    std::set<qb::ActorId> _busy_workers;
+    std::size_t           _next_worker{0}; // round-robin cursor
 
 public:
     // Constructor now takes empty vector to be filled later
@@ -457,10 +531,11 @@ public:
         registerEvent<TaskStatusUpdateMessage>(*this);
         registerEvent<WorkerStatusMessage>(*this);
         registerEvent<WorkerHeartbeatMessage>(*this);
-        registerEvent<ResultMessage>(*this);
         registerEvent<InitializeMessage>(*this);
         registerEvent<ShutdownMessage>(*this);
         registerEvent<UpdateWorkersMessage>(*this);
+        registerEvent<StatsRequestMessage>(*this);
+        registerEvent<ReportTickMessage>(*this);
     }
 
     // Method to update worker IDs after construction
@@ -477,8 +552,7 @@ public:
 
     void
     on(InitializeMessage &) {
-        _is_active            = true;
-        _last_load_assessment = getCurrentTimestamp();
+        _is_active = true;
 
         // Schedule load balancing assessment
         scheduleLoadAssessment();
@@ -494,8 +568,6 @@ public:
 
     void
     on(TaskMessage &msg) {
-        g_total_task_messages++;
-
         // Add task to queue
         _task_queue.push_back(msg.task);
 
@@ -508,10 +580,43 @@ public:
         auto           task    = msg.task;
         qb::string<64> task_id = task->task_id;
 
+        // A worker that was already busy answers with status PENDING. That means "I did not take
+        // this one" -- so put it back in the queue and mark the worker free again. The previous
+        // version only rewrote a map entry, which silently DROPPED the task: combined with the
+        // fixed-order assignment above, that is where most of a measured 94% incompletion went.
+        if (task->status == TaskStatus::PENDING) {
+            _active_tasks.erase(task_id);
+            _busy_workers.erase(msg.getSource());
+            _task_queue.push_back(task);
+            scheduleTasks();
+            return;
+        }
+
         // Update active task status
         if (_active_tasks.find(task_id) != _active_tasks.end()) {
             _active_tasks[task_id] = task;
         }
+
+        // A terminal status frees the worker even if the result went straight to the collector.
+        if (task->status == TaskStatus::COMPLETED || task->status == TaskStatus::FAILED || task->status == TaskStatus::CANCELED) {
+            _active_tasks.erase(task_id);
+            _busy_workers.erase(msg.getSource());
+            scheduleTasks();
+        }
+    }
+
+    void
+    on(StatsRequestMessage &msg) {
+        push<StatsReportMessage>(msg.getSource(), 0, 0, 0, _task_queue.size(), _active_tasks.size());
+    }
+
+    void
+    on(ReportTickMessage const &) {
+        if (!_is_active)
+            return;
+
+        assessLoadBalance();
+        scheduleLoadAssessment();
     }
 
     void
@@ -527,19 +632,11 @@ public:
         }
     }
 
-    void
-    on(ResultMessage &msg) {
-        g_total_result_messages++;
-
-        // Remove from active tasks
-        qb::string<64> task_id = msg.result.task_id;
-        if (_active_tasks.find(task_id) != _active_tasks.end()) {
-            _active_tasks.erase(task_id);
-        }
-
-        // Schedule more tasks since a worker is now free
-        scheduleTasks();
-    }
+    // NOTE: this actor used to also `registerEvent<ResultMessage>` and handle it "to know when
+    // workers become free". Nothing ever sent it one -- a worker pushes its `ResultMessage` to
+    // the RESULT COLLECTOR and only a `TaskStatusUpdateMessage` to the scheduler -- so the
+    // handler was dead code, and the freeing it was supposed to do never happened. The terminal
+    // branch in `on(TaskStatusUpdateMessage&)` above is the live path.
 
     void
     on(ShutdownMessage &) {
@@ -564,36 +661,50 @@ private:
         if (!_is_active || _task_queue.empty())
             return;
 
+        if (_worker_ids.empty())
+            return;
+
         // Process high priority tasks first
         std::stable_sort(_task_queue.begin(), _task_queue.end(),
                          [](const std::shared_ptr<Task> &a, const std::shared_ptr<Task> &b) { return a->priority > b->priority; });
 
-        // Find available workers
-        for (const auto &worker_id : _worker_ids) {
-            if (_task_queue.empty())
-                break;
+        // Walk the fleet ONCE from the round-robin cursor, so consecutive tasks land on
+        // consecutive workers instead of piling onto whichever id happens to sort first.
+        for (std::size_t probed = 0; probed < _worker_ids.size() && !_task_queue.empty(); ++probed) {
+            const auto worker_id = _worker_ids[_next_worker];
+            _next_worker         = (_next_worker + 1) % _worker_ids.size();
 
-            bool worker_is_available = isWorkerAvailable(worker_id);
+            if (!isWorkerAvailable(worker_id))
+                continue;
 
-            if (worker_is_available) {
-                // Get next task
-                auto task = _task_queue.front();
-                _task_queue.pop_front();
+            // Get next task
+            auto task = _task_queue.front();
+            _task_queue.pop_front();
 
-                // Assign to worker
-                task->status                 = TaskStatus::ASSIGNED;
-                _active_tasks[task->task_id] = task;
+            // Assign to worker
+            task->status                 = TaskStatus::ASSIGNED;
+            _active_tasks[task->task_id] = task;
+            _busy_workers.insert(worker_id);
 
-                // Send assignment
-                push<TaskAssignmentMessage>(worker_id, task);
+            // Send the worker its OWN copy. Boxing a payload behind a `std::shared_ptr` makes
+            // the EVENT relocatable; it does not make the pointee owned. Handing the live object
+            // to a worker on another core, while this actor keeps it in `_active_tasks`, is
+            // shared mutable state across cores -- the worker writes `status`, `start_time` and
+            // `completion_time` on it. `example9_trading_system.cpp` has the same shape and its
+            // `snapshot()` helper carries the ThreadSanitizer evidence.
+            push<TaskAssignmentMessage>(worker_id, std::make_shared<Task>(*task));
 
-                qb::io::cout() << "Assigned " << task->toString() << " to Worker " << worker_id << std::endl;
-            }
+            qb::io::cout() << "Assigned " << task->toString() << " to Worker " << worker_id << std::endl;
         }
     }
 
     bool
     isWorkerAvailable(qb::ActorId worker_id) {
+        // What the scheduler KNOWS, checked before what it was TOLD: it handed this worker a
+        // task and has not heard back.
+        if (_busy_workers.count(worker_id))
+            return false;
+
         if (_worker_metrics.find(worker_id) == _worker_metrics.end()) {
             // No metrics yet, assume available
             return true;
@@ -609,12 +720,6 @@ private:
             return false;
         }
 
-        // Check if worker is not overloaded
-        if (metrics.utilization > 0.8) {
-            // Worker is busy
-            return false;
-        }
-
         return true;
     }
 
@@ -624,23 +729,16 @@ private:
             return;
 
         // Schedule periodic load assessment
-        qb::io::async::callback(
-            [this]() {
-                if (!_is_active)
-                    return;
-
-                assessLoadBalance();
-                scheduleLoadAssessment();
-            },
-            std::chrono::seconds(1)); // Check every 1 second
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(1)); // Check every 1 second
+            ctx.template push<ReportTickMessage>();
+        });
     }
 
     void
     assessLoadBalance() {
         if (_worker_metrics.empty())
             return;
-
-        _last_load_assessment = getCurrentTimestamp();
 
         // Calculate average worker utilization
         double total_utilization = 0.0;
@@ -670,6 +768,7 @@ private:
     bool                  _is_active{false};
     uint64_t              _simulation_start_time;
     uint64_t              _busy_start_time{0};
+    std::mt19937          _rng;
 
 public:
     WorkerNodeActor(qb::ActorId scheduler_id, qb::ActorId collector_id)
@@ -680,6 +779,13 @@ public:
         registerEvent<TaskCancellationMessage>(*this);
         registerEvent<InitializeMessage>(*this);
         registerEvent<ShutdownMessage>(*this);
+        registerEvent<TaskCompleteTickMessage>(*this);
+        registerEvent<HeartbeatTickMessage>(*this);
+        registerEvent<MetricsTickMessage>(*this);
+
+        // Each worker seeds its OWN generator. `generateProcessingTime` used to hold a
+        // function-local `static std::mt19937` driven from all four worker cores at once.
+        _rng = std::mt19937(std::random_device{}());
     }
 
     qb::io::async::task<bool>
@@ -723,16 +829,21 @@ public:
         push<TaskStatusUpdateMessage>(_scheduler_id, _current_task);
 
         // Schedule task completion based on complexity
-        double processing_time = generateProcessingTime(_current_task->complexity);
+        const auto processing_time =
+            std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(generateProcessingTime(_current_task->complexity, _rng)));
 
-        qb::io::async::callback(
-            [this]() {
-                if (!_is_active)
-                    return;
+        spawn([processing_time](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(processing_time);
+            ctx.template push<TaskCompleteTickMessage>();
+        });
+    }
 
-                completeCurrentTask();
-            },
-            std::chrono::duration<double>(processing_time));
+    void
+    on(TaskCompleteTickMessage const &) {
+        if (!_is_active)
+            return;
+
+        completeCurrentTask();
     }
 
     void
@@ -765,6 +876,18 @@ public:
         kill();
     }
 
+    void
+    on(HeartbeatTickMessage const &) {
+        if (_is_active)
+            scheduleHeartbeat();
+    }
+
+    void
+    on(MetricsTickMessage const &) {
+        if (_is_active)
+            scheduleMetricsUpdate();
+    }
+
 private:
     void
     completeCurrentTask() {
@@ -774,11 +897,11 @@ private:
         uint64_t completion_time = getCurrentTimestamp();
         uint64_t processing_time = completion_time - _current_task->start_time;
 
-        // Randomly succeed or fail (95% success rate)
-        std::random_device               rd;
-        std::mt19937                     gen(rd());
+        // Randomly succeed or fail (95% success rate). The generator is the actor's own member,
+        // not a `std::random_device` + `std::mt19937` constructed per task: seeding mt19937 is
+        // ~2.5 KB of state, and on macOS `random_device` funnels into a process-wide lock.
         std::uniform_real_distribution<> dist(0, 1);
-        bool                             success = dist(gen) < 0.95;
+        bool                             success = dist(_rng) < 0.95;
 
         // Update task status
         _current_task->status          = success ? TaskStatus::COMPLETED : TaskStatus::FAILED;
@@ -801,7 +924,8 @@ private:
             result_ss << "Processed " << _current_task->task_type.c_str() << " task with input size " << _current_task->data.size() << " in "
                       << (processing_time / 1000.0) << "ms";
         } else {
-            result_ss << "Failed to process task: Error code " << (std::rand() % 100);
+            std::uniform_int_distribution<> error_dist(0, 99);
+            result_ss << "Failed to process task: Error code " << error_dist(_rng);
         }
 
         // Create result
@@ -815,13 +939,6 @@ private:
 
         qb::io::cout() << "Worker " << id() << " completed task " << _current_task->task_id.c_str()
                        << " with status: " << statusToString(_current_task->status) << std::endl;
-
-        // Update global counters
-        if (success) {
-            g_completed_tasks++;
-        } else {
-            g_failed_tasks++;
-        }
 
         // Reset worker state
         _current_task = nullptr;
@@ -837,13 +954,10 @@ private:
         push<WorkerHeartbeatMessage>(_scheduler_id, id(), getCurrentTimestamp(), _is_busy);
 
         // Schedule next heartbeat
-        qb::io::async::callback(
-            [this]() {
-                if (_is_active) {
-                    scheduleHeartbeat();
-                }
-            },
-            std::chrono::seconds(1)); // Heartbeat every 1 second
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(1)); // Heartbeat every 1 second
+            ctx.template push<HeartbeatTickMessage>();
+        });
     }
 
     void
@@ -867,13 +981,10 @@ private:
         push<WorkerStatusMessage>(_scheduler_id, id(), _metrics);
 
         // Schedule next update
-        qb::io::async::callback(
-            [this]() {
-                if (_is_active) {
-                    scheduleMetricsUpdate();
-                }
-            },
-            std::chrono::seconds(2)); // Update metrics every 2 seconds
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(2)); // Update metrics every 2 seconds
+            ctx.template push<MetricsTickMessage>();
+        });
     }
 };
 
@@ -884,6 +995,8 @@ class ResultCollectorActor : public qb::Actor {
 private:
     std::map<qb::string<64>, TaskResult> _results;
     bool                                 _is_active{false};
+    uint64_t                             _completed{0};
+    uint64_t                             _failed{0};
 
 public:
     ResultCollectorActor() {
@@ -891,6 +1004,7 @@ public:
         registerEvent<ResultMessage>(*this);
         registerEvent<InitializeMessage>(*this);
         registerEvent<ShutdownMessage>(*this);
+        registerEvent<StatsRequestMessage>(*this);
     }
 
     qb::io::async::task<bool>
@@ -909,8 +1023,18 @@ public:
         // Store the result
         _results[msg.result.task_id] = msg.result;
 
+        if (msg.result.success)
+            _completed++;
+        else
+            _failed++;
+
         // Log result details
         qb::io::cout() << "Collected: " << msg.result.toString() << std::endl;
+    }
+
+    void
+    on(StatsRequestMessage &msg) {
+        push<StatsReportMessage>(msg.getSource(), 0, _completed, _failed, 0, 0);
     }
 
     void
@@ -956,8 +1080,17 @@ private:
     qb::ActorId              _collector_id;
     std::vector<qb::ActorId> _worker_ids;
 
-    uint64_t _start_time;
+    uint64_t _start_time{0};
     bool     _is_active{false};
+    bool     _shutting_down{false};
+
+    // Merged snapshot, rebuilt on every polling round: generator + scheduler + collector.
+    int      _pending_reports{0};
+    uint64_t _total_tasks{0};
+    uint64_t _completed_tasks{0};
+    uint64_t _failed_tasks{0};
+    uint64_t _queued_tasks{0};
+    uint64_t _active_tasks{0};
 
 public:
     SystemMonitorActor(qb::ActorId generator, qb::ActorId scheduler, qb::ActorId collector, const std::vector<qb::ActorId> &workers)
@@ -966,9 +1099,12 @@ public:
         , _collector_id(collector)
         , _worker_ids(workers) {
         // Register for message types
-        registerEvent<SystemStatsMessage>(*this);
+        registerEvent<StatsReportMessage>(*this);
         registerEvent<InitializeMessage>(*this);
         registerEvent<ShutdownMessage>(*this);
+        registerEvent<ReportTickMessage>(*this);
+        registerEvent<ShutdownTickMessage>(*this);
+        registerEvent<FinalStopTickMessage>(*this);
     }
 
     qb::io::async::task<bool>
@@ -1009,27 +1145,55 @@ public:
         schedulePerformanceReport();
 
         // Schedule system shutdown
-        qb::io::async::callback(
-            [this]() {
-                if (_is_active) {
-                    shutdownSystem();
-                }
-            },
-            std::chrono::seconds(SIMULATION_DURATION_SECONDS));
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(SIMULATION_DURATION_SECONDS));
+            ctx.template push<ShutdownTickMessage>();
+        });
     }
 
     void
-    on(SystemStatsMessage &msg) {
-        // Log the statistics
-        qb::io::cout() << "\n===== SYSTEM STATISTICS =====" << std::endl;
-        qb::io::cout() << "Total Tasks: " << msg.total_tasks << std::endl;
-        qb::io::cout() << "Completed Tasks: " << msg.completed_tasks << " (" << std::fixed << std::setprecision(1)
-                       << (msg.total_tasks > 0 ? (msg.completed_tasks * 100.0 / msg.total_tasks) : 0.0) << "%)" << std::endl;
-        qb::io::cout() << "Failed Tasks: " << msg.failed_tasks << " (" << std::fixed << std::setprecision(1)
-                       << (msg.total_tasks > 0 ? (msg.failed_tasks * 100.0 / msg.total_tasks) : 0.0) << "%)" << std::endl;
-        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2) << msg.elapsed_seconds << " seconds" << std::endl;
-        qb::io::cout() << "Throughput: " << std::fixed << std::setprecision(2) << msg.tasks_per_second << " tasks/sec" << std::endl;
-        qb::io::cout() << "===========================" << std::endl;
+    on(StatsReportMessage &msg) {
+        // Each component reports only the counters it owns; the zeros are somebody else's.
+        _total_tasks += msg.total_tasks;
+        _completed_tasks += msg.completed_tasks;
+        _failed_tasks += msg.failed_tasks;
+        _queued_tasks += msg.queued_tasks;
+        _active_tasks += msg.active_tasks;
+
+        if (--_pending_reports > 0)
+            return;
+
+        printStatistics();
+
+        if (_shutting_down)
+            stopEverything();
+    }
+
+    void
+    on(ReportTickMessage const &) {
+        requestStats();
+
+        if (_is_active)
+            schedulePerformanceReport();
+    }
+
+    void
+    on(ShutdownTickMessage const &) {
+        if (!_is_active)
+            return;
+
+        qb::io::cout() << "\nDistributed computing system shutting down..." << std::endl;
+
+        _is_active     = false;
+        _shutting_down = true;
+
+        // One last polling round, so the final figures are the components' own.
+        requestStats();
+    }
+
+    void
+    on(FinalStopTickMessage const &) {
+        broadcast<ShutdownMessage>();
     }
 
     void
@@ -1040,45 +1204,50 @@ public:
 
 private:
     void
-    schedulePerformanceReport() {
-        if (!_is_active)
-            return;
+    requestStats() {
+        _pending_reports = 3;
+        _total_tasks     = 0;
+        _completed_tasks = 0;
+        _failed_tasks    = 0;
+        _queued_tasks    = 0;
+        _active_tasks    = 0;
 
-        // Schedule periodic performance reports
-        qb::io::async::callback(
-            [this]() {
-                if (!_is_active)
-                    return;
-
-                // Calculate elapsed time
-                uint64_t current_time    = getCurrentTimestamp();
-                double   elapsed_seconds = (current_time - _start_time) / 1000000.0;
-
-                // Calculate throughput
-                double tasks_per_second = elapsed_seconds > 0 ? (g_completed_tasks + g_failed_tasks) / elapsed_seconds : 0;
-
-                // Send statistics message to self
-                push<SystemStatsMessage>(id(), g_total_tasks.load(), g_completed_tasks.load(), g_failed_tasks.load(), elapsed_seconds,
-                                         tasks_per_second);
-
-                // Schedule next report
-                schedulePerformanceReport();
-            },
-            std::chrono::seconds(2)); // Report every 2 seconds
+        push<StatsRequestMessage>(_task_generator_id);
+        push<StatsRequestMessage>(_scheduler_id);
+        push<StatsRequestMessage>(_collector_id);
     }
 
     void
-    shutdownSystem() {
-        qb::io::cout() << "\nDistributed computing system shutting down..." << std::endl;
+    printStatistics() const {
+        const double elapsed_seconds = (getCurrentTimestamp() - _start_time) / 1000000.0;
+        if (elapsed_seconds <= 0.0)
+            return;
 
-        // Calculate final statistics
-        uint64_t current_time     = getCurrentTimestamp();
-        double   elapsed_seconds  = (current_time - _start_time) / 1000000.0;
-        double   tasks_per_second = elapsed_seconds > 0 ? (g_completed_tasks + g_failed_tasks) / elapsed_seconds : 0;
+        const double tasks_per_second = (_completed_tasks + _failed_tasks) / elapsed_seconds;
 
-        push<SystemStatsMessage>(id(), g_total_tasks.load(), g_completed_tasks.load(), g_failed_tasks.load(), elapsed_seconds,
-                                 tasks_per_second);
+        qb::io::cout() << "\n===== SYSTEM STATISTICS =====" << std::endl;
+        qb::io::cout() << "Total Tasks: " << _total_tasks << std::endl;
+        qb::io::cout() << "Completed Tasks: " << _completed_tasks << " (" << std::fixed << std::setprecision(1)
+                       << (_total_tasks > 0 ? (_completed_tasks * 100.0 / _total_tasks) : 0.0) << "%)" << std::endl;
+        qb::io::cout() << "Failed Tasks: " << _failed_tasks << " (" << std::fixed << std::setprecision(1)
+                       << (_total_tasks > 0 ? (_failed_tasks * 100.0 / _total_tasks) : 0.0) << "%)" << std::endl;
+        qb::io::cout() << "Backlog: " << _queued_tasks << " queued, " << _active_tasks << " in flight" << std::endl;
+        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2) << elapsed_seconds << " seconds" << std::endl;
+        qb::io::cout() << "Throughput: " << std::fixed << std::setprecision(2) << tasks_per_second << " tasks/sec" << std::endl;
+        qb::io::cout() << "===========================" << std::endl;
+    }
 
+    void
+    schedulePerformanceReport() const {
+        // Report every 2 seconds, bound to this actor so the last one is cancelled at shutdown.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(2));
+            ctx.template push<ReportTickMessage>();
+        });
+    }
+
+    void
+    stopEverything() const {
         // Send shutdown message to all components
         push<ShutdownMessage>(_task_generator_id);
         push<ShutdownMessage>(_scheduler_id);
@@ -1090,8 +1259,12 @@ private:
         // Shutdown result collector last to get final statistics
         push<ShutdownMessage>(_collector_id);
 
-        // Kill self after a short delay
-        qb::io::async::callback([this]() { broadcast<ShutdownMessage>(); }, std::chrono::milliseconds(500));
+        // Then stop whatever is left, this actor included, once the events already in flight
+        // have drained.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::milliseconds(500));
+            ctx.template push<FinalStopTickMessage>();
+        });
     }
 };
 

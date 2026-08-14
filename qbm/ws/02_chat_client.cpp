@@ -166,6 +166,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "[CLIENT] WebSocket client actor started" << std::endl;
 
         // Register events
@@ -420,6 +427,17 @@ private:
         push<DisplayMessageEvent>(_cmdline_actor_id, "[ERROR] " + message, "error");
     }
 
+public:
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    // Both handlers must be PUBLIC — the router's dispatch trampoline calls
+    // `handler.on(event)` from outside the class (qb/system/event/router.h).
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
+    }
+
     void
     on(const qb::KillEvent &event) noexcept {
         if (_connected) {
@@ -465,6 +483,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "=== QB WebSocket Chat Client ===\n";
         std::cout << "Type /help for available commands\n";
         std::cout << "Type /connect ws://localhost:8080/ws to connect to server\n\n";
@@ -642,6 +667,17 @@ private:
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             _input_thread.join();
         }
+    }
+
+public:
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    // Both handlers must be PUBLIC — the router's dispatch trampoline calls
+    // `handler.on(event)` from outside the class (qb/system/event/router.h).
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
     }
 
     void

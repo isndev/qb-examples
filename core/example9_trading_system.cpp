@@ -11,22 +11,22 @@
  * The system is composed of several actor types:
  * 1.  `ClientActor` (multiple instances):
  *     -   Simulates trading clients by generating and sending `NewOrderMessage`s.
- *     -   Placed on various cores.
+ *     -   Placed on cores 0, 2 and 3 -- never core 1, which belongs to the matching engine.
  *     -   Receives `ExecutionMessage`s for filled orders and `OrderStatusMessage`s.
- *     -   Uses `qb::io::async::callback` for periodic order generation.
+ *     -   Paces order generation with `spawn(...)` + `co_await ctx.sleep(...)`.
  * 2.  `OrderEntryActor`:
  *     -   Acts as a gateway for client orders.
  *     -   Receives `NewOrderMessage`s, performs initial validation (not detailed), and forwards them
  *         to the `MatchingEngineActor`.
- *     -   Handles `CancelOrderMessage` requests.
- *     -   Routes `ExecutionMessage`s and `OrderStatusMessage`s back to clients.
+ *     -   Remembers which client owns which order, and routes `ExecutionMessage`s and
+ *         `OrderStatusMessage`s coming back from the engine to that client.
  * 3.  `MatchingEngineActor`:
- *     -   The core of the trading system, often placed on a dedicated core for low latency.
+ *     -   The core of the trading system, placed on a dedicated core for low latency.
  *     -   Maintains `OrderBook`s for various financial symbols.
  *     -   Matches buy and sell orders based on price-time priority.
- *     -   Generates `Trade` objects upon successful matches.
+ *     -   Generates `Trade` objects upon successful matches, each carrying both sides' orders.
  *     -   Sends `TradeMessage`s (containing executed trade details) to the `MarketDataActor`.
- *     -   Sends `ExecutionMessage`s (confirming part or full execution of an order).
+ *     -   Sends `ExecutionMessage`s back through the `OrderEntryActor`.
  *     -   Publishes `MarketDataMessage` (top of book, last trade) to the `MarketDataActor`.
  * 4.  `MarketDataActor`:
  *     -   Receives `TradeMessage`s and `MarketDataMessage`s from the `MatchingEngineActor`.
@@ -34,24 +34,67 @@
  * 5.  `SupervisorActor`:
  *     -   Initializes and orchestrates the entire system.
  *     -   Sends `InitializeMessage` to start other actors.
- *     -   Uses `qb::io::async::callback` to periodically request and display `StatisticsMessage`.
+ *     -   Polls the gateway and the engine for their counters once a second and prints the merged
+ *         `StatsReportMessage`s.
  *     -   Manages the simulation lifecycle, initiating a shutdown after a set duration by sending `qb::KillEvent` to actors.
  *
  * The example emphasizes actor communication patterns, state management within order books,
  * and multi-core deployment strategies for different components of a complex system.
+ *
+ * @note FOUR THINGS THIS FILE USED TO GET WRONG. They are all classes of mistake, not typos, and
+ *       three of them were invisible in a release run that exited 0.
+ *
+ *       (1) A DANGLING TIMER, which AddressSanitizer reports on 3 runs out of 3.
+ *       `ClientActor::scheduleNextOrder()` armed its next order with
+ *       `qb::io::async::callback([this]{ if (!_is_active) return; ... }, delay)`. That overload
+ *       is not bound to the actor's lifetime: at shutdown the client is destroyed while its
+ *       timer is still pending, the timer fires anyway, and `if (!_is_active)` -- the guard
+ *       written to make it safe -- IS the read of freed memory. `spawn(...)` +
+ *       `co_await ctx.sleep(d)` is bound to the actor's cancellation scope: kill the actor and
+ *       the coroutine unwinds instead of resuming.
+ *
+ *       (2) EVERY EXECUTION REPORT WENT NOWHERE. `MatchingEngineActor` had a
+ *       `getSenderFromOrderId()` that returned a DEFAULT-CONSTRUCTED `qb::ActorId`, and
+ *       `OrderEntryActor::on(ExecutionMessage&)` declared a local `qb::ActorId client_actor_id;`
+ *       and pushed to it. A measured run produced 204 trades and ZERO
+ *       "Client ... received execution" lines. The gateway now records the owner of each order
+ *       and the engine replies through the gateway.
+ *
+ *       (3) THE WRONG OVERLOAD. `ExecutionMessage` had a second constructor taking
+ *       `(std::string_view client_id, std::string_view tid, ...)` that fabricated an empty
+ *       `Order`. `push<ExecutionMessage>(dest, trade.buy_order_id, trade.trade_id, ...)` bound
+ *       to it silently -- passing an ORDER id where a CLIENT id was expected -- so even a
+ *       correctly addressed report would have described an order that never existed. Trades now
+ *       carry both sides' `std::shared_ptr<Order>` and that constructor is gone.
+ *
+ *       (4) TWO CROSS-CORE DATA RACES, plus four cross-core globals. ThreadSanitizer reported
+ *       SIX `data race` warnings on the previous version of this file in a single 10-second run,
+ *       of two kinds. The first: `generatePrice()` mutated a function-local
+ *       `static std::mt19937` from ClientActors on three different cores, and
+ *       `std::mt19937::operator()` is not thread-safe -- while the file already had the correct
+ *       per-actor `_rng` and used BOTH IN THE SAME EXPRESSION. The second, and the more
+ *       instructive one: every event carried a live `std::shared_ptr<Order>`, so the matching
+ *       engine on core 1 wrote `filled_quantity` and `status` inside `matchBuyOrder` while a
+ *       client on another core read `msg.order->status`. Boxing a payload makes the event
+ *       RELOCATABLE; it does not make the pointee OWNED. See `snapshot()`. The four
+ *       `std::atomic<uint64_t> g_*` counters were the same mistake made deliberately: an actor
+ *       owns its state, and telemetry is an event like anything else.
  *
  * QB Features Demonstrated:
  * - Multi-Core Deployment: Assigning different actors (`MatchingEngineActor`, `ClientActor`s, etc.) to specific CPU cores via
  * `engine.addActor<T>(core_id, ...)`.
  * - Complex Actor Interactions: Multiple actors collaborating through message passing to achieve system goals.
  * - Custom Event Hierarchy: `OrderMessage` as a base for various order-related events.
- * - Asynchronous Operations: `qb::io::async::callback` for periodic tasks (order generation, stats reporting).
+ * - Lifetime-Bound Timers: `spawn(...)` + `co_await ctx.sleep(...)` for order generation and stats.
+ * - No Shared Mutable State: each actor owns its counters and reports them by event, and an
+ *   event carries a snapshot of what it describes rather than a handle to the sender's object.
  * - State Encapsulation: `MatchingEngineActor` managing `OrderBook` state internally.
  * - Application-Specific Logic: Implementation of order matching and market data generation.
  * - System Orchestration: `SupervisorActor` managing the lifecycle and monitoring of the system.
  * - Engine Management: `qb::Main`, `engine.start()`, `engine.join()`.
  */
 
+#include <array>
 #include <deque>
 #include <memory>
 #include <string_view>
@@ -67,11 +110,11 @@ namespace {
 const int NUM_CLIENTS                 = 10;
 const int NUM_SYMBOLS                 = 3;
 const int SIMULATION_DURATION_SECONDS = 10;
-// Performance tracking
-std::atomic<uint64_t> g_total_orders{0};
-std::atomic<uint64_t> g_total_trades{0};
-std::atomic<uint64_t> g_total_order_messages{0};
-std::atomic<uint64_t> g_total_market_data_messages{0};
+
+// Core 1 is dedicated to the matching engine, so clients are spread over the other three. The
+// expression this replaced -- `(i % 3 == 1) ? 0 : (i % 3 + 1)` -- yielded {1, 0, 3}, putting a
+// third of the clients on the very core its own comment said to keep clear.
+constexpr std::array<int, 3> CLIENT_CORES{0, 2, 3};
 
 // Helper function to get current timestamp in microseconds
 uint64_t
@@ -80,7 +123,11 @@ getCurrentTimestamp() {
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count());
 }
 
-// Generate a unique order ID
+// Generate a unique order ID.
+//
+// The atomic is legitimate here and is the only one left in the file: it is a pure counter with
+// no reader, not shared application state. Everything an actor actually reasons about lives in
+// the actor.
 std::string
 generateOrderId() {
     static std::atomic<uint64_t> next_id{1};
@@ -92,11 +139,13 @@ generateOrderId() {
 // Available stock symbols
 const std::vector<std::string> SYMBOLS = {"AAPL", "MSFT", "GOOGL"};
 
-// Generate a random price around the base price
+// Generate a random price around the base price.
+//
+// `gen` is a PARAMETER, supplied by the calling actor. It used to be a function-local
+// `static std::mt19937` mutated concurrently by clients on three cores -- a data race, and one
+// that a release build will never report.
 double
-generatePrice(double base_price, double volatility = 0.02) {
-    static std::random_device  rd;
-    static std::mt19937        gen(rd());
+generatePrice(double base_price, std::mt19937 &gen, double volatility = 0.02) {
     std::normal_distribution<> d(0, volatility);
 
     // Apply random fluctuation to the base price
@@ -208,6 +257,28 @@ struct Order {
     }
 };
 
+// Hand another actor a SNAPSHOT of an order, never the live object.
+//
+// THE `shared_ptr` PAYLOAD RULE, WHICH HAS TWO HALVES AND THIS FILE USED TO GET ONLY ONE.
+// Boxing an unbounded payload behind a `std::shared_ptr` makes the EVENT relocatable: the engine
+// memcpy-relocates events and never runs the source destructor, so the pointer moves and the
+// characters stay put. That is the half everything here already did.
+//
+// The other half is OWNERSHIP. A `shared_ptr` that two actors on two cores both hold is shared
+// mutable state, and the actor model's whole safety argument is that there is none. Measured with
+// ThreadSanitizer on the previous version of this file: the matching engine on core 1 wrote
+// `Order::filled_quantity` and `Order::status` inside `matchBuyOrder`/`matchSellOrder` while a
+// ClientActor on another core read `msg.order->status` in `on(OrderStatusMessage&)` -- SIX
+// `data race` reports in one 10-second run, none of them visible in release.
+//
+// So: relocatable is necessary and not sufficient. An event that leaves this actor carries a copy
+// of what it describes, and the sender keeps the original. One `Order` copy per message is the
+// price; a report is a value, not a handle.
+std::shared_ptr<Order>
+snapshot(const std::shared_ptr<Order> &order) {
+    return std::make_shared<Order>(*order);
+}
+
 /**
  * @brief Trade model representing a matched pair of orders
  */
@@ -220,13 +291,21 @@ struct Trade {
     int         quantity;
     uint64_t    timestamp;
 
-    Trade(const std::string &buy_id, const std::string &sell_id, const std::string &sym, double p, int qty)
-        : buy_order_id(buy_id)
-        , sell_order_id(sell_id)
+    // Both sides of the match, so an execution report can name the ORDER it belongs to instead
+    // of fabricating an empty one from an id. Held by `shared_ptr` because the book holds the
+    // same objects: an execution and the book agree on status by construction.
+    std::shared_ptr<Order> buy_order;
+    std::shared_ptr<Order> sell_order;
+
+    Trade(const std::shared_ptr<Order> &buy, const std::shared_ptr<Order> &sell, const std::string &sym, double p, int qty)
+        : buy_order_id(buy->order_id)
+        , sell_order_id(sell->order_id)
         , symbol(sym)
         , price(p)
         , quantity(qty)
-        , timestamp(getCurrentTimestamp()) {
+        , timestamp(getCurrentTimestamp())
+        , buy_order(buy)
+        , sell_order(sell) {
         // Generate a unique trade ID
         static std::atomic<uint64_t> next_trade_id{1};
         std::stringstream            ss;
@@ -452,7 +531,7 @@ private:
                 sell_order->filled_quantity += match_qty;
 
                 // Create a trade
-                trades.emplace_back(buy_order->order_id, sell_order->order_id, _symbol, ask_price, match_qty);
+                trades.emplace_back(buy_order, sell_order, _symbol, ask_price, match_qty);
 
                 // Update market stats
                 _total_volume += match_qty;
@@ -523,7 +602,7 @@ private:
                 buy_order->filled_quantity += match_qty;
 
                 // Create a trade
-                trades.emplace_back(buy_order->order_id, sell_order->order_id, _symbol, bid_price, match_qty);
+                trades.emplace_back(buy_order, sell_order, _symbol, bid_price, match_qty);
 
                 // Update market stats
                 _total_volume += match_qty;
@@ -602,14 +681,11 @@ struct ExecutionMessage : public qb::Event {
         , execution_price(price)
         , execution_quantity(quantity) {}
 
-    // Nouveau constructeur pour accepter des chaînes
-    ExecutionMessage(std::string_view client_id, std::string_view tid, double price, int quantity)
-        : trade_id(tid)
-        , execution_price(price)
-        , execution_quantity(quantity) {
-        order            = std::make_shared<Order>();
-        order->client_id = client_id;
-    }
+    // There used to be a second constructor here taking `(std::string_view client_id,
+    // std::string_view tid, double, int)` that manufactured an empty `Order`. It existed to make
+    // a call site compile, and the call site passed an ORDER id where it expected a CLIENT id.
+    // An overload that silently accepts the wrong thing is worse than a compile error; the
+    // engine now has the real `std::shared_ptr<Order>` and passes it.
 };
 
 // Order cancellation request
@@ -667,29 +743,42 @@ struct TradeMessage : public qb::Event {
     std::shared_ptr<Trade> trade;
 
     explicit TradeMessage(const Trade &t)
-        : trade(std::make_shared<Trade>(t)) {}
+        : trade(std::make_shared<Trade>(t)) {
+        // A `Trade` also holds both sides' `Order`s, which the matching engine keeps mutating on
+        // its own core. Copying the Trade copies those two pointers, not the orders -- so
+        // snapshot them as well, and this message owns everything it points at.
+        trade->buy_order  = snapshot(t.buy_order);
+        trade->sell_order = snapshot(t.sell_order);
+    }
 };
 
-// Performance statistics message
-struct StatisticsMessage : public qb::Event {
-    uint64_t total_orders;
-    uint64_t total_trades;
-    uint64_t order_messages;
-    uint64_t market_data_messages;
-    double   elapsed_seconds;
+// Telemetry, done the actor way: the supervisor ASKS, each component ANSWERS with the counters
+// it owns, and nothing is shared. This replaces four `std::atomic<uint64_t>` globals written by
+// actors on four cores.
+struct StatsRequestMessage : public qb::Event {};
 
-    StatisticsMessage(uint64_t orders, uint64_t trades, uint64_t order_msgs, uint64_t md_msgs, double seconds)
+struct StatsReportMessage : public qb::Event {
+    uint64_t total_orders{0};         // orders accepted by the gateway
+    uint64_t order_messages{0};       // order-related messages the gateway handled
+    uint64_t total_trades{0};         // trades produced by the matching engine
+    uint64_t market_data_messages{0}; // market-data updates the engine published
+
+    StatsReportMessage(uint64_t orders, uint64_t order_msgs, uint64_t trades, uint64_t md_msgs)
         : total_orders(orders)
-        , total_trades(trades)
         , order_messages(order_msgs)
-        , market_data_messages(md_msgs)
-        , elapsed_seconds(seconds) {}
+        , total_trades(trades)
+        , market_data_messages(md_msgs) {}
 };
 
 // Initialization message
 struct InitializeMessage : public qb::Event {
     // Add initialization parameters if needed
 };
+
+// Self-addressed wake-ups produced by each actor's own coroutine timers.
+struct OrderTickEvent : public qb::Event {};
+struct StatsTickEvent : public qb::Event {};
+struct ShutdownTickEvent : public qb::Event {};
 
 // ═════════════════════════════════════════════════════════════════
 // TRADING SYSTEM ACTORS
@@ -721,6 +810,7 @@ public:
         registerEvent<ExecutionMessage>(*this);
         registerEvent<OrderStatusMessage>(*this);
         registerEvent<InitializeMessage>(*this);
+        registerEvent<OrderTickEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
     }
 
@@ -733,6 +823,15 @@ public:
     void
     on(InitializeMessage &) {
         _is_active = true;
+        scheduleNextOrder();
+    }
+
+    void
+    on(OrderTickEvent const &) {
+        if (!_is_active)
+            return;
+
+        generateRandomOrder();
         scheduleNextOrder();
     }
 
@@ -764,16 +863,17 @@ private:
 
         // Generate a random order at random intervals
         std::uniform_real_distribution<> delay_dist(0.1, 0.5); // 100ms to 500ms delay
+        const auto                       delay = std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(delay_dist(_rng)));
 
-        // Schedule the next order
-        qb::io::async::callback(
-            [this]() {
-                if (!_is_active)
-                    return;
-                generateRandomOrder();
-                scheduleNextOrder(); // Schedule the next order
-            },
-            std::chrono::duration<double>(delay_dist(_rng)));
+        // Schedule the next order. `spawn` is bound to this actor's cancellation scope, so when
+        // the supervisor kills this client the pending sleep is cancelled and the coroutine
+        // unwinds -- no lambda survives to look at `_is_active` on a destroyed actor. The guard
+        // in `on(OrderTickEvent const&)` above only covers the ordinary "tick already queued
+        // when we went inactive" case; it is not what keeps this safe.
+        spawn([delay](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(delay);
+            ctx.template push<OrderTickEvent>();
+        });
     }
 
     void
@@ -790,10 +890,12 @@ private:
             symbol = SYMBOLS[symbol_idx_dist(_rng)];
         }
 
-        // Decide side, quantity and price
+        // Decide side, quantity and price. Both random draws come from THIS actor's `_rng`; the
+        // previous version mixed a per-actor generator and a shared static one in this single
+        // expression.
         Side   side     = side_dist(_rng) ? Side::BUY : Side::SELL;
         int    quantity = qty_dist(_rng);
-        double price    = generatePrice(_base_price, 0.02) * price_dist(_rng);
+        double price    = generatePrice(_base_price, _rng, 0.02) * price_dist(_rng);
         price           = std::round(price * 100) / 100; // Round to 2 decimal places
 
         // Create the order
@@ -801,9 +903,6 @@ private:
 
         // Send to order entry
         push<NewOrderMessage>(_order_entry_id, order);
-
-        // Update statistics
-        g_total_orders++;
     }
 };
 
@@ -814,6 +913,12 @@ class OrderEntryActor : public qb::Actor {
 private:
     qb::ActorId                                             _matching_engine_id;
     std::unordered_map<std::string, std::shared_ptr<Order>> _active_orders;
+    // Who sent each order. This is the piece that was missing: without it the gateway had no
+    // address to route an execution report to, and pushed to a default-constructed `ActorId`.
+    std::unordered_map<std::string, qb::ActorId> _order_owner;
+
+    uint64_t _orders_accepted{0};
+    uint64_t _order_messages{0};
 
 public:
     explicit OrderEntryActor(qb::ActorId matching_engine_id)
@@ -822,6 +927,8 @@ public:
         registerEvent<NewOrderMessage>(*this);
         registerEvent<CancelOrderMessage>(*this);
         registerEvent<ExecutionMessage>(*this);
+        registerEvent<OrderStatusMessage>(*this);
+        registerEvent<StatsRequestMessage>(*this);
         registerEvent<qb::KillEvent>(*this);
     }
 
@@ -833,47 +940,53 @@ public:
 
     void
     on(NewOrderMessage &msg) {
-        g_total_order_messages++;
+        _order_messages++;
 
         auto order = msg.order;
 
         // Validate the order
         if (order->quantity <= 0) {
             order->status = OrderStatus::REJECTED;
-            push<OrderStatusMessage>(msg.getSource(), order);
+            push<OrderStatusMessage>(msg.getSource(), snapshot(order));
             return;
         }
 
-        // Track the order
-        _active_orders[order->order_id] = order;
+        // Track the order and remember who owns it. `_active_orders` gets its OWN copy: the
+        // original is about to become the matching engine's exclusive property.
+        _active_orders[order->order_id] = snapshot(order);
+        _order_owner[order->order_id]   = msg.getSource();
+        _orders_accepted++;
 
-        // Send acknowledgment to client
-        push<OrderStatusMessage>(msg.getSource(), order);
+        // Send acknowledgment to client -- again a copy, so the client can read it on its own
+        // core while the engine works on the original.
+        push<OrderStatusMessage>(msg.getSource(), snapshot(order));
 
-        // Forward to matching engine
+        // Forward to matching engine, which is now the only actor holding this object.
         push<NewOrderMessage>(_matching_engine_id, order);
     }
 
     void
     on(CancelOrderMessage &msg) {
-        g_total_order_messages++;
+        _order_messages++;
 
         auto order_id = msg.order->order_id;
 
         // Check if the order exists and is active
         if (_active_orders.find(order_id) != _active_orders.end()) {
             // Forward to matching engine
-            push<CancelOrderMessage>(_matching_engine_id, msg.order);
+            push<CancelOrderMessage>(_matching_engine_id, snapshot(msg.order));
         } else {
             // Order not found or already completed
             auto order    = msg.order;
             order->status = OrderStatus::REJECTED;
-            push<OrderStatusMessage>(msg.getSource(), order);
+            push<OrderStatusMessage>(msg.getSource(), snapshot(order));
         }
     }
 
     void
     on(ExecutionMessage &msg) {
+        _order_messages++;
+
         // Update order status
         auto order_id = msg.order->order_id;
         if (_active_orders.find(order_id) != _active_orders.end()) {
@@ -886,14 +999,41 @@ public:
             }
         }
 
-        // Forward execution to client
-        qb::ActorId client_actor_id;
-        push<ExecutionMessage>(client_actor_id, msg.order, msg.trade_id, msg.execution_price, msg.execution_quantity);
+        // Forward execution to the client that placed the order -- its own copy, since the line
+        // above may have parked `msg.order` in this actor's map.
+        forwardToOwner<ExecutionMessage>(order_id, snapshot(msg.order), msg.trade_id, msg.execution_price, msg.execution_quantity);
+    }
+
+    // Status updates that come BACK from the matching engine (cancellations) are routed the same
+    // way. The gateway's own acknowledgements above go straight to `msg.getSource()`.
+    void
+    on(OrderStatusMessage &msg) {
+        if (msg.getSource() != _matching_engine_id)
+            return;
+
+        _order_messages++;
+        forwardToOwner<OrderStatusMessage>(msg.order->order_id, snapshot(msg.order));
     }
 
     void
-    on(qb::KillEvent &) {
+    on(StatsRequestMessage &msg) {
+        push<StatsReportMessage>(msg.getSource(), _orders_accepted, _order_messages, 0, 0);
+    }
+
+    void
+    on(qb::KillEvent const &) {
         kill();
+    }
+
+private:
+    template <typename _Event, typename... _Args>
+    void
+    forwardToOwner(const std::string &order_id, _Args &&...args) const {
+        auto owner = _order_owner.find(order_id);
+        if (owner == _order_owner.end())
+            return; // unknown order: nothing to answer
+
+        push<_Event>(owner->second, std::forward<_Args>(args)...);
     }
 };
 
@@ -904,6 +1044,12 @@ class MatchingEngineActor : public qb::Actor {
 private:
     std::unordered_map<std::string, OrderBook> _order_books;
     qb::ActorId                                _market_data_id;
+    // The gateway every order arrives through, learned from the first order rather than wired in
+    // by `main()`. Execution reports travel back the way orders came.
+    qb::ActorId _order_entry_id{};
+
+    uint64_t _trades{0};
+    uint64_t _market_data_messages{0};
 
 public:
     explicit MatchingEngineActor(qb::ActorId market_data_id)
@@ -912,6 +1058,7 @@ public:
         registerEvent<NewOrderMessage>(*this);
         registerEvent<CancelOrderMessage>(*this);
         registerEvent<InitializeMessage>(*this);
+        registerEvent<StatsRequestMessage>(*this);
         registerEvent<qb::KillEvent>(*this);
     }
 
@@ -936,6 +1083,8 @@ public:
 
     void
     on(NewOrderMessage &msg) {
+        _order_entry_id = msg.getSource();
+
         auto order = msg.order;
 
         // Check if we have an order book for this symbol
@@ -952,7 +1101,7 @@ public:
         // Process resulting trades
         for (const auto &trade : trades) {
             // Increment trade counter
-            g_total_trades++;
+            _trades++;
 
             // Notify clients of execution
             executeTrade(trade);
@@ -963,6 +1112,11 @@ public:
 
         // Update market data
         publishMarketDataForSymbol(order->symbol);
+    }
+
+    void
+    on(StatsRequestMessage &msg) {
+        push<StatsReportMessage>(msg.getSource(), 0, 0, _trades, _market_data_messages);
     }
 
     void
@@ -983,16 +1137,16 @@ public:
         // Update the order status
         order->status = OrderStatus::CANCELED;
 
-        // Notify client
-        qb::ActorId client_actor_id;
-        push<OrderStatusMessage>(client_actor_id, order);
+        // Notify the client, through the gateway that knows who they are.
+        if (_order_entry_id.is_valid())
+            push<OrderStatusMessage>(_order_entry_id, snapshot(order));
 
         // Update market data
         publishMarketDataForSymbol(order->symbol);
     }
 
     void
-    on(qb::KillEvent &) {
+    on(qb::KillEvent const &) {
         kill();
     }
 
@@ -1000,16 +1154,19 @@ private:
     // Process a trade
     void
     executeTrade(const Trade &trade) {
-        // Create and send execution notifications
-        auto buyer = getSenderFromOrderId(trade.buy_order_id);
-        if (buyer) {
-            push<ExecutionMessage>(buyer, trade.buy_order_id, trade.trade_id, trade.price, trade.quantity);
-        }
+        // The engine does not know which client placed which order, and should not: routing is
+        // the gateway's job. It sends both reports there, carrying the real `Order` objects, and
+        // the gateway looks the owners up.
+        //
+        // What this replaced was a `getSenderFromOrderId()` whose body was
+        // `return qb::ActorId();` under a comment saying "For simplicity, we'll just return an
+        // empty ActorId" -- guarded by `if (buyer)`, so both pushes were silently skipped and no
+        // execution report was ever delivered.
+        if (!_order_entry_id.is_valid())
+            return;
 
-        auto seller = getSenderFromOrderId(trade.sell_order_id);
-        if (seller) {
-            push<ExecutionMessage>(seller, trade.sell_order_id, trade.trade_id, trade.price, trade.quantity);
-        }
+        push<ExecutionMessage>(_order_entry_id, snapshot(trade.buy_order), trade.trade_id, trade.price, trade.quantity);
+        push<ExecutionMessage>(_order_entry_id, snapshot(trade.sell_order), trade.trade_id, trade.price, trade.quantity);
     }
 
     // Publish market data for a specific symbol
@@ -1038,17 +1195,9 @@ private:
     void
     publishMarketData(const std::string &symbol, double bid_price, int bid_size, double ask_price, int ask_size, double last_price,
                       int last_size) {
-        g_total_market_data_messages++;
+        _market_data_messages++;
 
         push<MarketDataMessage>(_market_data_id, symbol, bid_price, bid_size, ask_price, ask_size, last_price, last_size);
-    }
-
-    // Get sender ID from order ID (placeholder implementation)
-    qb::ActorId
-    getSenderFromOrderId(const std::string &order_id) {
-        // In a real system, we would maintain a mapping of order IDs to sender IDs
-        // For simplicity, we'll just return an empty ActorId
-        return qb::ActorId();
     }
 };
 
@@ -1119,8 +1268,16 @@ private:
     qb::ActorId              _market_data_id;
     std::vector<qb::ActorId> _client_ids;
 
-    uint64_t _start_time;
-    bool     _is_active = false;
+    uint64_t _start_time    = 0;
+    bool     _is_active     = false;
+    bool     _shutting_down = false;
+
+    // Merged snapshot, rebuilt on every polling round.
+    int      _pending_reports      = 0;
+    uint64_t _total_orders         = 0;
+    uint64_t _order_messages       = 0;
+    uint64_t _total_trades         = 0;
+    uint64_t _market_data_messages = 0;
 
 public:
     SupervisorActor(qb::ActorId matching_engine, qb::ActorId order_entry, qb::ActorId market_data, const std::vector<qb::ActorId> &clients)
@@ -1129,7 +1286,9 @@ public:
         , _market_data_id(market_data)
         , _client_ids(clients) {
         // Register for messages
-        registerEvent<StatisticsMessage>(*this);
+        registerEvent<StatsReportMessage>(*this);
+        registerEvent<StatsTickEvent>(*this);
+        registerEvent<ShutdownTickEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
         registerEvent<InitializeMessage>(*this);
     }
@@ -1161,29 +1320,88 @@ public:
         schedulePerformanceReport();
 
         // Schedule system shutdown
-        qb::io::async::callback(
-            [this]() {
-                if (_is_active) {
-                    shutdownSystem();
-                }
-            },
-            std::chrono::seconds(SIMULATION_DURATION_SECONDS));
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(SIMULATION_DURATION_SECONDS));
+            ctx.template push<ShutdownTickEvent>();
+        });
     }
 
     void
-    on(StatisticsMessage &msg) {
-        // Log the statistics
+    on(StatsTickEvent const &) {
+        requestStats();
+
+        if (_is_active)
+            schedulePerformanceReport();
+    }
+
+    void
+    on(ShutdownTickEvent const &) {
+        if (!_is_active)
+            return;
+
+        qb::io::cout() << "\nTrading system shutting down..." << std::endl;
+
+        _is_active     = false;
+        _shutting_down = true;
+
+        // One last polling round, so the final figures are the components' own and not a
+        // snapshot the supervisor guessed at.
+        requestStats();
+    }
+
+    void
+    on(StatsReportMessage &msg) {
+        // Each component reports only the counters it owns; the zeros are the other one's.
+        _total_orders += msg.total_orders;
+        _order_messages += msg.order_messages;
+        _total_trades += msg.total_trades;
+        _market_data_messages += msg.market_data_messages;
+
+        if (--_pending_reports > 0)
+            return;
+
+        printStatistics();
+
+        if (_shutting_down)
+            stopEverything();
+    }
+
+    void
+    on(qb::KillEvent const &) {
+        _is_active = false;
+        kill();
+    }
+
+private:
+    void
+    requestStats() {
+        _pending_reports      = 2;
+        _total_orders         = 0;
+        _order_messages       = 0;
+        _total_trades         = 0;
+        _market_data_messages = 0;
+
+        push<StatsRequestMessage>(_order_entry_id);
+        push<StatsRequestMessage>(_matching_engine_id);
+    }
+
+    void
+    printStatistics() const {
+        const double elapsed_seconds = (getCurrentTimestamp() - _start_time) / 1000000.0;
+        if (elapsed_seconds <= 0.0)
+            return;
+
         qb::io::cout() << "\n======= TRADING SYSTEM STATISTICS =======" << std::endl;
-        qb::io::cout() << "Total Orders: " << msg.total_orders << std::endl;
-        qb::io::cout() << "Total Trades: " << msg.total_trades << std::endl;
-        qb::io::cout() << "Order Messages: " << msg.order_messages << std::endl;
-        qb::io::cout() << "Market Data Messages: " << msg.market_data_messages << std::endl;
-        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2) << msg.elapsed_seconds << " seconds" << std::endl;
+        qb::io::cout() << "Total Orders: " << _total_orders << std::endl;
+        qb::io::cout() << "Total Trades: " << _total_trades << std::endl;
+        qb::io::cout() << "Order Messages: " << _order_messages << std::endl;
+        qb::io::cout() << "Market Data Messages: " << _market_data_messages << std::endl;
+        qb::io::cout() << "Elapsed Time: " << std::fixed << std::setprecision(2) << elapsed_seconds << " seconds" << std::endl;
 
         // Calculate performance metrics
-        double orders_per_sec   = msg.total_orders / msg.elapsed_seconds;
-        double trades_per_sec   = msg.total_trades / msg.elapsed_seconds;
-        double messages_per_sec = (msg.order_messages + msg.market_data_messages) / msg.elapsed_seconds;
+        double orders_per_sec   = _total_orders / elapsed_seconds;
+        double trades_per_sec   = _total_trades / elapsed_seconds;
+        double messages_per_sec = (_order_messages + _market_data_messages) / elapsed_seconds;
 
         qb::io::cout() << "Performance: " << std::fixed << std::setprecision(2) << orders_per_sec << " orders/sec, " << trades_per_sec
                        << " trades/sec, " << messages_per_sec << " messages/sec" << std::endl;
@@ -1191,48 +1409,17 @@ public:
     }
 
     void
-    on(qb::KillEvent &) {
-        _is_active = false;
-        kill();
-    }
-
-private:
-    void
-    schedulePerformanceReport() {
-        if (!_is_active)
-            return;
-
-        // Schedule periodic performance reports
-        qb::io::async::callback(
-            [this]() {
-                if (!_is_active)
-                    return;
-
-                // Calculate elapsed time
-                uint64_t current_time    = getCurrentTimestamp();
-                double   elapsed_seconds = (current_time - _start_time) / 1000000.0;
-
-                // Send statistics message to self
-                push<StatisticsMessage>(id(), g_total_orders.load(), g_total_trades.load(), g_total_order_messages.load(),
-                                        g_total_market_data_messages.load(), elapsed_seconds);
-
-                // Schedule next report
-                schedulePerformanceReport();
-            },
-            std::chrono::seconds(1)); // Report every 1 second
+    schedulePerformanceReport() const {
+        // Report every 1 second. Bound to this actor: the last one is cancelled at shutdown
+        // instead of firing into a destroyed supervisor.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(1));
+            ctx.template push<StatsTickEvent>();
+        });
     }
 
     void
-    shutdownSystem() {
-        qb::io::cout() << "\nTrading system shutting down..." << std::endl;
-
-        // Calculate final statistics
-        uint64_t current_time    = getCurrentTimestamp();
-        double   elapsed_seconds = (current_time - _start_time) / 1000000.0;
-
-        push<StatisticsMessage>(id(), g_total_orders.load(), g_total_trades.load(), g_total_order_messages.load(),
-                                g_total_market_data_messages.load(), elapsed_seconds);
-
+    stopEverything() const {
         // Send kill events to all actors
         for (const auto &client_id : _client_ids) {
             push<qb::KillEvent>(client_id);
@@ -1242,8 +1429,13 @@ private:
         push<qb::KillEvent>(_order_entry_id);
         push<qb::KillEvent>(_matching_engine_id);
 
-        // Finally, kill self after a short delay
-        qb::io::async::callback([this]() { broadcast<qb::KillEvent>(); }, std::chrono::milliseconds(500));
+        // Then stop everything that is left, this actor included. `ctx.broadcast` is the
+        // coroutine-side equivalent of `Actor::broadcast`; the delay lets the events already in
+        // flight drain first.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::milliseconds(500));
+            ctx.template broadcast<qb::KillEvent>();
+        });
     }
 };
 
@@ -1270,7 +1462,7 @@ main() {
     std::vector<qb::ActorId> client_ids;
     for (int i = 0; i < NUM_CLIENTS; ++i) {
         // Distribute clients across cores (except core 1 which is dedicated to matching engine)
-        int core_id = (i % 3 == 1) ? 0 : (i % 3 + 1);
+        int core_id = CLIENT_CORES[i % CLIENT_CORES.size()];
 
         // Each client focuses on a specific symbol
         std::string symbol = SYMBOLS[i % NUM_SYMBOLS];

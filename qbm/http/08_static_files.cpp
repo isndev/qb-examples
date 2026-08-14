@@ -84,6 +84,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "Starting Static File Server..." << std::endl;
 
         // Create necessary directories
@@ -100,8 +107,13 @@ public:
         // Compile the router
         router().compile();
 
-        // Start listening
-        listen({"tcp://0.0.0.0:8080"});
+        // Start listening. `listen()` returns false when the bind fails (port already in
+        // use, permission denied, ...). Discarding it starts an actor that serves nothing
+        // and never exits — fail the init instead, which the engine reports via hasError().
+        if (!listen({"tcp://0.0.0.0:8080"})) {
+            std::cerr << "Failed to start listening server" << std::endl;
+            co_return false;
+        }
         start();
 
         std::cout << "Static File Server running on http://localhost:8080" << std::endl;
@@ -617,6 +629,17 @@ private:
         std::cout << "                        -F \"description=My file description\" \\\n";
         std::cout << "                        http://localhost:8080/api/upload\n";
         std::cout << "  Browse uploads:  http://localhost:8080/uploads/\n\n";
+    }
+
+public:
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    // Both handlers must be PUBLIC — the router's dispatch trampoline calls
+    // `handler.on(event)` from outside the class (qb/system/event/router.h).
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
     }
 
     void

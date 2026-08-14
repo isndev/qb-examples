@@ -167,9 +167,14 @@ AuctionManager::prepare_statements() {
                        qb::pg::type_oid_sequence{oid::int4, oid::int4, oid::text}))
         co_return false;
 
+    // The bid guard lives HERE, in the statement's own WHERE, not in the handler.
+    // `$1::numeric > current_price` makes "is this bid high enough?" and "raise the price"
+    // one atomic statement: a bid at or below the current price updates 0 rows, and two
+    // concurrent legitimate bids on different workers cannot interleave a read with a
+    // write. A C++-side pre-read would reject the obvious bypass and still lose that race.
     if (!co_await prep("update_lot_price",
                        "UPDATE lots SET current_price = $1::numeric, updated_at = NOW()"
-                       " WHERE id = $2 AND end_time > NOW()"
+                       " WHERE id = $2 AND end_time > NOW() AND $1::numeric > current_price"
                        " RETURNING id, title, description, category, image_url,"
                        "   start_price::float8 AS start_price,"
                        "   current_price::float8 AS current_price,"
@@ -386,8 +391,23 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
 
     auto upd = co_await _db->execute("update_lot_price", qb::pg::params{amount_str, lot_id});
     if (!upd.ok() || upd.result().empty()) {
-        (void) co_await _db->rollback(); // lot ended between insert and update
-        ctx->json({{"error", "Bid failed - lot may have ended"}}, qb::http::status::CONFLICT);
+        // Zero rows updated: the guarded WHERE rejected the bid. Roll back, so the bid row
+        // inserted above is discarded too, then read the lot to report WHICH clause said no
+        // instead of guessing in the error message.
+        (void) co_await _db->rollback();
+        auto cur = co_await _db->execute("select_lot_by_id", qb::pg::params{lot_id});
+        if (!cur.ok() || cur.result().empty()) {
+            ctx->not_found("Lot not found");
+            co_return;
+        }
+        const models::Lot current(cur.result()[0]);
+        if (amount <= current.current_price) {
+            std::ostringstream why;
+            why << "Bid must be higher than the current price of " << std::fixed << std::setprecision(2) << current.current_price;
+            ctx->json({{"error", why.str()}}, qb::http::status::CONFLICT);
+        } else {
+            ctx->json({{"error", "Bid failed - lot may have ended"}}, qb::http::status::CONFLICT);
+        }
         co_return;
     }
     if (!(co_await _db->commit()).ok()) {
