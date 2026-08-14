@@ -37,23 +37,33 @@
  * - System Event Handling: Actors registering for and handling `qb::KillEvent`.
  */
 
+#include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/event.h>
 #include <qb/icallback.h>
+#include <qb/string.h>
 
 using namespace std::chrono_literals;
 
-// Message for scheduling a delayed action
+// Message for scheduling a delayed action.
+//
+// `timer_name` is a `qb::string<32>`, NOT a `std::string`. The engine relocates an event with
+// `memcpy` and never runs the source destructor, so a payload member may hold no pointer into
+// itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses its own inline
+// buffer -- so after the relocation it still points at the old storage. libc++ recomputes the
+// pointer from `this`, which is why the defect is invisible on macOS and corrupts on Linux.
+// Relocation is not a cross-core-only event: pipe growth, compaction, `reply()` and `forward()`
+// relocate same-core events too, and this example pushes every one of these to itself.
 struct DelayedActionMsg : public qb::Event {
     enum class Action { TIMER_FIRE, APP_STEP_1, APP_STEP_2, APP_STEP_3 };
 
-    Action      action;
-    std::string timer_name; // For timer-specific actions
-    int         delay_ms;
+    Action         action;
+    qb::string<32> timer_name; // For timer-specific actions
+    int            delay_ms;
 
-    DelayedActionMsg(Action action, int delay, const std::string &timer = "")
+    DelayedActionMsg(Action action, int delay, std::string_view timer = {})
         : action(action)
         , timer_name(timer)
         , delay_ms(delay) {}
@@ -63,9 +73,9 @@ struct DelayedActionMsg : public qb::Event {
 struct StartTimerMsg : public qb::Event {
     std::chrono::milliseconds interval;
     int                       repeat_count;
-    std::string               timer_name;
+    qb::string<32>            timer_name;
 
-    StartTimerMsg(const std::chrono::milliseconds &i, int r, const std::string &name)
+    StartTimerMsg(const std::chrono::milliseconds &i, int r, std::string_view name)
         : interval(i)
         , repeat_count(r)
         , timer_name(name) {}
@@ -73,19 +83,19 @@ struct StartTimerMsg : public qb::Event {
 
 // Message emitted when a timer fires
 struct TimerFiredMsg : public qb::Event {
-    std::string timer_name;
-    int         count;
+    qb::string<32> timer_name;
+    int            count;
 
-    TimerFiredMsg(const std::string &name, int c)
+    TimerFiredMsg(std::string_view name, int c)
         : timer_name(name)
         , count(c) {}
 };
 
 // Message to cancel a timer
 struct CancelTimerMsg : public qb::Event {
-    std::string timer_name;
+    qb::string<32> timer_name;
 
-    CancelTimerMsg(const std::string &name)
+    CancelTimerMsg(std::string_view name)
         : timer_name(name) {}
 };
 
@@ -110,29 +120,30 @@ public:
         qb::io::cout() << "Starting timer '" << msg.timer_name << "' with interval " << msg.interval.count() << "ms, repeat "
                        << msg.repeat_count << " times\n";
 
-        // Store timer information for management
+        // Store timer information for management. The event's name is a fixed-size qb::string, so
+        // it is converted once here to the std::string the actor's own (non-relocated) map is keyed by.
         TimerInfo info;
-        info.name          = msg.timer_name;
+        info.name          = msg.timer_name.c_str();
         info.interval      = msg.interval;
         info.repeat_count  = msg.repeat_count;
         info.current_count = 0;
 
-        _timers[msg.timer_name] = info;
+        _timers[info.name] = info;
 
         // Schedule the first timer execution
-        scheduleTimer(msg.timer_name);
+        scheduleTimer(info.name);
     }
 
     void
     on(DelayedActionMsg &msg) {
         if (msg.action == DelayedActionMsg::Action::TIMER_FIRE) {
-            fireTimer(msg.timer_name);
+            fireTimer(msg.timer_name.c_str());
         }
     }
 
     void
     on(CancelTimerMsg &msg) {
-        auto it = _timers.find(msg.timer_name);
+        auto it = _timers.find(msg.timer_name.c_str());
         if (it != _timers.end()) {
             qb::io::cout() << "Cancelling timer '" << msg.timer_name << "'\n";
             _timers.erase(it);

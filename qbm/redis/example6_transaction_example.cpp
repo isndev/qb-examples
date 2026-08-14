@@ -42,6 +42,7 @@
 #include <iomanip>
 #include <iostream>
 #include <random>
+#include <string_view>
 #include <qbm/redis/redis.h>
 #include <string>
 #include <vector>
@@ -49,6 +50,7 @@
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/main.h>
+#include <qb/string.h>
 #include <qb/system/parse.h>
 
 // Redis Configuration - must be in initializer list format
@@ -62,30 +64,38 @@ struct Product {
     int         quantity;
 };
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 // Event to request an order
 struct OrderRequestEvent : qb::Event {
-    std::string product_id;
-    int         quantity;
-    qb::ActorId sender_id;
+    qb::string<64> product_id;
+    int            quantity;
+    qb::ActorId    sender_id;
 
-    OrderRequestEvent(std::string id, int qty, qb::ActorId sender)
-        : product_id(std::move(id))
+    OrderRequestEvent(std::string_view id, int qty, qb::ActorId sender)
+        : product_id(id)
         , quantity(qty)
         , sender_id(sender) {}
 };
 
 // Event to report order result
 struct OrderResultEvent : qb::Event {
-    std::string product_id;
-    int         quantity;
-    bool        success;
-    std::string message;
+    qb::string<64>  product_id;
+    int             quantity;
+    bool            success;
+    qb::string<128> message;
 
-    OrderResultEvent(std::string id, int qty, bool succ, std::string msg)
-        : product_id(std::move(id))
+    OrderResultEvent(std::string_view id, int qty, bool succ, std::string_view msg)
+        : product_id(id)
         , quantity(qty)
         , success(succ)
-        , message(std::move(msg)) {}
+        , message(msg) {}
 };
 
 // Event to signal that inventory setup is complete
@@ -218,7 +228,7 @@ public:
     // Process an order
     void
     on(const OrderRequestEvent &event) {
-        std::string product_id = event.product_id;
+        std::string product_id = event.product_id.c_str();
         int         order_qty  = event.quantity;
         qb::ActorId sender_id  = event.sender_id;
 

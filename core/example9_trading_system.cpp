@@ -53,10 +53,13 @@
  */
 
 #include <deque>
+#include <memory>
+#include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
+#include <qb/string.h>
 #include <chrono>
 
 namespace {
@@ -577,21 +580,30 @@ struct NewOrderMessage : public OrderMessage {
         : OrderMessage(o) {}
 };
 
-// Order execution notification
+// Order execution notification.
+//
+// NOTE ON EVENT PAYLOADS, which applies to every event in this file: the engine relocates an
+// event with `memcpy` and never runs the source destructor, so a payload member may hold no
+// pointer into itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses
+// its own inline buffer -- so after the relocation it still points at the old storage. libc++
+// recomputes the pointer from `this`, which is why the defect is invisible on macOS and corrupts
+// on Linux. This system runs its actors on four cores, so its events really are relocated.
+// The two sanctioned shapes are `qb::string<N>` for a bounded payload and a `std::shared_ptr`
+// for an unbounded one; both appear below.
 struct ExecutionMessage : public qb::Event {
     std::shared_ptr<Order> order;
-    std::string            trade_id;
+    qb::string<32>         trade_id;
     double                 execution_price;
     int                    execution_quantity;
 
-    ExecutionMessage(const std::shared_ptr<Order> &o, const std::string &tid, double price, int quantity)
+    ExecutionMessage(const std::shared_ptr<Order> &o, std::string_view tid, double price, int quantity)
         : order(o)
         , trade_id(tid)
         , execution_price(price)
         , execution_quantity(quantity) {}
 
     // Nouveau constructeur pour accepter des chaînes
-    ExecutionMessage(const std::string &client_id, const std::string &tid, double price, int quantity)
+    ExecutionMessage(std::string_view client_id, std::string_view tid, double price, int quantity)
         : trade_id(tid)
         , execution_price(price)
         , execution_quantity(quantity) {
@@ -612,15 +624,17 @@ struct OrderStatusMessage : public OrderMessage {
         : OrderMessage(o) {}
 };
 
-// Market data update with new prices
+// Market data update with new prices. Pushed from the matching engine on core 1 to the market
+// data actor on core 0, so `symbol` is relocated twice on every update -- see the note on
+// ExecutionMessage above for why it cannot be a std::string.
 struct MarketDataMessage : public qb::Event {
-    std::string symbol;
-    double      bid_price;
-    int         bid_size;
-    double      ask_price;
-    int         ask_size;
-    double      last_price;
-    int         last_size;
+    qb::string<16> symbol;
+    double         bid_price;
+    int            bid_size;
+    double         ask_price;
+    int            ask_size;
+    double         last_price;
+    int            last_size;
 
     // Constructeur par défaut
     MarketDataMessage()
@@ -631,7 +645,7 @@ struct MarketDataMessage : public qb::Event {
         , last_price(0.0)
         , last_size(0) {}
 
-    MarketDataMessage(const std::string &sym, double bp, int bs, double ap, int as, double lp, int ls)
+    MarketDataMessage(std::string_view sym, double bp, int bs, double ap, int as, double lp, int ls)
         : symbol(sym)
         , bid_price(bp)
         , bid_size(bs)
@@ -641,12 +655,19 @@ struct MarketDataMessage : public qb::Event {
         , last_size(ls) {}
 };
 
-// Trade notification message
+// Trade notification message.
+//
+// The trade is held behind a `std::shared_ptr` -- exactly as OrderMessage holds its Order above --
+// and NOT by value. A by-value `Trade` would splice its four std::string members straight into the
+// event, and this message really does cross a core boundary (matching engine on core 1 -> market
+// data on core 0); the handler then calls `toString()` on strings whose characters were left
+// behind in the sender's pipe. Boxing it is the sanctioned shape for an unbounded payload: the
+// pointer is relocated, the characters never move.
 struct TradeMessage : public qb::Event {
-    Trade trade;
+    std::shared_ptr<Trade> trade;
 
     explicit TradeMessage(const Trade &t)
-        : trade(t) {}
+        : trade(std::make_shared<Trade>(t)) {}
 };
 
 // Performance statistics message
@@ -1055,8 +1076,9 @@ public:
 
     void
     on(MarketDataMessage &msg) {
-        // Store the latest market data
-        _latest_market_data[msg.symbol] = msg;
+        // Store the latest market data. `symbol` is a fixed-size qb::string, so it is converted
+        // once here to the std::string this actor's own (never relocated) map is keyed by.
+        _latest_market_data[msg.symbol.c_str()] = msg;
 
         // Log the market data
         qb::io::cout() << "Market Data: " << msg.symbol << " Bid: " << std::fixed << std::setprecision(2) << msg.bid_price << " x "
@@ -1072,7 +1094,7 @@ public:
     void
     on(TradeMessage &msg) {
         // Log the trade
-        qb::io::cout() << "Trade: " << msg.trade.toString() << std::endl;
+        qb::io::cout() << "Trade: " << msg.trade->toString() << std::endl;
     }
 
     void

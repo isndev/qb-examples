@@ -40,9 +40,11 @@
  * - Thread-Safe I/O: `qb::io::cout()`.
  */
 
+#include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
+#include <qb/string.h>
 
 // Define event types with different priorities
 struct HighPriorityEvent : public qb::Event {
@@ -63,10 +65,18 @@ struct LowPriorityEvent : public qb::Event {
         : value(val) {}
 };
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 // Broadcast event for system-wide notifications
 struct SystemNotificationEvent : public qb::Event {
-    std::string message;
-    explicit SystemNotificationEvent(const std::string &msg)
+    qb::string<96> message;
+    explicit SystemNotificationEvent(std::string_view msg)
         : message(msg) {}
 };
 

@@ -59,20 +59,20 @@ FileProcessor::onInit() {
 
 void
 FileProcessor::on(FileEvent &event) {
-    qb::io::cout() << "FileProcessor received " << eventTypeToString(event.type) << " event for: " << event.path << std::endl;
+    qb::io::cout() << "FileProcessor received " << eventTypeToString(event.type) << " event for: " << *event.path << std::endl;
 
     // Process based on event type
     switch (event.type) {
         case FileEventType::CREATED:
-            processFileCreated(event.path);
+            processFileCreated(*event.path);
             break;
 
         case FileEventType::MODIFIED:
-            processFileModified(event.path);
+            processFileModified(*event.path);
             break;
 
         case FileEventType::DELETED:
-            processFileDeleted(event.path);
+            processFileDeleted(*event.path);
             break;
 
         case FileEventType::ATTRIBUTES_CHANGED:

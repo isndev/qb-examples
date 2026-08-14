@@ -43,10 +43,12 @@
  * - Engine and Actor Management: `qb::Main`, `engine.addActor<ActorType>()`, `kill()`.
  */
 
+#include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
+#include <qb/string.h>
 #include <chrono>
 
 using namespace qb;
@@ -166,13 +168,21 @@ struct InputEventMessage : public Event {
         , amount(amt) {}
 };
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 // State change message
 struct StateChangeMessage : public Event {
-    MachineState prev_state;
-    MachineState new_state;
-    std::string  reason;
+    MachineState   prev_state;
+    MachineState   new_state;
+    qb::string<96> reason;
 
-    StateChangeMessage(MachineState prev, MachineState next, const std::string &r)
+    StateChangeMessage(MachineState prev, MachineState next, std::string_view r)
         : prev_state(prev)
         , new_state(next)
         , reason(r) {}
@@ -185,13 +195,13 @@ struct StatusRequestMessage : public Event {
 
 // Status response message
 struct StatusResponseMessage : public Event {
-    MachineState current_state;
-    CoffeeType   selected_coffee  = CoffeeType::ESPRESSO;
-    double       payment_received = 0.0;
-    double       payment_required = 0.0;
-    std::string  status_message;
+    MachineState   current_state;
+    CoffeeType     selected_coffee  = CoffeeType::ESPRESSO;
+    double         payment_received = 0.0;
+    double         payment_required = 0.0;
+    qb::string<96> status_message;
 
-    StatusResponseMessage(MachineState state, CoffeeType coffee, double received, double required, const std::string &message)
+    StatusResponseMessage(MachineState state, CoffeeType coffee, double received, double required, std::string_view message)
         : current_state(state)
         , selected_coffee(coffee)
         , payment_received(received)
@@ -201,9 +211,9 @@ struct StatusResponseMessage : public Event {
 
 // Timer event message
 struct TimerEventMessage : public Event {
-    std::string timer_id;
+    qb::string<32> timer_id;
 
-    explicit TimerEventMessage(const std::string &id)
+    explicit TimerEventMessage(std::string_view id)
         : timer_id(id) {}
 };
 

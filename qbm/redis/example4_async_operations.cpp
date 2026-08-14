@@ -36,11 +36,14 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
+#include <string_view>
 #include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/main.h>
+#include <qb/string.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
@@ -56,13 +59,21 @@ struct WorkCompletedEvent : qb::Event {
         : operations_completed(completed) {}
 };
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 struct RedisDataEvent : qb::Event {
-    std::string key;
-    std::string value;
+    qb::string<64>               key;
+    std::shared_ptr<std::string> value; // a stored value has no bound: box it
 
-    RedisDataEvent(std::string k, std::string v)
-        : key(std::move(k))
-        , value(std::move(v)) {}
+    RedisDataEvent(std::string_view k, std::string v)
+        : key(k)
+        , value(std::make_shared<std::string>(std::move(v))) {}
 };
 
 // Actor that performs Redis operations using the coroutine API
@@ -115,8 +126,8 @@ public:
     void
     on(const RedisDataEvent &event) {
         // Spawn a coroutine to handle async Redis operations for this event
-        std::string key   = event.key;
-        std::string value = event.value;
+        std::string key   = event.key.c_str();
+        std::string value = event.value ? *event.value : std::string{};
 
         spawn([this, key, value](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();

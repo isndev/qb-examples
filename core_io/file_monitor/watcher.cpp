@@ -117,10 +117,10 @@ DirectoryWatcher::onInit() {
 
 void
 DirectoryWatcher::on(WatchDirectoryRequest &request) {
-    qb::io::cout() << "DirectoryWatcher received request to watch: " << request.path << std::endl;
+    qb::io::cout() << "DirectoryWatcher received request to watch: " << *request.path << std::endl;
 
     // Normalize the path
-    std::string normalized_path = fs::absolute(request.path).string();
+    std::string normalized_path = fs::absolute(*request.path).string();
 
     // Check if the directory exists
     if (!fs::exists(normalized_path) || !fs::is_directory(normalized_path)) {
@@ -157,10 +157,10 @@ DirectoryWatcher::on(WatchDirectoryRequest &request) {
 
 void
 DirectoryWatcher::on(UnwatchDirectoryRequest &request) {
-    qb::io::cout() << "DirectoryWatcher received request to unwatch: " << request.path << std::endl;
+    qb::io::cout() << "DirectoryWatcher received request to unwatch: " << *request.path << std::endl;
 
     // Normalize the path
-    std::string normalized_path = fs::absolute(request.path).string();
+    std::string normalized_path = fs::absolute(*request.path).string();
 
     // Find the watch
     auto it = _watched_directories.find(normalized_path);

@@ -44,44 +44,55 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <qbm/redis/redis.h>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/main.h>
+#include <qb/string.h>
 
 // Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 // Event to signal an actor to publish a message
 struct PublishMessageEvent : qb::Event {
-    std::string channel;
-    std::string message;
+    qb::string<64>               channel;
+    std::shared_ptr<std::string> message; // a pub/sub payload has no bound: box it
 
-    PublishMessageEvent(std::string ch, std::string msg)
-        : channel(std::move(ch))
-        , message(std::move(msg)) {}
+    PublishMessageEvent(std::string_view ch, std::string msg)
+        : channel(ch)
+        , message(std::make_shared<std::string>(std::move(msg))) {}
 };
 
 // Event to signal an actor to subscribe to a channel
 struct SubscribeEvent : qb::Event {
-    std::string channel;
+    qb::string<64> channel;
 
-    explicit SubscribeEvent(std::string ch)
-        : channel(std::move(ch)) {}
+    explicit SubscribeEvent(std::string_view ch)
+        : channel(ch) {}
 };
 
 // Event to notify about received messages
 struct ReceivedMessageEvent : qb::Event {
-    std::string channel;
-    std::string message;
+    qb::string<64>               channel;
+    std::shared_ptr<std::string> message; // a pub/sub payload has no bound: box it
 
-    ReceivedMessageEvent(std::string ch, std::string msg)
-        : channel(std::move(ch))
-        , message(std::move(msg)) {}
+    ReceivedMessageEvent(std::string_view ch, std::string msg)
+        : channel(ch)
+        , message(std::make_shared<std::string>(std::move(msg))) {}
 };
 
 // Event to signal shutdown
@@ -128,8 +139,8 @@ public:
 
     void
     on(const PublishMessageEvent &event) {
-        std::string channel = event.channel;
-        std::string message = event.message;
+        std::string channel = event.channel.c_str();
+        std::string message = event.message ? *event.message : std::string{};
 
         spawn([this, channel, message](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
@@ -208,7 +219,7 @@ public:
 
     void
     on(const SubscribeEvent &event) {
-        std::string channel = event.channel;
+        std::string channel = event.channel.c_str();
 
         spawn([this, channel](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
@@ -339,7 +350,8 @@ public:
     void
     on(const ReceivedMessageEvent &event) {
         auto cout = qb::io::cout();
-        cout << "Coordinator received forwarded message from channel '" << event.channel << "': " << event.message << std::endl;
+        cout << "Coordinator received forwarded message from channel '" << event.channel
+             << "': " << (event.message ? *event.message : std::string{}) << std::endl;
     }
 
     void

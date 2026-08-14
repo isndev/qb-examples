@@ -132,7 +132,7 @@ public:
      */
     void
     on(file_monitor::FileEvent &event) {
-        qb::io::cout() << "Client received " << file_monitor::eventTypeToString(event.type) << " event for: " << event.path << std::endl;
+        qb::io::cout() << "Client received " << file_monitor::eventTypeToString(event.type) << " event for: " << *event.path << std::endl;
     }
 
     /**
@@ -141,7 +141,7 @@ public:
     void
     on(file_monitor::WatchDirectoryResponse &response) {
         if (response.success) {
-            qb::io::cout() << "Successfully set up watch for: " << response.path << std::endl;
+            qb::io::cout() << "Successfully set up watch for: " << *response.path << std::endl;
 
             // Start file tests
             startFileTests();
