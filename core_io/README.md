@@ -38,7 +38,8 @@ in their respective README files:
 
 3. **File Processor (`file_processor/`)**
     * Illustrates a distributed file processing system using a manager-worker actor pattern.
-    * Demonstrates offloading blocking file I/O operations to worker actors.
+    * Distributes file I/O across a pool of worker actors on several cores, with request queueing when every worker
+      is busy. (The I/O itself is *not* deferred — see the README, `file_worker.h:102`, `:158`.)
     * [Detailed README](./file_processor/README.md)
 
 4. **Message Broker (`message_broker/`)**

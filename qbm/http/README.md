@@ -47,11 +47,11 @@ Below is a list of the available examples and the key features they showcase:
     * Basic `qb::Actor` setup for a server.
     * Inheriting from `qb::http::Server<>`.
     * Simple GET route (`router().get(...)`) using a lambda handler.
-    * Sending plain text and HTML responses.
+    * Sending plain text and JSON responses.
     * Setting response status and content type.
 * **Endpoints**:
-    * `GET /`: Returns an HTML "Hello, World!" page.
-    * `GET /hello`: Returns a plain text "Hello from /hello route!".
+    * `GET /`: `text/plain` — `"Hello, World!\nWelcome to QB HTTP Framework!"` (`01_hello_world_server.cpp:40-45`).
+    * `GET /hello`: `application/json` — `{"message": "Hello from QB!", ...}` (`01_hello_world_server.cpp:47-52`).
 
 ### 2. `02_simple_client.cpp`
 
@@ -71,7 +71,8 @@ Below is a list of the available examples and the key features they showcase:
     * Static routes (e.g., `/users`).
     * Parameterized routes (e.g., `/users/:id`).
     * Wildcard routes (e.g., `/files/*path`).
-    * Handling query parameters (e.g., `/search?term=...`).
+    * Handling query parameters — the search route reads the key `q`, i.e. `/search?q=...`
+      (`03_basic_routing.cpp:308`).
     * Basic CRUD operations for a `/users` resource (in-memory).
     * Returning JSON responses.
 * **Key Endpoints**:
@@ -95,8 +96,12 @@ Below is a list of the available examples and the key features they showcase:
 * **Key Endpoints**:
     * `GET /`: Basic response.
     * `GET /public`: Publicly accessible.
-    * `GET /protected/profile`, `GET /protected/data`: Requires "auth_token" in context.
-    * `GET /limited/`: Demonstrates rate limiting concept.
+    * `GET /api/profile`, `GET /api/data`: the protected group is mounted at **`/api`**
+      (`04_middleware_demo.cpp:126`). The gate is a request **header**, not a context value:
+      `Authorization: Bearer secret-token-123` (`:129-162`). Missing/malformed header → 401; wrong token → 403. On
+      success the middleware *writes* `user_id` / `user_name` into the context (`:155-156`) for the handlers to read.
+    * `GET /limited/`: Demonstrates rate limiting concept — the group is mounted at `/limited` (`:169`).
+    * Reaching a protected route: `curl -H 'Authorization: Bearer secret-token-123' http://localhost:8080/api/profile`
 
 ### 5. `05_controller_pattern.cpp`
 
@@ -108,20 +113,26 @@ Below is a list of the available examples and the key features they showcase:
     * Using member functions as route handlers via the unified verb API (
       `this->get(path, this, &MyController::method)`).
     * Mounting controllers onto the router (`router().controller<C>(...)`).
-* **Key Endpoints**:
-    * `GET /api/v1/users`, `POST /api/v1/users`, etc. (CRUD for users)
-    * `GET /api/v1/products`, `POST /api/v1/products`, etc. (CRUD for products)
+* **Key Endpoints** (the controllers are mounted at `/api/users` and `/api/products` — there is no `/v1` segment,
+  `05_controller_pattern.cpp:463-464`):
+    * `GET /api/users`, `POST /api/users`, etc. (CRUD for users)
+    * `GET /api/products`, `POST /api/products`, etc. (CRUD for products)
+    * `GET /`: API information.
 
 ### 6. `06_async_handlers.cpp`
 
-* **Description**: Illustrates implementing asynchronous route handlers.
+* **Description**: Illustrates implementing asynchronous route handlers as **coroutines**.
 * **Features**:
     * Simulating long-running operations (e.g., database queries, external API calls) without blocking the server
       thread.
-    * Using `qb::io::async::callback` to defer response completion.
-    * Capturing `std::shared_ptr<Context>` in lambdas for async operations.
-    * Managing state across asynchronous steps.
-    * Handling potential errors in async operations.
+    * A handler that returns `qb::io::async::task<void>` is a coroutine; the router detects it and drives it
+      (`06_async_handlers.cpp:114-125`). There is **no** `qb::io::async::callback` anywhere in this file — nor in any
+      of the other 13 `.cpp` files here.
+    * `co_await qb::io::async::sleep(...)` suspends the handler and frees the listener thread for other requests
+      (`:174-176`); execution then resumes linearly and fills in the response.
+    * The `std::shared_ptr<Context>` is taken **by value** into the coroutine frame, so it stays alive across the
+      suspension; `ctx->complete()` at the end sends the response (`:191`).
+    * Handling potential errors in async operations (`/async/error-prone`, `:290-332`).
 * **Key Endpoints**:
     * `GET /async/simple`: Simple delayed response.
     * `GET /async/database`: Simulates a DB query.
@@ -137,7 +148,8 @@ Below is a list of the available examples and the key features they showcase:
     * Full CRUD operations for books.
     * JSON request body parsing and response serialization.
     * Using `qb::json` (nlohmann::json).
-    * Standard middleware stack: Logging, CORS, Compression, Timing.
+    * Standard middleware stack, installed in this order (`07_rest_api_json.cpp:106-153`): CORS, Compression,
+      SecurityHeaders, Logging, RateLimit. There is no timing middleware in this example.
     * Custom error handling middleware (`ErrorHandlingMiddleware`).
     * Search/filter functionality.
 * **Key Endpoints**:
@@ -174,14 +186,15 @@ Below is a list of the available examples and the key features they showcase:
     * `qb::http::AuthMiddleware` for protecting routes.
     * Login (`/auth/login`) and registration (`/auth/register`) endpoints.
     * Storing user data in `Context` after successful authentication.
-    * Role-based access control (e.g., admin-only routes).
+    * Role-based access control (e.g., admin-only routes) via nested groups (`09_jwt_auth.cpp:217`, `:228`, `:247`).
     * Token refresh mechanism (conceptual).
     * Secure password handling (conceptual, uses plain text for demo simplicity).
-* **Key Endpoints**:
+* **Key Endpoints** (the authenticated group is `/api` — there is no `/v1` segment, `09_jwt_auth.cpp:217`):
     * `POST /auth/login`, `POST /auth/register`
-    * `GET /api/v1/protected/profile` (requires auth)
-    * `GET /api/v1/admin/users` (requires admin role)
-    * `GET /api/v1/manager/reports` (requires manager role)
+    * `GET /api/profile`, `PUT /api/profile` (requires auth — `:223-225`)
+    * `POST /api/auth/logout`, `POST /api/auth/refresh` (requires auth — `:265`, `:268`)
+    * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:242-244`)
+    * `GET /api/manager/reports` (requires manager or admin role — `:262`)
 
 ### 10. `10_request_validation.cpp`
 
@@ -206,8 +219,12 @@ Below is a list of the available examples and the key features they showcase:
 * **Description**: Sets up an HTTPS server and an HTTP server that redirects to HTTPS.
 * **Features**:
     * `qb::http::ssl::Server<>` for HTTPS.
-    * Generating self-signed SSL certificates for demonstration purposes (using `openssl` command via `system()`).
-    * Configuring the server with certificate and private key files.
+    * Uses the **bundled** self-signed dev certificate — it does not generate one. `_cert_file` /`_key_file` are
+      hard-coded to `resources/ssl/cert.pem` and `resources/ssl/key.pem` (`11_https_server.cpp:39-40`), resolved next
+      to the executable with `qb::io::sys::resolve_resource` (`:90-91`). If either file is missing the example prints
+      `SSL certificate not found (...)` and refuses to start (`:92-98`, `:146-149`) — there is no `openssl`
+      invocation and no `system()` call anywhere in this directory.
+    * Configuring the server with certificate and private key files (`listen(uri, cert, key)`, `:156`).
     * Setting up a separate HTTP server on port 8080 that issues 301 redirects to the HTTPS server on port 8443.
     * Security-related headers (HSTS, CSP - conceptual).
 * **Servers**:
@@ -218,7 +235,8 @@ Below is a list of the available examples and the key features they showcase:
 
 * **Description**: An HTTP/2 server demonstrating various HTTP/2 features using a static frontend.
 * **Features**:
-    * Based on `qb::http2::Server`.
+    * Built on the CRTP server form: `class Http2StaticServer : public qb::Actor, public
+      qb::http2::use<Http2StaticServer>::server<Http2StaticSession>` (`12_http2_server.cpp:81-83`).
     * Serves static files from `./resources/http2` to an interactive demo page (`index.html`).
     * ALPN for protocol negotiation (HTTP/2 over TLS).
     * Endpoints to simulate/demonstrate:
@@ -230,6 +248,26 @@ Below is a list of the available examples and the key features they showcase:
 * **Server**:
     * HTTP/2 server on `https://localhost:8443`
 * **Static Resources**: `examples/qbm/http/resources/http2/` contains the frontend HTML, JS, CSS for the demo.
+
+### 13. `13_coroutine_handlers.cpp`
+
+* **Description**: The coroutine routing API — a route handler may simply return `qb::io::async::task<void>` and
+  `co_await` its asynchronous work. The router auto-detects a coroutine handler; no wrapper and no callbacks.
+* **Features**:
+    * Coroutine lambda handler awaiting a timer: `co_await qb::io::async::sleep(...)` (`13_coroutine_handlers.cpp:50-55`).
+    * Coroutine HTTP **client** inside a handler: `co_await qb::http::GET(...)` to relay an upstream response
+      (`:61-67`, header `<qbm/http/coro.h>`).
+    * Two upstreams fetched **in parallel** with `co_await qb::io::async::when_all(...)`, then combined (`:70-77`).
+    * A coroutine bound to a **member function** through the unified verb API,
+      `router().get("/member", this, &CoroutineServer::handle_member)` (`:80`, `:94-99`).
+    * Typed path parameters via `ctx->path_param_or<int>("ms", 100)` (`:51`), and the `ctx->json(...)` /
+      `ctx->text(...)` response shorthands.
+* **Key Endpoints** (all on `http://localhost:8080`, `:83`):
+    * `GET /delay/:ms`: sleeps `ms` milliseconds, then replies `{"slept_ms": …, "handler": "coroutine"}`.
+    * `GET /hello`: plain synchronous handler; it is the upstream target the two routes below call.
+    * `GET /proxy`: fetches `/hello` from itself and relays status + body.
+    * `GET /aggregate`: fetches `/hello` and `/delay/50` concurrently, reports both status codes.
+    * `GET /member`: member-function coroutine handler.
 
 ### 14. `14_http3_server.cpp`
 
