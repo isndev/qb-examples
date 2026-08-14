@@ -1,5 +1,16 @@
 /**
- * @file examples/io/example1_async_io.cpp
+ * @file examples/02-io/01-event-loop.cpp
+ * @tier 02-io
+ * @teaches The qb-io event loop with no actor and no engine behind it: initialise it, run it, and let a
+ *          timer, a synchronous file and a filesystem watcher share one thread.
+ * @demonstrates qb::io::async::init, qb::io::async::run, qb::io::async::with_timeout<T>,
+ *               qb::io::async::event::timer, setTimeout, qb::io::async::listener::current.loop(), ev::stat,
+ *               qb::io::sys::file, qb::duration, qb::io::cout, qb::io::cerr
+ * @prerequisites none
+ * @expect "QB-IO Asynchronous I/O Example"
+ * @expect "TimerDemonstration: Tick #"
+ * @expect "Event Loop Completed"
+ *
  * @example Asynchronous I/O Fundamentals with QB-IO
  *
  * @brief This example demonstrates core asynchronous capabilities of the QB-IO library,
@@ -13,7 +24,7 @@
  *     -   Inherits from `qb::io::async::with_timeout<FileProcessor>` to implement periodic actions.
  *     -   On each timer expiration (`on(qb::io::async::event::timer const&)`), it alternates
  *         between writing to and reading from a test file (`qb_io_example.txt`).
- *     -   File operations are performed using `qb::io::system::file` (synchronous file API),
+ *     -   File operations are performed using `qb::io::sys::file` (synchronous file API),
  *         but their execution is driven by asynchronous timer events.
  *     -   Reschedules itself using `setTimeout()`. `with_timeout` is an *inactivity
  *         watchdog*, not a periodic timer: its one-shot libev watcher is re-armed only on
@@ -44,7 +55,7 @@
  * - Asynchronous System Initialization: `qb::io::async::init()`.
  * - Event Loop Integration: `qb::io::async::run()`.
  * - Timer-Based Operations: `qb::io::async::with_timeout<T>`, `on(qb::io::async::event::timer const&)`, `setTimeout()`.
- * - Basic File I/O: `qb::io::system::file` for synchronous file read/write operations, orchestrated asynchronously.
+ * - Basic File I/O: `qb::io::sys::file` for synchronous file read/write operations, orchestrated asynchronously.
  * - Low-Level File Watching: Direct use of `ev::stat` with `qb::io::async::listener::current.loop()` to monitor file attribute changes.
  * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */

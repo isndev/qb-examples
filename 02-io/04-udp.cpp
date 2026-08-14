@@ -1,5 +1,17 @@
 /**
- * @file examples/io/example4_udp_networking.cpp
+ * @file examples/02-io/04-udp.cpp
+ * @tier 02-io
+ * @teaches The datagram shape of the same CRTP roles: bind instead of listen, an explicit destination
+ *          endpoint per send, and the same shipped text protocol carried over UDP.
+ * @demonstrates qb::io::use<T>::udp::server, qb::io::use<T>::udp::client, transport().bind_v4,
+ *               transport().init(), setDestination, qb::io::endpoint, qb::protocol::text::command<T>,
+ *               qb::io::async::init, qb::io::async::run
+ * @prerequisites 02-io/01-event-loop, 02-io/03-tcp
+ * @expect "UDP Server started on port "
+ * @expect "Server received: "
+ * @expect "Client received: "
+ * @expect "Example completed: "
+ *
  * @example Asynchronous UDP Client-Server Communication
  *
  * @brief This example demonstrates basic User Datagram Protocol (UDP) networking

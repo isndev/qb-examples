@@ -41,12 +41,26 @@ qb_status_message("Building qb framework examples")
 # no resolver code). Defined here so every example subdirectory can use it.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExampleResources.cmake)
 
+# The example root, in one variable, because qb_example() derives a target from a
+# directory's path RELATIVE to it. Set before the include: the wrapper's self-test runs
+# at include time and the wrapper refuses to run at all without this.
+set(QB_EXAMPLES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Shared helper: derive an example's CMake target and binary name from the tier
+# directory and the source file, so the four naming layers cannot drift. See the header
+# of that file for the defect class it closes.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExample.cmake)
+
 # NOTE: examples are being ported to the current qb API one at a time. Only the
 # adapted ones are enabled below; uncomment each category/example as it is ported.
+#
+# NOTE: the tree is being re-organised BY LEVEL (`NN-<tier>/`) rather than by which
+# library a program links. `02-io/` is converted; the directories below it still carry
+# their pre-3.0 names and their hand-written target names, and move one tier per commit.
 
 # Add subdirectories for each example category
 add_subdirectory(core)
-add_subdirectory(io)
+add_subdirectory(02-io)
 add_subdirectory(core_io)
 add_subdirectory(coroutine)
 
