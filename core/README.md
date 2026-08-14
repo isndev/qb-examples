@@ -88,17 +88,23 @@ Once built, you can run each example directly from its location in the build out
 * **Focus**: Fundamental actor creation, message passing, and lifecycle.
 * **Actors**:
     * `SimpleActor`: Receives `SimpleEvent`s and terminates after a count.
-    * `SenderActor`: Uses `qb::ICallback` to periodically send `SimpleEvent`s to `SimpleActor`.
+    * `SenderActor`: Uses `qb::ICallback` to send a `SimpleEvent` to `SimpleActor` on every turn of the event loop.
 * **QB Features**: `qb::Actor`, `engine.addActor`, `onInit`, custom `qb::Event`, `registerEvent`, `on(EventType&)`,
-  `push`, `kill`, `qb::ICallback`, `registerCallback`, `onCallback`, `qb::io::cout`.
+  `push`, `kill`, `qb::ICallback`, `registerCallback`, `on(qb::LoopEvent const&)`, `qb::io::cout`.
+
+> `qb::ICallback` is the **every-turn** hook, not a timer. For work that must happen after a delay, use
+> `spawn(...)` + `co_await ctx.sleep(d)` (examples 2-10) and never `std::this_thread::sleep_for`, which freezes
+> every actor on the core.
 
 ### `example2_basic_actors.cpp`
 
 * **Focus**: Request-response communication pattern.
 * **Actors**:
-    * `ReceiverActor`: Listens for `MessageEvent`s, simulates work, sends `ResponseEvent` back to the source.
-    * `SenderActor` (Alice, Bob): Periodically send `MessageEvent`s, listen for `ResponseEvent`s.
-* **QB Features**: `event.getSource()`, managing multiple senders and a single receiver, state tracking for termination.
+    * `ReceiverActor`: Listens for `MessageEvent`s, simulates work **asynchronously**, sends `ResponseEvent` back to
+      the source.
+    * `SenderActor` (Alice, Bob): Pace their `MessageEvent`s with a coroutine timer, listen for `ResponseEvent`s.
+* **QB Features**: `event.getSource()`, `spawn(...)` + `co_await ctx.sleep(...)` for a non-blocking delay,
+  `ctx.push<T>()` to return to actor context, state tracking for termination.
 
 ### `example3_multicore.cpp`
 
@@ -106,10 +112,10 @@ Once built, you can run each example directly from its location in the build out
 * **Actors**:
     * `WorkerActor`: Deployed on multiple cores, handles `HighPriorityEvent`, `StandardEvent`, `LowPriorityEvent` with
       different processing times. Receives `SystemNotificationEvent`.
-    * `DispatcherActor`: Runs on a specific core, dispatches work to workers round-robin, broadcasts
-      `SystemNotificationEvent`s using `qb::BroadcastId(core_id)`.
-* **QB Features**: Multi-core assignment with `engine.addActor(core_id, ...)`, `qb::BroadcastId`, `getIndex()` for core
-  ID.
+    * `DispatcherActor`: Runs on a specific core, dispatches work to workers round-robin, sends
+      `SystemNotificationEvent`s system-wide with `broadcast<T>()`.
+* **QB Features**: Multi-core assignment with `engine.addActor(core_id, ...)`, `broadcast<T>()` **versus**
+  `qb::BroadcastId(core_id)` (which reaches one core's actors only), `getIndex()` for core ID.
 
 ### `example4_lifecycle.cpp`
 
@@ -118,29 +124,36 @@ Once built, you can run each example directly from its location in the build out
     * `WorkerActor`: Can be started (`StartWorkEvent`), monitored (`StatusRequestEvent`), and stopped (
       `ShutdownRequestEvent`). Handles `qb::KillEvent` explicitly.
     * `SupervisorActor`: Manages workers, sends start commands, polls status, and initiates coordinated shutdown.
-* **QB Features**: Supervisor-worker pattern, explicit `qb::KillEvent` handling, `unregisterCallback`, coordinated
-  startup/shutdown sequences.
+* **QB Features**: Supervisor-worker pattern, two-phase shutdown (drain with `ShutdownRequestEvent`, then terminate
+  with `broadcast<qb::KillEvent>()`), explicit `qb::KillEvent` handling via `registerEvent<qb::KillEvent>(*this)`,
+  coordinated startup/shutdown sequences.
 
 ### `example5_timers.cpp`
 
-* **Focus**: Implementing timer-like behavior and delayed actions using self-messaging patterns.
+* **Focus**: Real timers and delayed actions, and choosing between the four mechanisms qb offers.
 * **Actors**:
-    * `TimerManager`: Simulates a timer service, receiving `StartTimerMsg` and `CancelTimerMsg`. Uses self-sent
-      `DelayedActionMsg` to trigger `TimerFiredMsg`.
-    * `Application`: Interacts with `TimerManager`, receives `TimerFiredMsg`, uses self-sent `DelayedActionMsg` to
-      sequence its operations, and initiates system shutdown via `broadcast<qb::KillEvent>()`.
-* **QB Features**: Self-messaging for timed actions (alternative to `qb::io::async::callback`),
-  `broadcast<qb::KillEvent>()`.
+    * `TimerManager`: A timer service. Arms each interval with `spawn(...)` + `co_await ctx.sleep(interval)` and
+      answers the requester with `TimerFiredMsg`; `CancelTimerMsg` stops one.
+    * `Application`: Interacts with `TimerManager`, receives `TimerFiredMsg`, sequences its own steps with the same
+      mechanism, and initiates system shutdown via `broadcast<qb::KillEvent>()`.
+* **QB Features**: `spawn(...)` + `co_await ctx.sleep(...)`, `event.getSource()`, `broadcast<qb::KillEvent>()`. The
+  file header contrasts all four ways to do something later: `ctx.sleep`, `qb::io::async::callback(f, d)`,
+  `qb::io::async::defer(f)` and `qb::ICallback`.
 
 ### `example6_shared_queue.cpp`
 
 * **Focus**: Producer-consumer pattern with actors interacting via an externally managed, thread-safe shared queue.
 * **Components**:
-    * `SharedQueue<WorkItemMsg>`: Custom thread-safe queue (std::mutex).
-    * `Producer` Actor: Pushes `WorkItemMsg` to the `SharedQueue`.
-    * `Consumer` Actors: Pop `WorkItemMsg` from the `SharedQueue` and process them.
+    * `SharedQueue<WorkItem>`: Custom thread-safe queue (std::mutex) of plain values, not events.
+    * `Producer` Actor: Pushes `WorkItem`s to the `SharedQueue`.
+    * `Consumer` Actors: Pop `WorkItem`s from the `SharedQueue` and process them.
     * `Supervisor` Actor: Monitors queue size and consumer stats, initiates shutdown.
 * **QB Features**: Demonstrates integration of actors with external shared state, contrasting with pure message passing.
+
+> **This one is a counter-example, not a pattern.** A mutex-protected container shared by five actors is the opposite
+> of what the rest of this directory teaches, and the file's own header lists what it costs you (no back-pressure, a
+> lock on the hot path, polling instead of delivery). Read it for the seam where an actor system meets code you did
+> not write.
 
 ### `example7_pub_sub.cpp`
 
@@ -151,19 +164,21 @@ Once built, you can run each example directly from its location in the build out
     * `MessagePublisher`: Publishes messages to topics via the `BrokerActor`.
     * `SubscriberActor`: Receives messages for subscribed topics.
     * `DemoController`: Orchestrates the demo, manages subscriptions, triggers publications, and requests stats/history.
-* **QB Features**: Decoupled messaging, dynamic subscriptions (simulated), `qb::io::async::callback()` for demo
-  sequencing.
+* **QB Features**: Decoupled messaging, dynamic subscriptions (simulated), one-shot `registerCallback` /
+  `unregisterCallback`, `spawn(...)` + `co_await ctx.sleep(...)` for demo sequencing. `qb/core/patterns/pubsub.h`
+  ships a tested broker that makes most of this file unnecessary in real code.
 
 ### `example8_state_machine.cpp`
 
 * **Focus**: Implementing a finite state machine (FSM) within an actor.
 * **Actors**:
     * `CoffeeMachineActor`: Implements FSM logic (states: IDLE, SELECTING, PAYMENT, etc.). Transitions based on
-      `InputEventMessage`. Uses `qb::io::async::callback()` for timed operations (brewing). Publishes
+      `InputEventMessage`. Uses `spawn(...)` + `co_await ctx.sleep(...)` for timed operations (brewing). Publishes
       `StateChangeMessage`.
     * `UserInterfaceActor`: Simulates user interaction, sends `InputEventMessage`s, subscribes to `StateChangeMessage`,
       requests status.
-* **QB Features**: FSM logic encapsulation, `qb::io::async::callback()` for delayed self-events, state notifications.
+* **QB Features**: FSM logic encapsulation, `spawn(...)` + `co_await ctx.sleep(...)` for delayed self-events (bound
+  to the actor's lifetime, unlike `qb::io::async::callback(f, d)`), state notifications.
 
 ### `example9_trading_system.cpp`
 
@@ -183,18 +198,37 @@ Once built, you can run each example directly from its location in the build out
 * **Focus**: Simulating a distributed task computing system with dynamic worker management and load balancing.
 * **Actors**:
     * `TaskGeneratorActor`: Creates `Task` objects and sends them as `TaskMessage`s.
-    * `TaskSchedulerActor`: Receives tasks, assigns them to available `WorkerNodeActor`s based on metrics, handles
-      `WorkerHeartbeatMessage` and `WorkerStatusMessage`.
+    * `TaskSchedulerActor`: Receives tasks and assigns them round-robin to the `WorkerNodeActor`s it knows to be idle,
+      requeueing anything a worker rejects; handles `WorkerHeartbeatMessage` and `WorkerStatusMessage`.
     * `WorkerNodeActor`: Executes assigned tasks, simulates processing time based on task complexity, reports results (
       `ResultMessage`) and status.
     * `ResultCollectorActor`: Aggregates `TaskResult`s.
-    * `SystemMonitorActor`: Oversees the system, requests and displays `SystemStatsMessage`, manages worker lifecycle
-      via `UpdateWorkersMessage`, and initiates shutdown.
+    * `SystemMonitorActor`: Oversees the system, polls each component for the counters it owns and displays the merged
+      figures, wires the worker list into the scheduler via `UpdateWorkersMessage`, and initiates shutdown.
 * **QB Features**: Dynamic actor management (conceptual, workers are pre-started but scheduler manages assignment), load
-  balancing concepts, comprehensive system monitoring, `qb::string<N>` for efficient string usage in events/structs.
+  balancing, comprehensive system monitoring, `qb::string<N>` for efficient string usage in events/structs, and
+  telemetry by request/report events rather than shared counters.
 
 ---
 
 These examples provide a solid foundation for understanding and utilizing the QB Core Actor Framework. Explore the
 source code of each example to see the concepts in action. Remember that these are illustrative and real-world
-applications would involve more robust error handling, configuration, and domain-specific logic. 
+applications would involve more robust error handling, configuration, and domain-specific logic.
+
+## Checking your own qb program
+
+Exit code 0 proves very little about an actor system: an event pushed to a default-constructed `qb::ActorId`, a
+handler that was never subscribed, a timer that outlives its actor -- none of them fail loudly. Two habits catch
+almost all of it:
+
+1. **Diff the run against the program's own `printf`s.** Every path a file claims to exercise should print
+   something; a line that never appears is a dead path. That single check found thirteen of them across this corpus.
+2. **Run it under the sanitizers**, not just release:
+
+   ```bash
+   cmake --preset sanitize && cmake --build --preset sanitize
+   ./build/presets/sanitize/examples/core/example9_trading_system
+   ```
+
+   `sanitize` is ASan + UBSan; `sanitize-thread` is TSan and is what finds a cross-core data race. Two examples in
+   this directory used to abort under `sanitize` while exiting 0 in release. 

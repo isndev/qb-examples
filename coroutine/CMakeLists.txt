@@ -19,7 +19,7 @@
 # qb Coroutine Examples - CMake Configuration
 #
 # Demonstrates the qb-io coroutine model: standalone coroutine driving with
-# run_for(), and coroutines hosted inside actors.
+# run_sync(), and coroutines hosted inside actors.
 # -----------------------------------------------------------------------------
 
 project(qb_coroutine_examples

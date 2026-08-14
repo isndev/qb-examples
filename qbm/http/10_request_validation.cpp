@@ -43,6 +43,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "Initializing Request Validation Server..." << std::endl;
 
         // Initialize sample data
@@ -940,12 +947,24 @@ private:
         std::cout << std::endl;
     }
 
+public:
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    // Both handlers must be PUBLIC — the router's dispatch trampoline calls
+    // `handler.on(event)` from outside the class (qb/system/event/router.h).
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
+    }
+
     void
     on(const qb::KillEvent &event) noexcept {
         std::cout << "Shutting down Request Validation Server..." << std::endl;
         this->kill();
     }
 
+private:
     // Simple handlers (non-validation versions for some routes)
     void
     handle_create_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {

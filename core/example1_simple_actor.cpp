@@ -12,21 +12,27 @@
  *     -   Processes these events and prints their content.
  *     -   Terminates itself after receiving a specific number of events.
  * 2.  `SenderActor`:
- *     -   Uses the `qb::ICallback` interface to perform periodic actions.
- *     -   Periodically sends `SimpleEvent` messages to the `SimpleActor`.
+ *     -   Uses the `qb::ICallback` interface to run on every turn of its core's event loop.
+ *     -   Sends a `SimpleEvent` to the `SimpleActor` on each turn.
  *     -   Terminates itself after sending a specific number of events.
  *
  * The `qb::Main` engine is used to initialize, run, and manage these actors.
  *
+ * @note `qb::ICallback` is the EVERY-TURN hook, not a timer: `on(qb::LoopEvent const &)` fires
+ *       as fast as the core loops (this whole example finishes in well under a second). When you
+ *       want work to happen *after a delay*, do not reach for `ICallback` and do not block the
+ *       handler with `std::this_thread::sleep_for` -- that freezes every actor on the core.
+ *       Use `spawn(...)` + `co_await ctx.sleep(d)`; example2, example3 and example5 show it.
+ *
  * QB Features Demonstrated:
  * - Actor Creation: `qb::Actor`, `engine.addActor<ActorType>(core_id, args...)`.
- * - Actor Initialization: `virtual bool onInit()`.
+ * - Actor Initialization: `qb::io::async::task<bool> onInit()` (a coroutine since 3.0).
  * - Event Definition: Custom event `SimpleEvent` inheriting from `qb::Event`.
  * - Event Registration: `registerEvent<EventType>(*this)` within `onInit()`.
  * - Event Handling: `void on(const EventType& event)`.
  * - Message Sending: `push<EventType>(destination_actor_id, args...)`.
  * - Actor Lifecycle: `kill()` for self-termination.
- * - Periodic Callbacks: `qb::ICallback`, `registerCallback(*this)`, `void onCallback()`.
+ * - Per-Loop Callbacks: `qb::ICallback`, `registerCallback(*this)`, `void on(qb::LoopEvent const &)`.
  * - Engine Management: `qb::Main`, `engine.start()`, `engine.join()`.
  * - Thread-Safe Output: `qb::io::cout()`.
  * - Actor Identification: `id()` to get the `qb::ActorId`.

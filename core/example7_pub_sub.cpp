@@ -29,9 +29,22 @@
  *     -   Initializes subscriptions by sending `SubscribeMessage`s to the `BrokerActor`.
  *     -   Triggers message publications by sending `StepMessage`s to the `MessagePublisher`.
  *     -   Requests message history and statistics from relevant actors.
- *     -   Uses `qb::ICallback` and `qb::io::async::callback` with self-sent `DelayedActionMessage`
- *         to manage the sequence of demo steps.
+ *     -   Sequences the demo with self-sent `DelayedActionMessage`s, spacing the phases with
+ *         `spawn(...)` + `co_await ctx.sleep(...)` so each phase's fan-out has landed before the
+ *         next one reads it.
  *     -   Handles the graceful shutdown of the system by sending `qb::KillEvent` to other actors.
+ *
+ * @note A REGISTERED `qb::ICallback` FIRES ON EVERY TURN OF THE EVENT LOOP, and this file is why
+ *       that is worth stating. `DemoController::on(qb::LoopEvent const &)` called `runDemo()`
+ *       with no `unregisterCallback()`, so the "demo" was started 18 TIMES CONCURRENTLY in a
+ *       measured run, each pass re-subscribing the subscribers the previous pass had just
+ *       unsubscribed. The punchline of step 5 -- "published one more weather update, which
+ *       WeatherWatcher should not receive" -- was falsified by the example's own next pass. The
+ *       handler below now unregisters itself first: one turn, one demo.
+ *
+ * @note `MessagePublisher` USED TO BE 160 LINES OF DEAD ACTOR. It handles `StepMessage`, and
+ *       nothing in the program ever pushed one -- `[MessagePublisher] Processing` appeared zero
+ *       times in a full run. Phase 3 below drives it.
  *
  * QB Features Demonstrated:
  * - Publish-Subscribe Pattern: Implemented with a central `BrokerActor`.
@@ -41,13 +54,19 @@
  * - Event-Driven Architecture: System driven by various custom `qb::Event` types.
  * - Actor Lifecycle Management: `onInit()`, `kill()`, handling `qb::KillEvent`.
  * - Inter-Actor Communication: `push<EventType>(...)`.
- * - Asynchronous Operations: `qb::io::async::callback()` used by `DemoController` for sequencing.
- * - Periodic/Delayed Actions: `qb::ICallback` and self-messaging in `DemoController`.
+ * - One-Shot Callbacks: `registerCallback(*this)` + `unregisterCallback(*this)`.
+ * - Delayed Actions: `spawn(...)` + `co_await ctx.sleep(...)`, and `ctx.push<T>()` to return to
+ *   actor context.
  * - Engine Management: `qb::Main`, `engine.addActor<ActorType>()`.
  * - State Management: Actors like `BrokerActor` and `SubscriberActor` maintain internal state
  *   (subscriptions, message history).
+ *
+ * @note A production system would not hand-roll any of this: `qb/core/patterns/pubsub.h` ships a
+ *       tested topic broker, and this file is roughly 900 lines of a worse one. It is kept as a
+ *       walk-through of the mechanics the pattern encapsulates.
  */
 
+#include <chrono>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -57,6 +76,7 @@
 #include <qb/string.h>
 
 using namespace qb;
+using namespace std::chrono_literals;
 
 // Message classes for the pub/sub system
 class SubscribeMessage : public Event {
@@ -613,7 +633,15 @@ public:
 // Demo sequence control message
 class DelayedActionMessage : public Event {
 public:
-    enum class Action { SETUP_SUBSCRIPTIONS, PUBLISH_MESSAGES, PRINT_HISTORY, PRINT_BROKER_STATS, UNSUBSCRIBE, FINISH_DEMO };
+    enum class Action {
+        SETUP_SUBSCRIPTIONS,
+        PUBLISH_MESSAGES,
+        PUBLISH_VIA_PUBLISHER,
+        PRINT_HISTORY,
+        PRINT_BROKER_STATS,
+        UNSUBSCRIBE,
+        FINISH_DEMO
+    };
 
     Action action;
     int    step;
@@ -633,10 +661,13 @@ class DemoController
     , public ICallback {
 private:
     using Topic = SubscribeMessage::Topic;
+
+    // MessagePublisher::on(StepMessage&) scripts steps 1..6.
+    static constexpr int PUBLISHER_STEPS = 6;
+
     ActorId              _broker_id;
     ActorId              _publisher_id;
     std::vector<ActorId> _subscriber_ids;
-    int                  _current_step = 0;
 
     void
     printSeparator(const std::string &title) {
@@ -664,6 +695,9 @@ public:
 
     void
     on(qb::LoopEvent const &) override {
+        // ONE turn, ONE demo. `qb::ICallback` is the per-turn hook, so leaving it registered ran
+        // this whole sequence 18 times over each other -- see the note at the top of the file.
+        unregisterCallback(*this);
         runDemo();
     }
 
@@ -672,7 +706,7 @@ public:
         printSeparator("PUB/SUB SYSTEM DEMO");
         qb::io::cout() << "Starting demo sequence..." << std::endl;
 
-        // Start the demo sequence with a delayed message to self
+        // Start the demo sequence with a message to self
         push<DelayedActionMessage>(id(), DelayedActionMessage::Action::SETUP_SUBSCRIPTIONS);
     }
 
@@ -685,6 +719,10 @@ public:
 
             case DelayedActionMessage::Action::PUBLISH_MESSAGES:
                 publishMessages(msg.step);
+                break;
+
+            case DelayedActionMessage::Action::PUBLISH_VIA_PUBLISHER:
+                publishViaPublisher(msg.step);
                 break;
 
             case DelayedActionMessage::Action::PRINT_HISTORY:
@@ -703,6 +741,19 @@ public:
                 finishDemo();
                 break;
         }
+    }
+
+    // Move to the next demo phase after `delay`. Every phase here ends in a fan-out --
+    // controller -> publisher -> broker -> N subscribers -- and each hop is a separate turn of
+    // the event loop, so a phase that READS the result (history, statistics) must let the
+    // previous one land. `spawn` + `co_await ctx.sleep` is how you wait in an actor; the
+    // coroutine is cancelled automatically if this actor is killed while it is pending.
+    void
+    nextPhase(DelayedActionMessage::Action action, int step, qb::duration delay) {
+        spawn([action, step, delay](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(delay);
+            ctx.template push<DelayedActionMessage>(action, step);
+        });
     }
 
     void
@@ -777,8 +828,26 @@ public:
 
                 // Wait for messages to be processed before proceeding
                 qb::io::cout() << "\nWaiting for messages to be processed..." << std::endl;
-                push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PRINT_HISTORY, 0);
+                nextPhase(DelayedActionMessage::Action::PUBLISH_VIA_PUBLISHER, 1, 100ms);
                 break;
+        }
+    }
+
+    // Drive the MessagePublisher through its six scripted steps. The controller publishes
+    // directly above; this shows the other half of the decoupling -- a dedicated publisher actor
+    // that owns its own content and knows only the broker's id.
+    void
+    publishViaPublisher(int step) {
+        if (step == 1) {
+            printSeparator("STEP 2b: PUBLISHING THROUGH MessagePublisher");
+        }
+
+        if (step <= PUBLISHER_STEPS) {
+            push<StepMessage>(_publisher_id, step);
+            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PUBLISH_VIA_PUBLISHER, step + 1);
+        } else {
+            qb::io::cout() << "\nWaiting for messages to be processed..." << std::endl;
+            nextPhase(DelayedActionMessage::Action::PRINT_HISTORY, 0, 100ms);
         }
     }
 
@@ -790,10 +859,11 @@ public:
 
         if (static_cast<std::size_t>(step) < _subscriber_ids.size()) {
             push<PrintHistoryMessage>(_subscriber_ids[step]);
-            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PRINT_HISTORY, step + 1);
+            // One subscriber's history at a time, so the blocks do not interleave.
+            nextPhase(DelayedActionMessage::Action::PRINT_HISTORY, step + 1, 50ms);
         } else {
             // All subscriber histories printed, move to broker statistics
-            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::PRINT_BROKER_STATS);
+            nextPhase(DelayedActionMessage::Action::PRINT_BROKER_STATS, 0, 50ms);
         }
     }
 
@@ -801,7 +871,7 @@ public:
     printBrokerStatistics() {
         printSeparator("STEP 4: BROKER STATISTICS");
         push<PrintStatisticsMessage>(_broker_id);
-        push<DelayedActionMessage>(id(), DelayedActionMessage::Action::UNSUBSCRIBE, 0);
+        nextPhase(DelayedActionMessage::Action::UNSUBSCRIBE, 0, 50ms);
     }
 
     void
@@ -812,12 +882,12 @@ public:
             // Unsubscribe weather watcher from weather updates
             qb::io::cout() << "Unsubscribing WeatherWatcher from WEATHER topic..." << std::endl;
             push<UnsubscribeMessage>(_broker_id, Topic::WEATHER, _subscriber_ids[1]);
-            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::UNSUBSCRIBE, 1);
+            nextPhase(DelayedActionMessage::Action::UNSUBSCRIBE, 1, 50ms);
         } else if (step == 1) {
             // Publish one more weather update (that won't be received)
             qb::io::cout() << "\nPublishing one more weather update (should not be received by WeatherWatcher)..." << std::endl;
             push<PublishMessage>(_broker_id, Topic::WEATHER, "Direct weather update: Storm coming", "DemoController", getCurrentTimestamp());
-            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::UNSUBSCRIBE, 2);
+            nextPhase(DelayedActionMessage::Action::UNSUBSCRIBE, 2, 100ms);
         } else if (step == 2) {
             // Show final statistics
             printSeparator("FINAL STATISTICS");
@@ -827,7 +897,7 @@ public:
             // Print final history for the weather watcher to show no new message was received
             qb::io::cout() << "\nChecking WeatherWatcher's final message history:" << std::endl;
             push<PrintHistoryMessage>(_subscriber_ids[1]);
-            push<DelayedActionMessage>(id(), DelayedActionMessage::Action::FINISH_DEMO);
+            nextPhase(DelayedActionMessage::Action::FINISH_DEMO, 0, 100ms);
         }
     }
 

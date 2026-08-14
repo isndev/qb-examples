@@ -37,6 +37,13 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
+        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
+        // constructor already subscribed its own default handlers for these two, and
+        // re-registering here is what replaces them with OURS. Without these two lines
+        // the handlers below compile, are never called, and their cleanup is lost.
+        registerEvent<qb::KillEvent>(*this);
+        registerEvent<qb::SignalEvent>(*this);
+
         std::cout << "Initializing Coroutine-Handlers HTTP Server..." << std::endl;
 
         // 1. Coroutine handler: do asynchronous work (co_await) then respond — linear, no callbacks.
@@ -91,6 +98,14 @@ public:
         co_return;
     }
 
+    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
+    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
+    void
+    on(const qb::SignalEvent &event) noexcept {
+        std::cout << "Signal " << event.signum << " received." << std::endl;
+        push<qb::KillEvent>(id());
+    }
+
     void
     on(const qb::KillEvent &) noexcept {
         this->kill();
@@ -108,6 +123,14 @@ main() {
         }
         engine.start();
         engine.join();
+
+        // A failed onInit() (bind refused) removes the actor but does not make the
+        // process fail. Report it, so a supervisor cannot read a server that never
+        // bound its port as a clean shutdown.
+        if (engine.hasError()) {
+            std::cerr << "Engine reported an error" << std::endl;
+            return 1;
+        }
     } catch (const std::exception &e) {
         std::cerr << "Server error: " << e.what() << std::endl;
         return 1;
