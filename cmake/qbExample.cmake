@@ -278,17 +278,37 @@ function(qb_example)
     # A REQUIRES gate that was not met returns from qb_add_executable BEFORE
     # add_executable(), so the target genuinely does not exist. Register and hand back
     # only what was really created — a roster that lists phantom targets is worse than none.
+    #
+    # ...but a gated-out example is not NOTHING, and recording only the survivors is what
+    # made the SSL gate invisible for so long: in an SSL-off build five programs do not fail,
+    # they cease to exist, and every count downstream drops for a reason nothing states. So
+    # the two outcomes are recorded SEPARATELY and both are emitted (see the roster at the
+    # bottom of examples/CMakeLists.txt). The runner can then tell "this program was gated
+    # out by a capability this build does not have" — a reportable SKIP — from "this program
+    # should be here and is not", which is a failure. Without the second list those two are
+    # the same observation.
     if (TARGET ${_target})
         set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_TARGETS "${_target}")
         # `${_primary}` and not `${_primary_name}`: a project names its primary source with a
         # subdirectory (`server/main.cpp`), and the basename alone would record a path that
-        # does not exist. Nothing reads this property yet -- it is the input to the generated
-        # capability index -- which is exactly why it has to be right before something does.
+        # does not exist. This is what `dev/agent/run-examples.py` maps a binary back to, to
+        # read the `@expect` lines it must see printed — so it has to be right.
         set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_SOURCES
                      "examples/${_dir_rel}/${_primary}")
         if (QE_TARGET_VAR)
             set(${QE_TARGET_VAR} "${_target}" PARENT_SCOPE)
         endif ()
+    else ()
+        # `.` for "no capability named" cannot happen here (a target with no REQUIRES is always
+        # created), but the field is written unconditionally so every gated record has the same
+        # arity and a reader never has to guess which column is missing.
+        set(_req "${QE_REQUIRES}")
+        if (NOT _req)
+            set(_req ".")
+        endif ()
+        string(REPLACE ";" "+" _req "${_req}")
+        set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_GATED
+                     "${_target}|examples/${_dir_rel}/${_primary}|${_req}")
     endif ()
 endfunction()
 
