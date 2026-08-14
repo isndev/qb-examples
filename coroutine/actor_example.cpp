@@ -17,26 +17,36 @@
 #include <iostream>
 #include <qb/actor.h>
 #include <qb/io/async/coroutine.h>
+#include <string_view>
 #include <qb/main.h>
+#include <qb/string.h>
 
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
+// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+//
 // Events for our example
 struct StartProcessing : qb::Event {
-    int         request_id;
-    std::string data;
+    int            request_id;
+    qb::string<64> data;
 
-    StartProcessing(int id, std::string d)
+    StartProcessing(int id, std::string_view d)
         : request_id(id)
-        , data(std::move(d)) {}
+        , data(d) {}
 };
 
 struct ProcessingComplete : qb::Event {
-    int         request_id;
-    std::string result;
-    uint64_t    processing_time_ns;
+    int            request_id;
+    qb::string<64> result;
+    uint64_t       processing_time_ns;
 
-    ProcessingComplete(int id, std::string r, uint64_t time)
+    ProcessingComplete(int id, std::string_view r, uint64_t time)
         : request_id(id)
-        , result(std::move(r))
+        , result(r)
         , processing_time_ns(time) {}
 };
 
@@ -79,7 +89,7 @@ public:
 
         // ⚠️ CRITICAL: Capture by VALUE only!
         int         req_id = req.request_id;
-        std::string data   = req.data;
+        std::string data   = req.data.c_str();
         uint64_t    start  = start_time;
 
         // Launch async coroutine scoped to this actor's lifetime

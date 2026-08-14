@@ -56,12 +56,15 @@
  * - `qb::string<N>`, `qb::json` (implicitly for stream results), `qb::io::cout()`.
  */
 
+#include <memory>
+#include <string_view>
 #include <qbm/redis/redis.h>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qb/json.h>
+#include <qb/string.h>
 #include <qb/system/parse.h>
 #include <chrono>
 #undef ERROR
@@ -71,14 +74,29 @@
 #define REDIS_URI "tcp://localhost:6379"
 
 // =============== Event Definitions ===============
+//
+// NOTE ON EVENT PAYLOADS, which governs every struct in this section: the engine relocates an
+// event with `memcpy` and never runs the source destructor, so a payload member may hold no
+// pointer into itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses
+// its own inline buffer -- so after the relocation it still points at the old storage. libc++
+// recomputes the pointer from `this`, which is why the defect is invisible on macOS and corrupts
+// on Linux. Relocation is not a cross-core-only event either: pipe growth, compaction, `reply()`
+// and `forward()` relocate same-core events too. Every event below really does cross a core
+// boundary here -- clients run on core 2 and workers on core 1, and both push to the coordinator
+// on core 0.
+//
+// The two sanctioned shapes are used side by side below:
+//   * `qb::string<N>` for a payload with a known bound (ids, type tags, component names);
+//   * `std::shared_ptr<std::string>` for one without (log text, job results, cache values) --
+//     the pointer is relocated, the characters stay put on the heap and are never copied.
 
 // Event for the coordinator to signal job creation
 struct CreateJobEvent : public qb::Event {
-    std::string job_id;
-    std::string job_type;
-    std::string job_data;
+    qb::string<48> job_id;
+    qb::string<32> job_type;
+    qb::string<64> job_data;
 
-    CreateJobEvent(const std::string &id, const std::string &type, const std::string &data)
+    CreateJobEvent(std::string_view id, std::string_view type, std::string_view data)
         : job_id(id)
         , job_type(type)
         , job_data(data) {}
@@ -86,25 +104,25 @@ struct CreateJobEvent : public qb::Event {
 
 // Event for client registration with coordinator
 struct ClientRegistrationEvent : public qb::Event {
-    std::string client_id;
+    qb::string<32> client_id;
 
-    ClientRegistrationEvent(const std::string &id)
+    ClientRegistrationEvent(std::string_view id)
         : client_id(id) {}
 };
 
 // Event for worker registration with coordinator
 struct WorkerRegistrationEvent : public qb::Event {
-    std::string worker_id;
+    qb::string<32> worker_id;
 
-    WorkerRegistrationEvent(const std::string &id)
+    WorkerRegistrationEvent(std::string_view id)
         : worker_id(id) {}
 };
 
 // Event for client shutdown notification
 struct ClientShutdownEvent : public qb::Event {
-    std::string client_id;
+    qb::string<32> client_id;
 
-    ClientShutdownEvent(const std::string &id)
+    ClientShutdownEvent(std::string_view id)
         : client_id(id) {}
 };
 
@@ -112,40 +130,40 @@ struct ClientShutdownEvent : public qb::Event {
 struct CacheEvent : public qb::Event {
     enum class Action { SET, GET, DELETE };
 
-    Action      action;
-    std::string key;
-    std::string value;
+    Action                       action;
+    qb::string<64>               key;
+    std::shared_ptr<std::string> value; // cached payloads have no bound: box them
 
-    CacheEvent(Action act, std::string k, std::string v = "")
+    CacheEvent(Action act, std::string_view k, std::string v = {})
         : action(act)
         , key(k)
-        , value(v) {}
+        , value(std::make_shared<std::string>(std::move(v))) {}
 };
 
 // Event for log messages
 struct LogEvent : public qb::Event {
     enum class Level { DEBUG, INFO, WARNING, ERROR };
 
-    Level       level;
-    std::string component;
-    std::string message;
+    Level                        level;
+    qb::string<32>               component;
+    std::shared_ptr<std::string> message; // log text has no bound: box it
 
-    LogEvent(Level lvl, std::string comp, std::string msg)
+    LogEvent(Level lvl, std::string_view comp, std::string msg)
         : level(lvl)
         , component(comp)
-        , message(msg) {}
+        , message(std::make_shared<std::string>(std::move(msg))) {}
 };
 
 // Event to notify of job completion
 struct JobCompletedEvent : public qb::Event {
-    std::string job_id;
-    bool        success;
-    std::string result;
+    qb::string<48>               job_id;
+    bool                         success;
+    std::shared_ptr<std::string> result; // a job result has no bound: box it
 
-    JobCompletedEvent(std::string id, bool s, std::string res)
+    JobCompletedEvent(std::string_view id, bool s, std::string res)
         : job_id(id)
         , success(s)
-        , result(res) {}
+        , result(std::make_shared<std::string>(std::move(res))) {}
 };
 
 // Event to start worker system shutdown
@@ -489,8 +507,8 @@ public:
 
         // Spawn a coroutine to perform the async cache operation
         CacheEvent::Action action = event.action;
-        std::string        key    = event.key;
-        std::string        value  = event.value;
+        std::string        key    = event.key.c_str();
+        std::string        value  = event.value ? *event.value : std::string{};
 
         spawn([this, action, key, value](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             std::string full_key = "cache:" + key;
@@ -714,9 +732,9 @@ public:
             return;
 
         // Spawn a coroutine to append the log entry to the stream
-        std::string component = event.component;
+        std::string component = event.component.c_str();
         std::string level     = level_to_string(event.level);
-        std::string message   = event.message;
+        std::string message   = event.message ? *event.message : std::string{};
 
         spawn([this, component, level, message](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             // Create log entry fields exactly like in example7
@@ -902,11 +920,11 @@ public:
     void
     on(const JobCompletedEvent &event) {
         // Remove from pending jobs if it's one of ours
-        if (_pending_jobs.find(event.job_id) != _pending_jobs.end()) {
+        if (_pending_jobs.find(event.job_id.c_str()) != _pending_jobs.end()) {
             qb::io::cout() << "ClientActor [" << _client_id << "] received completion for job " << event.job_id
-                           << " with result: " << event.result << std::endl;
+                           << " with result: " << (event.result ? *event.result : std::string{}) << std::endl;
 
-            _pending_jobs.erase(event.job_id);
+            _pending_jobs.erase(event.job_id.c_str());
             _jobs_completed++;
         }
     }
@@ -1030,15 +1048,15 @@ public:
     // Handle client registration
     void
     on(const ClientRegistrationEvent &event) {
-        _active_clients.insert(event.client_id);
+        _active_clients.insert(event.client_id.c_str());
         qb::io::cout() << "Coordinator: Client " << event.client_id << " registered" << std::endl;
     }
 
     // Handle client shutdown
     void
     on(const ClientShutdownEvent &event) {
-        if (_active_clients.find(event.client_id) != _active_clients.end()) {
-            _active_clients.erase(event.client_id);
+        if (_active_clients.find(event.client_id.c_str()) != _active_clients.end()) {
+            _active_clients.erase(event.client_id.c_str());
             qb::io::cout() << "Coordinator: Client " << event.client_id << " shutdown" << std::endl;
         }
     }
@@ -1046,7 +1064,7 @@ public:
     // Handle worker registration
     void
     on(const WorkerRegistrationEvent &event) {
-        _active_workers.insert(event.worker_id);
+        _active_workers.insert(event.worker_id.c_str());
         qb::io::cout() << "Coordinator: Worker " << event.worker_id << " registered" << std::endl;
     }
 
@@ -1104,7 +1122,8 @@ public:
 
         // Log the job creation if log aggregator is set
         if (_log_aggregator_id != qb::ActorId()) {
-            push<LogEvent>(_log_aggregator_id, LogEvent::Level::INFO, "coordinator", "New job created of type " + event.job_type);
+            push<LogEvent>(_log_aggregator_id, LogEvent::Level::INFO, "coordinator",
+                           "New job created of type " + std::string(event.job_type.c_str()));
         }
     }
 
@@ -1119,7 +1138,7 @@ public:
         // Log the job completion if log aggregator is set
         if (_log_aggregator_id != qb::ActorId()) {
             push<LogEvent>(_log_aggregator_id, LogEvent::Level::INFO, "coordinator",
-                           "Job " + event.job_id + " completed with status: " + (event.success ? "success" : "failure"));
+                           "Job " + std::string(event.job_id.c_str()) + " completed with status: " + (event.success ? "success" : "failure"));
         }
     }
 

@@ -34,7 +34,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string_view>
+#include <utility>
 #include <qb/actor.h>
+#include <qb/string.h>
 #include <chrono>
 #include <string>
 
@@ -75,15 +79,32 @@ struct FileMetadata {
 };
 
 /**
+ * NOTE ON EVENT PAYLOADS, which governs every event in this file: the engine relocates an event
+ * with `memcpy` and never runs the source destructor, so a payload member may hold no pointer
+ * into itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses its own
+ * inline buffer -- so after the relocation it still points at the old storage. libc++ recomputes
+ * the pointer from `this`, which is why the defect is invisible on macOS and corrupts on Linux.
+ * It is NOT a cross-core-only concern: pipe growth, compaction, `reply()` and `forward()`
+ * relocate same-core events too. It matters here in particular because `FileProcessor` runs on
+ * core 1 while the watcher and client run on core 0, so the moment the processor subscribes to a
+ * watch these events start crossing a core boundary.
+ *
+ * A filesystem path has no useful bound, so it is boxed behind a `std::shared_ptr` rather than
+ * squeezed into a `qb::string<N>` that would truncate it in silence: the pointer is relocated,
+ * the characters stay put on the heap. `FileMetadata` below is NOT an event -- it is actor-owned
+ * state that the engine never relocates -- so its std::string members are fine as they are.
+ */
+
+/**
  * @brief File change event information
  */
 struct FileEvent : public qb::Event {
-    std::string                           path;
+    std::shared_ptr<std::string>          path;
     FileEventType                         type;
     std::chrono::system_clock::time_point timestamp;
 
-    FileEvent(const std::string &p, FileEventType t)
-        : path(p)
+    FileEvent(std::string p, FileEventType t)
+        : path(std::make_shared<std::string>(std::move(p)))
         , type(t)
         , timestamp(std::chrono::system_clock::now()) {}
 };
@@ -92,12 +113,12 @@ struct FileEvent : public qb::Event {
  * @brief Request to start watching a directory
  */
 struct WatchDirectoryRequest : public qb::Event {
-    std::string path;
-    bool        recursive;
-    qb::ActorId requestor;
+    std::shared_ptr<std::string> path;
+    bool                         recursive;
+    qb::ActorId                  requestor;
 
-    WatchDirectoryRequest(const std::string &p, bool r, qb::ActorId req)
-        : path(p)
+    WatchDirectoryRequest(std::string p, bool r, qb::ActorId req)
+        : path(std::make_shared<std::string>(std::move(p)))
         , recursive(r)
         , requestor(req) {}
 };
@@ -106,12 +127,12 @@ struct WatchDirectoryRequest : public qb::Event {
  * @brief Response to a watch directory request
  */
 struct WatchDirectoryResponse : public qb::Event {
-    std::string path;
-    bool        success;
-    std::string error_message;
+    std::shared_ptr<std::string> path;
+    bool                         success;
+    qb::string<128>              error_message;
 
-    WatchDirectoryResponse(const std::string &p, bool s, const std::string &err = "")
-        : path(p)
+    WatchDirectoryResponse(std::string p, bool s, std::string_view err = {})
+        : path(std::make_shared<std::string>(std::move(p)))
         , success(s)
         , error_message(err) {}
 };
@@ -120,11 +141,11 @@ struct WatchDirectoryResponse : public qb::Event {
  * @brief Request to stop watching a directory
  */
 struct UnwatchDirectoryRequest : public qb::Event {
-    std::string path;
-    qb::ActorId requestor;
+    std::shared_ptr<std::string> path;
+    qb::ActorId                  requestor;
 
-    UnwatchDirectoryRequest(const std::string &p, qb::ActorId req)
-        : path(p)
+    UnwatchDirectoryRequest(std::string p, qb::ActorId req)
+        : path(std::make_shared<std::string>(std::move(p)))
         , requestor(req) {}
 };
 

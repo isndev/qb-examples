@@ -48,9 +48,13 @@
  *   (subscriptions, message history).
  */
 
+#include <memory>
+#include <string_view>
+#include <utility>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
+#include <qb/string.h>
 
 using namespace qb;
 
@@ -77,31 +81,43 @@ public:
         , source_id(source) {}
 };
 
+// NOTE ON EVENT PAYLOADS, which governs every event in this file: the engine relocates an event
+// with `memcpy` and never runs the source destructor, so a payload member may hold no pointer
+// into itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses its own
+// inline buffer -- so after the relocation it still points at the old storage. libc++ recomputes
+// the pointer from `this`, which is why the defect is invisible on macOS and corrupts on Linux.
+// This is NOT a cross-core-only concern: every actor here runs on core 0, and pipe growth,
+// compaction, `reply()` and `forward()` all relocate same-core events too.
+//
+// `publisher` is a name with a known bound, so it is a `qb::string<N>`. `content` is an arbitrary
+// message body with no bound, so it is boxed: the pointer is relocated, the characters stay put
+// on the heap. Boxing also means the broker below forwards the very same buffer to every
+// subscriber instead of copying it once per subscriber.
 class PublishMessage : public Event {
 public:
-    SubscribeMessage::Topic topic;
-    std::string             content;
-    std::string             publisher;
-    uint64_t                timestamp;
+    SubscribeMessage::Topic      topic;
+    std::shared_ptr<std::string> content;
+    qb::string<32>               publisher;
+    uint64_t                     timestamp;
 
-    PublishMessage(SubscribeMessage::Topic t, std::string content, std::string publisher, uint64_t timestamp)
+    PublishMessage(SubscribeMessage::Topic t, std::string content, std::string_view publisher, uint64_t timestamp)
         : topic(t)
-        , content(std::move(content))
-        , publisher(std::move(publisher))
+        , content(std::make_shared<std::string>(std::move(content)))
+        , publisher(publisher)
         , timestamp(timestamp) {}
 };
 
 class MessageReceivedMessage : public Event {
 public:
-    SubscribeMessage::Topic topic;
-    std::string             content;
-    std::string             publisher;
-    uint64_t                timestamp;
+    SubscribeMessage::Topic      topic;
+    std::shared_ptr<std::string> content;
+    qb::string<32>               publisher;
+    uint64_t                     timestamp;
 
-    MessageReceivedMessage(SubscribeMessage::Topic t, std::string content, std::string publisher, uint64_t timestamp)
+    MessageReceivedMessage(SubscribeMessage::Topic t, std::shared_ptr<std::string> content, std::string_view publisher, uint64_t timestamp)
         : topic(t)
         , content(std::move(content))
-        , publisher(std::move(publisher))
+        , publisher(publisher)
         , timestamp(timestamp) {}
 };
 
@@ -122,8 +138,19 @@ class ListTopicsMessage : public Event {
 class TopicListMessage : public Event {
 public:
     using Topic = SubscribeMessage::Topic;
-    std::vector<Topic>   available_topics;
-    std::map<Topic, int> subscribers_count;
+    std::vector<Topic> available_topics;
+    // Deliberately a vector of pairs, NOT a `std::map`. A node-based container is a worse event
+    // payload than a std::string, and in both of its states: an EMPTY std::map is directly
+    // self-referential, because its end/sentinel links point at the header inside the object; a
+    // NON-EMPTY one is worse still, because the heap root node's parent pointer addresses that
+    // in-object header, so merely iterating the map after a relocation reads through a pointer to
+    // the sender's old storage (ASan reports it as a stack-buffer-overflow inside
+    // `__tree_next_iter`). `std::list`, `std::set`, and the multi/unordered variants all share the
+    // shape. Worse, the engine's debug relocation guard cannot see the non-empty case at all: it
+    // scans the event's own bytes, and the offending pointer lives in a heap node. A
+    // `std::vector` is sanctioned -- it owns its elements on the heap and holds no pointer into
+    // itself -- so it is the drop-in for a small association like this one.
+    std::vector<std::pair<Topic, int>> subscribers_count;
 };
 
 // Demo manager specific messages
@@ -264,7 +291,7 @@ public:
         _messages_per_topic[msg.topic]++;
 
         qb::io::cout() << "[Broker] Message published to topic " << topicToString(msg.topic) << " by " << msg.publisher << " with content: \""
-                       << msg.content << "\"" << std::endl;
+                       << *msg.content << "\"" << std::endl;
 
         // Forward the message to all subscribers of this topic
         auto it = _topic_subscribers.find(msg.topic);
@@ -538,13 +565,13 @@ public:
     void
     on(MessageReceivedMessage &msg) {
         // Record the message
-        _message_history.emplace_back(msg.topic, msg.content, msg.publisher, msg.timestamp);
+        _message_history.emplace_back(msg.topic, *msg.content, msg.publisher.c_str(), msg.timestamp);
 
         // Update statistics
         _messages_per_topic[msg.topic]++;
 
         // Display received message
-        qb::io::cout() << "[" << _name << "] Received message from topic " << topicToString(msg.topic) << ": \"" << msg.content << "\" (from "
+        qb::io::cout() << "[" << _name << "] Received message from topic " << topicToString(msg.topic) << ": \"" << *msg.content << "\" (from "
                        << msg.publisher << ")" << std::endl;
     }
 

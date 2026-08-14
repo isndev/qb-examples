@@ -35,26 +35,36 @@
  * - Thread-Safe I/O: `qb::io::cout()`.
  */
 
+#include <string_view>
 #include <qb/actor.h>
 #include <qb/main.h>
 #include <qb/io.h>
+#include <qb/string.h>
 
-// Define a message event
+// Define a message event.
+//
+// `content` is a `qb::string<64>`, NOT a `std::string`. The engine relocates an event with
+// `memcpy` and never runs the source destructor, so a payload member may hold no pointer into
+// itself. On libstdc++ a SHORT std::string holds exactly that -- `_M_p` addresses its own inline
+// buffer -- so after the relocation it still points at the old storage. libc++ recomputes the
+// pointer from `this`, which is why the defect is invisible on macOS and corrupts on Linux.
+// Relocation is not a cross-core-only event: pipe growth, compaction, `reply()` and `forward()`
+// relocate same-core events too.
 struct MessageEvent : public qb::Event {
-    std::string content;
-    int         sequence_number;
+    qb::string<64> content;
+    int            sequence_number;
 
-    MessageEvent(const std::string &msg, int seq)
+    MessageEvent(std::string_view msg, int seq)
         : content(msg)
         , sequence_number(seq) {}
 };
 
 // Define a response event
 struct ResponseEvent : public qb::Event {
-    std::string content;
-    int         sequence_number;
+    qb::string<64> content;
+    int            sequence_number;
 
-    ResponseEvent(const std::string &msg, int seq)
+    ResponseEvent(std::string_view msg, int seq)
         : content(msg)
         , sequence_number(seq) {}
 };

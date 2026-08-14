@@ -15,7 +15,9 @@
  */
 
 #include <iostream>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <chrono>
 #include <atomic>
@@ -24,6 +26,7 @@
 #include <condition_variable>
 #include <qb/main.h>
 #include <qb/actor.h>
+#include <qb/string.h>
 #include <qb/system/parse.h>
 #include <qb/io/async.h>
 #include <qb/io/protocol/text.h>
@@ -37,23 +40,35 @@
 class WebSocketClientActor;
 class CommandLineActor;
 
-// Events for communication between actors
+// Events for communication between actors.
+//
+// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
+// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
+// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
+// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
+// is why the defect is invisible on macOS and corrupts on Linux. Every event here really is
+// relocated: the command-line actor runs on core 0 and the WebSocket actor on core 1, and they
+// push to each other in both directions. (Relocation is not cross-core-only in general either --
+// pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.)
+//
+// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr` so
+// the pointer is relocated and the characters stay put on the heap.
 struct UserInputEvent : qb::Event {
-    std::string message;
+    std::shared_ptr<std::string> message; // a chat line has no bound
     explicit UserInputEvent(std::string msg)
-        : message(std::move(msg)) {}
+        : message(std::make_shared<std::string>(std::move(msg))) {}
 };
 
 struct UsernameChangeEvent : qb::Event {
-    std::string new_username;
-    explicit UsernameChangeEvent(std::string username)
-        : new_username(std::move(username)) {}
+    qb::string<64> new_username;
+    explicit UsernameChangeEvent(std::string_view username)
+        : new_username(username) {}
 };
 
 struct ConnectEvent : qb::Event {
-    std::string server_url;
-    explicit ConnectEvent(std::string url)
-        : server_url(std::move(url)) {}
+    qb::string<256> server_url;
+    explicit ConnectEvent(std::string_view url)
+        : server_url(url) {}
 };
 
 struct DisconnectEvent : qb::Event {};
@@ -65,11 +80,11 @@ struct SetWebSocketActorEvent : qb::Event {
 };
 
 struct DisplayMessageEvent : qb::Event {
-    std::string message;
-    std::string type;
-    explicit DisplayMessageEvent(std::string msg, std::string msg_type = "info")
-        : message(std::move(msg))
-        , type(std::move(msg_type)) {}
+    std::shared_ptr<std::string> message; // display text has no bound
+    qb::string<16>               type;
+    explicit DisplayMessageEvent(std::string msg, std::string_view msg_type = "info")
+        : message(std::make_shared<std::string>(std::move(msg)))
+        , type(msg_type) {}
 };
 
 // Thread-safe input queue for cross-platform stdin handling
@@ -175,14 +190,14 @@ public:
             return;
         }
 
-        send_chat_message(event.message);
+        send_chat_message(*event.message);
     }
 
     // Handle username changes
     void
     on(const UsernameChangeEvent &event) {
         std::string old_username = _username;
-        _username                = event.new_username;
+        _username                = event.new_username.c_str();
 
         push<DisplayMessageEvent>(_cmdline_actor_id, "Username changed from '" + old_username + "' to '" + _username + "'", "info");
 
@@ -199,7 +214,7 @@ public:
             return;
         }
 
-        _server_url = event.server_url;
+        _server_url = event.server_url.c_str();
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connecting to " + _server_url + "...", "info");
 
         qb::io::uri uri(_server_url);
@@ -477,7 +492,7 @@ public:
 
     void
     on(const DisplayMessageEvent &event) {
-        display_message(event.message, event.type);
+        display_message(*event.message, event.type.c_str());
     }
 
     void
