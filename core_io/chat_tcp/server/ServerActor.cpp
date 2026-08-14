@@ -164,7 +164,7 @@ ServerActor::on(SendMessageEvent &evt) {
     // Send message to specific session if it exists
     auto it = sessions().find(evt.session_id);
     if (it != sessions().end()) {
-        *it->second << evt.message;  // Send message to session
+        *it->second << *evt.message; // Send message to session (heap-owned: see shared/Events.h)
         it->second->updateTimeout(); // Update session timeout to prevent disconnection
     }
 }

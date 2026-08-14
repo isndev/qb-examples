@@ -22,7 +22,9 @@
  * - Custom Protocol Handling: Integration with `ChatProtocol` (derived from `qb::io::async::AProtocol`).
  * - Event Handling: `onInit()`, `on(const ChatInputEvent&)`, `on(const chat::Message&)`, `on(qb::io::async::event::disconnected const&)`.
  * Message sending via `*this << chat_message;`.
- * - Asynchronous Callbacks: `qb::io::async::callback` for delayed reconnection attempts.
+ * - Delayed work bound to the actor's lifetime: `spawn(...)` + `co_await ctx.sleep(d)`, waking
+ *   the actor with a self-addressed `ReconnectTickEvent`. See `scheduleReconnect()` for why this
+ *   is used instead of `qb::io::async::callback([this]{...}, d)`.
  * - State Management: Internal atomics for `_connected`, `_authenticated`, `_should_reconnect`.
  * - Actor Communication: Receiving `ChatInputEvent` from `InputActor`.
  */
@@ -36,6 +38,16 @@
 #include "../shared/Events.h"
 #include <atomic>
 #include <chrono>
+
+/**
+ * @brief Self-addressed wake-up: "the reconnect delay has elapsed, try again".
+ *
+ * A coroutine may not touch actor state after a `co_await` — the actor may have been destroyed
+ * while it was suspended — so the timer body cannot call `connect()` directly. It pushes this
+ * event instead, and the handler runs on the actor, on its own thread, only if the actor is
+ * still there to receive it. Carries no payload: the whole message is "now".
+ */
+struct ReconnectTickEvent : public qb::Event {};
 
 /**
  * @brief Core client actor managing network communication and message handling
@@ -121,6 +133,14 @@ public:
      * 3. Initiates reconnection if enabled
      */
     void on(qb::io::async::event::disconnected const &);
+
+    /**
+     * @brief Runs one reconnection attempt, `RECONNECT_DELAY` after it was scheduled
+     *
+     * The delay itself is served by a coroutine (see `scheduleReconnect()`); this handler is
+     * where the actor state is touched, because a handler only runs on a live actor.
+     */
+    void on(const ReconnectTickEvent &);
 
     /**
      * @brief Processes user input events
@@ -211,10 +231,10 @@ private:
     /**
      * @brief Manages reconnection scheduling
      *
-     * Uses QB's async callback system to:
-     * 1. Implement reconnection delay
-     * 2. Prevent tight retry loops
-     * 3. Handle backoff timing
+     * Waits `RECONNECT_DELAY`, then wakes the actor with a `ReconnectTickEvent`:
+     * 1. Implements the reconnection delay
+     * 2. Prevents tight retry loops
+     * 3. Is cancelled with the actor, so a client that goes away mid-wait retries nothing
      */
     void scheduleReconnect();
 

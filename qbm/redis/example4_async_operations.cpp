@@ -30,7 +30,10 @@
  * - `co_await client.connect()` — async connection.
  * - `co_await client.set/get/incr/del()` — coroutine commands.
  * - `qb::redis::Reply<T>`: `ok()` and `result()`.
- * - `qb::io::async::callback` with `std::chrono::duration` timeout.
+ * - Two ways of waiting, and when each is correct: `spawn(...)` + `co_await ctx.sleep(d)` + a
+ *   self-addressed tick event when the wait must end in a call ON THE ACTOR, and a bare
+ *   `qb::io::async::callback(fn, d)` when the body captures nothing from it. The difference is
+ *   lifetime, not style — see `MainActor::on(WorkCompletedEvent&)`.
  * - Actor communication (`push`, `addRefActor`, `spawn`).
  */
 
@@ -58,6 +61,16 @@ struct WorkCompletedEvent : qb::Event {
     explicit WorkCompletedEvent(int completed)
         : operations_completed(completed) {}
 };
+
+/**
+ * @brief Self-addressed wake-up: "the shutdown grace period has elapsed".
+ *
+ * The delay is served by `spawn(...)` + `co_await ctx.sleep(d)`, which the actor's cancellation
+ * scope owns; the coroutine then pushes this, and the handler — which runs only on a live actor
+ * — does the work. `qb::io::async::callback([this]{ kill(); }, d)` would instead leave a timer
+ * owned by the event loop, firing `this->kill()` at whatever now occupies that memory.
+ */
+struct SelfShutdownTick : qb::Event {};
 
 // NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
 // destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
@@ -203,6 +216,7 @@ public:
         // Register for events before any co_await
         registerEvent<qb::KillEvent>(*this);
         registerEvent<WorkCompletedEvent>(*this);
+        registerEvent<SelfShutdownTick>(*this);
 
         // Create worker actor on the same core, passing our ID so it can notify us
         auto worker_handle = addRefActor<RedisWorkerActor>(_target_operations, id());
@@ -223,6 +237,9 @@ public:
             cout << "Sending data operation " << i << " to worker" << std::endl;
             push<RedisDataEvent>(_worker_id, key, value);
 
+            // This one may stay a bare `callback(fn, d)`: the body captures `i` by value and
+            // touches no actor state, so it is correct whether or not this actor still exists
+            // when the timer fires. Compare `on(WorkCompletedEvent&)` below, where it would not be.
             qb::io::async::callback(
                 [i]() {
                     auto cout2 = qb::io::cout();
@@ -242,14 +259,21 @@ public:
 
         _work_completed = true;
 
-        // Schedule our own termination with a small delay
-        qb::io::async::callback(
-            [this]() {
-                auto cout = qb::io::cout();
-                cout << "MainActor: All work is done, shutting down..." << std::endl;
-                kill();
-            },
-            std::chrono::seconds(1));
+        // Schedule our own termination with a small delay. The wait belongs to this actor's
+        // cancellation scope; the `kill()` happens in the handler, which only ever runs on a
+        // live actor. `callback([this]{ kill(); }, 1s)` would leave a loop-owned timer holding a
+        // raw `this`, and nothing cancels it when the actor goes away.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(1));
+            ctx.template push<SelfShutdownTick>();
+        });
+    }
+
+    void
+    on(const SelfShutdownTick &) {
+        auto cout = qb::io::cout();
+        cout << "MainActor: All work is done, shutting down..." << std::endl;
+        kill();
     }
 
     void

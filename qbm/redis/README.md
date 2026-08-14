@@ -85,9 +85,13 @@ The executables will be located in the `build/examples/qbm/redis/` directory.
   actors.
 * **Key Components**: `PublisherActor`, `SubscriberActor` (using `qb::redis::tcp::co_consumer`), `CoordinatorActor`.
 * **QB/QBM Redis Features**: `qb::Actor`, `qb::Main`, `co_await client.publish(channel, message)`
-  (`example5_pubsub_example.cpp:149`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
-  (`:177`) — with `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>` (`:228`) and a
-  `while (auto msg = co_await _consumer.receive()) { ... }` loop (`:207`) instead of a message callback.
+  (`example5_pubsub_example.cpp:164`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
+  (`:199`) — with `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>` (`:273`) and a
+  `while (auto msg = co_await _consumer.receive()) { ... }` loop (`:250`) instead of a message callback. Read that
+  loop's capture list: it takes `this` only for the consumer it awaits, and copies everything it *reads*
+  (`name = _name`, `coordinator = _coordinator_id`) before the first `co_await`. The loop resumes when
+  `~RedisCoroConsumer` closes the message channel — i.e. while the actor is being destroyed — so a member read after
+  the resume is a use-after-free, and was one.
   Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1705-1706`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/examples/qbm/redis/example5_pubsub_example`

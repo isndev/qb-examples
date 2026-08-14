@@ -35,7 +35,10 @@
  * - Key commands: `keys`, `del`.
  * - String commands: `set`, `get`, `incr`, `setex`.
  * - List commands: `lpush`, `lrange`.
- * - `qb::io::async::callback` with `std::chrono::duration`.
+ * - Waiting without outliving the actor: `spawn(...)` + `co_await ctx.sleep(d)` + a
+ *   self-addressed tick event, and the one case where a bare `qb::io::async::callback(fn, d)`
+ *   is still correct — see the comment on `DemoOperationsTick` and
+ *   `CoordinatorActor::on(CoordinatorShutdownTick&)`.
  * - `addRefActor` returning `qb::ActorHandle<T>` with `.valid()` / `.id()`.
  */
 
@@ -108,6 +111,22 @@ struct TransactionDemoCompletedEvent : qb::Event {
     explicit TransactionDemoCompletedEvent() {}
 };
 
+/**
+ * @brief Self-addressed wake-ups, one per delay in this example.
+ *
+ * Every one of these replaces a `qb::io::async::callback([this]{ ... }, d)`. That overload
+ * heap-allocates a `Timeout` owned by the event loop, not by the actor, so nothing cancels it
+ * when the actor is killed and it fires against a destroyed object. That is not theoretical
+ * here: `OrderClientActor::on(OrderResultEvent&)` used to schedule its shutdown notification
+ * that way, and AddressSanitizer reported `heap-use-after-free` in the lambda on every run of
+ * this example. The replacement is `spawn(...)` + `co_await ctx.sleep(d)` — a wait the actor's
+ * cancellation scope owns — plus one of these events to do the work back on the actor.
+ */
+struct DemoOperationsTick : qb::Event {};      ///< 1 s after setup: run the extra Redis demo
+struct PlaceOrderTick : qb::Event {};          ///< staggered: place one random order
+struct NotifyCoordinatorTick : qb::Event {};   ///< 500 ms after the last result: tell the coordinator
+struct CoordinatorShutdownTick : qb::Event {}; ///< 1 s after shutdown starts: leave
+
 // Event to signal shutdown
 struct ShutdownEvent : qb::Event {
     explicit ShutdownEvent() {}
@@ -143,6 +162,7 @@ public:
         // Register for events before the first co_await
         registerEvent<OrderRequestEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
+        registerEvent<DemoOperationsTick>(*this);
 
         if (!co_await _redis.connect()) {
             qb::io::cerr() << "Failed to connect to Redis" << std::endl;
@@ -188,10 +208,29 @@ public:
         // Notify coordinator that setup is complete
         push<SetupCompletedEvent>(_coordinator_id);
 
-        // Demonstrate other Redis operations after a brief pause
-        qb::io::async::callback(
-            [this]() { spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await demonstrate_redis_operations(); }); },
-            std::chrono::seconds(1));
+        // Demonstrate other Redis operations after a brief pause. The pause is a coroutine this
+        // actor's cancellation scope owns; the work restarts from `on(DemoOperationsTick&)`.
+        scheduleTick<DemoOperationsTick>(std::chrono::seconds(1));
+    }
+
+    void
+    on(const DemoOperationsTick &) {
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await demonstrate_redis_operations(); });
+    }
+
+    /**
+     * @brief Sleep `d`, then wake this actor with a `TickEvent`
+     *
+     * See the comment on `DemoOperationsTick` for why this exists rather than
+     * `qb::io::async::callback([this]{ ... }, d)`.
+     */
+    template <typename TickEvent>
+    void
+    scheduleTick(qb::duration d) {
+        spawn([d](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(d);
+            ctx.template push<TickEvent>();
+        });
     }
 
     // Display current inventory
@@ -399,6 +438,8 @@ public:
 
         registerEvent<OrderResultEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
+        registerEvent<PlaceOrderTick>(*this);
+        registerEvent<NotifyCoordinatorTick>(*this);
 
         co_return true;
     }
@@ -409,9 +450,26 @@ public:
         auto cout = qb::io::cout();
         cout << "Client [" << _client_id << "] starting to place " << _orders_to_place << " orders" << std::endl;
 
-        for (int i = 0; i < _orders_to_place; ++i) {
-            qb::io::async::callback([this]() { place_random_order(); }, std::chrono::milliseconds(200 * i));
-        }
+        // One coroutine paces the whole batch (0 ms, 200 ms, 400 ms, ...) instead of N loop-owned
+        // timers each holding a raw `this`. `_orders_to_place` is read HERE, on the actor, and
+        // captured by value; the coroutine touches nothing but its own frame and `ctx`.
+        spawn([n = _orders_to_place](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            for (int i = 0; i < n; ++i) {
+                if (i)
+                    co_await ctx.sleep(std::chrono::milliseconds(200));
+                ctx.template push<PlaceOrderTick>();
+            }
+        });
+    }
+
+    void
+    on(const PlaceOrderTick &) {
+        place_random_order();
+    }
+
+    void
+    on(const NotifyCoordinatorTick &) {
+        push<ShutdownEvent>(_coordinator_id);
     }
 
     void
@@ -443,7 +501,16 @@ public:
             cout << "Client [" << _client_id << "] completed all orders. " << _orders_succeeded << " succeeded, "
                  << (_orders_completed - _orders_succeeded) << " failed." << std::endl;
 
-            qb::io::async::callback([this]() { push<ShutdownEvent>(_coordinator_id); }, std::chrono::milliseconds(500));
+            // THIS is the site AddressSanitizer convicted, three runs of three: the lambda's
+            // `push<ShutdownEvent>(_coordinator_id)` read `this` and `_coordinator_id` half a
+            // second after the coordinator had already killed this client. `heap-use-after-free`
+            // at `example6_transaction_example.cpp`, in `qb::Actor::push`, reading 4 bytes 76
+            // bytes into the freed actor. The wait now belongs to the actor's cancellation scope
+            // and the `push` happens in `on(NotifyCoordinatorTick&)`, on a live actor or not at all.
+            spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                co_await ctx.sleep(std::chrono::milliseconds(500));
+                ctx.template push<NotifyCoordinatorTick>();
+            });
         }
     }
 
@@ -481,6 +548,7 @@ public:
         registerEvent<TransactionDemoCompletedEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
+        registerEvent<CoordinatorShutdownTick>(*this);
 
         // Create inventory manager actor
         _inventory_manager_handle = addRefActor<InventoryManagerActor>(id());
@@ -567,21 +635,31 @@ public:
         }
         push<ShutdownEvent>(_inventory_manager_id);
 
-        qb::io::async::callback(
-            [this]() {
-                auto cout = qb::io::cout();
-                cout << "CoordinatorActor shutting down" << std::endl;
-                kill();
+        // Give everyone a second to finish, then leave. `kill()` runs on the actor, so the wait
+        // has to come back as an event rather than as a timer holding `this`.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::seconds(1));
+            ctx.template push<CoordinatorShutdownTick>();
+        });
+    }
 
-                qb::io::async::callback(
-                    []() {
-                        auto cout = qb::io::cout();
-                        cout << "Stopping engine..." << std::endl;
-                        qb::Main::stop();
-                    },
-                    std::chrono::milliseconds(500));
+    void
+    on(const CoordinatorShutdownTick &) {
+        auto cout = qb::io::cout();
+        cout << "CoordinatorActor shutting down" << std::endl;
+        kill();
+
+        // This one MUST stay a bare `qb::io::async::callback(fn, d)`: it captures NOTHING, it
+        // stops the engine rather than touching an actor, and it is supposed to outlive every
+        // actor including this one. A `spawn(...)` here would be cancelled by the `kill()` above
+        // and the engine would never stop.
+        qb::io::async::callback(
+            []() {
+                auto cout = qb::io::cout();
+                cout << "Stopping engine..." << std::endl;
+                qb::Main::stop();
             },
-            std::chrono::seconds(1));
+            std::chrono::milliseconds(500));
     }
 
     void

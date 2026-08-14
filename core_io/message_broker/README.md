@@ -64,7 +64,9 @@ they are subscribed to.
     * Custom Binary Protocol: Full implementation including framing, serialization (`pipe::put`), and parsing (
       `AProtocol`).
     * Session Management with Timeouts (`BrokerSession`).
-    * `qb::io::uri`, `qb::io::async::callback` (client reconnection), `qb::ICallback` (client input).
+    * `qb::io::uri`; `spawn(...)` + `co_await ctx.sleep(d)` + a `ReconnectTickEvent` for the client's reconnect delay
+      (`ClientActor::scheduleReconnect()` — a lifetime-bound wait, not a loop-owned `qb::io::async::callback` timer);
+      `qb::ICallback` (client input).
 
 ## Zero-Copy Message Handling
 

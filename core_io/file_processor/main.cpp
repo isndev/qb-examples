@@ -13,8 +13,9 @@
  *     receiving client requests, queuing them, and dispatching them to available workers.
  * 3.  Creates a pool of `FileWorker` actors (e.g., 4 workers). These workers are
  *     distributed across other available CPU cores (e.g., cores 1, 2, 3, then cycling).
- *     Each `FileWorker` performs the actual file I/O operations asynchronously (by using
- *     `qb::io::async::callback` to wrap synchronous `qb::io::system::file` calls).
+ *     Each `FileWorker` performs the actual file I/O with `qb::io::system::file`, wrapped in
+ *     `qb::io::async::callback(fn)` — the one-argument overload, which runs `fn` INLINE. The
+ *     blocking therefore happens on the worker's core, which is the point of the pool.
  * 4.  Creates a `ClientActor` on core 0. This actor simulates a client by sending a
  *     series of test `ReadFileRequest` and `WriteFileRequest` events to the `FileManager`.
  *     It also receives `ReadFileResponse` and `WriteFileResponse` events.
@@ -32,9 +33,11 @@
  * - `engine.addActor<T>(core_id, ...)`: For multi-core actor deployment.
  * - Custom `qb::Event`s: For requests, responses, and worker status (`messages.h`).
  * - Inter-Actor Communication: `push<Event>(...)` for task dispatch and result forwarding.
- * - Asynchronous Operations: `qb::io::async::callback` used by `FileWorker` to perform
- *   blocking I/O without stalling the actor, and by `ClientActor` to sequence tests and shutdown.
- * - `qb::io::system::file`: For synchronous file I/O within `FileWorker`'s async callbacks.
+ * - The two `qb::io::async::callback` overloads, and why they are not interchangeable:
+ *   `FileWorker` uses the one-argument form, which runs its body INLINE; `ClientActor` needs a
+ *   real delay and uses `spawn(...)` + `co_await ctx.sleep(d)` + a self-addressed tick event,
+ *   because `callback([this]{...}, d)` leaves a timer the actor's death does not cancel.
+ * - `qb::io::system::file`: For synchronous file I/O within `FileWorker`.
  * - Coordinated Shutdown: `ClientActor` broadcasting `qb::KillEvent` after tests.
  * - Manager-Worker Pattern.
  */
@@ -60,6 +63,18 @@ namespace fs = std::filesystem;
 using namespace file_processor;
 
 /**
+ * @brief Self-addressed wake-ups for `ClientActor`'s two delays.
+ *
+ * A delay that must end in a call on the actor is served by `spawn(...)` + `co_await
+ * ctx.sleep(d)` and then wakes the actor with one of these. The coroutine itself never touches
+ * actor state: it may be suspended when the actor is destroyed, and its sleep is cancelled by
+ * the actor's own cancellation scope. Contrast `qb::io::async::callback([this]{...}, d)`, whose
+ * timer belongs to the event loop and keeps firing at an actor that is no longer there.
+ */
+struct StartTestsTick : public qb::Event {}; ///< 500 ms after init: begin the test sequence
+struct ShutdownTick : public qb::Event {};   ///< 1 s after the last response: bring the system down
+
+/**
  * @brief Client actor that sends test requests
  */
 class ClientActor : public qb::Actor {
@@ -77,6 +92,8 @@ public:
         registerEvent<ReadFileResponse>(*this);
         registerEvent<WriteFileResponse>(*this);
         registerEvent<qb::KillEvent>(*this);
+        registerEvent<StartTestsTick>(*this);
+        registerEvent<ShutdownTick>(*this);
     }
 
     qb::io::async::task<bool>
@@ -89,9 +106,20 @@ public:
         }
 
         // Start tests after a short delay
-        qb::io::async::callback([this]() { startTests(); }, 500ms);
+        scheduleTick<StartTestsTick>(500ms);
 
         co_return true;
+    }
+
+    void
+    on(StartTestsTick &) {
+        startTests();
+    }
+
+    void
+    on(ShutdownTick &) {
+        // Broadcast the Kill event
+        broadcast<qb::KillEvent>();
     }
 
     void
@@ -146,6 +174,29 @@ public:
     }
 
 private:
+    /**
+     * @brief Sleep `d`, then wake this actor with a `TickEvent`
+     *
+     * The safe replacement for `qb::io::async::callback([this]{ ... }, d)`, which is how this
+     * example used to schedule its two delays. That overload heap-allocates a `Timeout` owned by
+     * the event loop, not by the actor: nothing cancels it when the actor is killed, so it fires
+     * against a destroyed object — and an `if (!is_alive()) return;` guard does not help,
+     * because reading `is_alive()` IS the use-after-free.
+     *
+     * `spawn()` runs the body in this actor's cancellation scope and `ctx.sleep(d)` routes that
+     * scope's token. The body captures only `d`, by value, and addresses the actor by id via
+     * `ctx.push` — safe whether or not the actor still exists. Everything that touches actor
+     * state happens in the `on(TickEvent)` handler, which only ever runs on a live actor.
+     */
+    template <typename TickEvent>
+    void
+    scheduleTick(qb::duration d) {
+        spawn([d](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(d);
+            ctx.template push<TickEvent>();
+        });
+    }
+
     void
     startTests() {
         qb::io::cout() << "\n=== Starting file operation tests ===\n" << std::endl;
@@ -198,12 +249,7 @@ private:
             qb::io::cout() << "\n=== All tests completed ===\n" << std::endl;
 
             // Wait a bit then stop the system - use built-in KillEvent
-            qb::io::async::callback(
-                [this]() {
-                    // Broadcast the Kill event
-                    broadcast<qb::KillEvent>();
-                },
-                1s);
+            scheduleTick<ShutdownTick>(1s);
         }
     }
 };

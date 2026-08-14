@@ -178,9 +178,10 @@ private:
      *
      * @param session_id Target session ID
      * @param server_id Server managing the target session
-     * @param msg Message to send
+     * @param msg Heap-owned message to send (boxed: `SendMessageEvent` crosses a core boundary
+     *            and the engine relocates events with `memcpy` — see `shared/Events.h`)
      */
-    void sendToSession(qb::uuid session_id, qb::ActorId server_id, const chat::Message &msg);
+    void sendToSession(qb::uuid session_id, qb::ActorId server_id, std::shared_ptr<const chat::Message> msg);
 
     /**
      * @brief Sends an error message to a specific session

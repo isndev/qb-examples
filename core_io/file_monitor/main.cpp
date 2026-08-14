@@ -39,8 +39,10 @@
  *     -   Placed on core 0.
  *     -   Sends a `WatchDirectoryRequest` to the `DirectoryWatcher` to monitor a test directory.
  *     -   Receives `WatchDirectoryResponse` to confirm the watch setup.
- *     -   Periodically creates, modifies, and deletes files in the test directory to generate file events,
- *         using `qb::io::async::callback` for scheduling these test operations.
+ *     -   Periodically creates, modifies, and deletes files in the test directory to generate file events.
+ *         The DELAYS are `spawn(...)` + `co_await ctx.sleep(d)` waking the actor with a tick event;
+ *         the file operations themselves go through `qb::io::async::callback(fn)`, the one-argument
+ *         overload, which runs `fn` INLINE (see the note in `createTestFile()`).
  *     -   Receives `FileEvent`s from `DirectoryWatcher` for the directory it's watching and logs them.
  *     -   After a specified duration, it initiates a system shutdown by broadcasting `qb::KillEvent`.
  *
@@ -53,7 +55,9 @@
  * - `engine.addActor<T>(core_id, ...)`: Multi-core actor deployment.
  * - `qb::Event`: For custom events like `FileEvent`, `WatchDirectoryRequest`.
  * - Inter-Actor Communication: `push<Event>(...)`.
- * - Asynchronous Operations: `qb::io::async::callback` for timed actions in `ClientActor`.
+ * - Timed actions bound to an actor's lifetime: `spawn(...)` + `co_await ctx.sleep(d)` + a
+ *   self-addressed tick event, in `ClientActor` (see `ClientActor::scheduleTick`). NOT
+ *   `qb::io::async::callback([this]{...}, d)`, whose timer outlives the actor.
  * - `qb::io::async::directory_watcher` (used by `DirectoryWatcher` actor) for file system monitoring.
  * - `qb::io::system::file` for synchronous file operations within async contexts (e.g., in `ClientActor`'s test operations).
  * - Coordinated shutdown using `broadcast<qb::KillEvent>()`.
@@ -86,6 +90,20 @@ namespace fs = std::filesystem;
 // ═══════════════════════════════════════════════════════════════════
 
 /**
+ * @brief Self-addressed wake-ups for `ClientActor`'s three delays.
+ *
+ * A delay that must end in a call on the actor is served by `spawn(...)` + `co_await
+ * ctx.sleep(d)` and then wakes the actor with one of these. The coroutine itself never touches
+ * actor state: it may be suspended when the actor is destroyed, and its sleep is cancelled by the
+ * actor's own cancellation scope, so a killed actor simply stops receiving ticks. Contrast
+ * `qb::io::async::callback([this]{...}, d)`, whose timer is owned by the event loop and outlives
+ * the actor — an `if (_is_running)` guard inside such a lambda IS the read of freed memory.
+ */
+struct StartMonitoringTick : public qb::Event {}; ///< 500 ms after init: request the watch
+struct TestCompleteTick : public qb::Event {};    ///< after the test duration: shut the system down
+struct NextOperationTick : public qb::Event {};   ///< 0.5-1.5 s: perform the next random file op
+
+/**
  * @brief ClientActor that creates and monitors test files
  */
 class ClientActor : public qb::Actor {
@@ -107,6 +125,9 @@ public:
         registerEvent<file_monitor::FileEvent>(*this);
         registerEvent<file_monitor::WatchDirectoryResponse>(*this);
         registerEvent<qb::KillEvent>(*this);
+        registerEvent<StartMonitoringTick>(*this);
+        registerEvent<TestCompleteTick>(*this);
+        registerEvent<NextOperationTick>(*this);
     }
 
     /**
@@ -121,8 +142,8 @@ public:
             fs::create_directories(_test_directory);
         }
 
-        // Start monitoring after a short delay
-        qb::io::async::callback([this]() { startMonitoring(); }, std::chrono::milliseconds(500));
+        // Start monitoring after a short delay.
+        scheduleTick<StartMonitoringTick>(std::chrono::milliseconds(500));
 
         co_return true;
     }
@@ -151,6 +172,33 @@ public:
     }
 
     /**
+     * @brief The 500 ms start-up delay has elapsed: ask the watcher to watch the directory
+     */
+    void
+    on(StartMonitoringTick &) {
+        startMonitoring();
+    }
+
+    /**
+     * @brief The configured test duration has elapsed: bring the system down
+     */
+    void
+    on(TestCompleteTick &) {
+        if (_is_running) {
+            qb::io::cout() << "Test duration completed, shutting down..." << std::endl;
+            broadcast<qb::KillEvent>();
+        }
+    }
+
+    /**
+     * @brief The inter-operation delay has elapsed: perform the next random file operation
+     */
+    void
+    on(NextOperationTick &) {
+        scheduleRandomModifications();
+    }
+
+    /**
      * @brief Handle kill event
      */
     void
@@ -167,6 +215,32 @@ public:
     }
 
 private:
+    /**
+     * @brief Sleep `d`, then wake this actor with a `TickEvent`
+     *
+     * This is the safe replacement for `qb::io::async::callback([this]{ ... }, d)`, which is how
+     * this example used to schedule its three delays. That overload heap-allocates a `Timeout`
+     * owned by the event loop, not by the actor: nothing cancels it when the actor is killed, so
+     * it fires against a destroyed object. Guarding the body with `if (_is_running)` does not
+     * help — reading `_is_running` IS the use-after-free.
+     *
+     * `spawn()` runs the body in this actor's cancellation scope and `ctx.sleep(d)` routes that
+     * scope's token, so killing the actor cancels the sleep. The body captures only `d`, by
+     * value, and addresses the actor by id via `ctx.push` — which is safe whether or not the
+     * actor still exists. Everything that touches actor state happens in the `on(TickEvent)`
+     * handler, and a handler only ever runs on a live actor.
+     *
+     * (A helper local to this example, not framework API: three call sites, one explanation.)
+     */
+    template <typename TickEvent>
+    void
+    scheduleTick(qb::duration d) {
+        spawn([d](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(d);
+            ctx.template push<TickEvent>();
+        });
+    }
+
     /**
      * @brief Start monitoring directories
      */
@@ -196,14 +270,7 @@ private:
         scheduleRandomModifications();
 
         // Schedule end of test
-        qb::io::async::callback(
-            [this]() {
-                if (_is_running) {
-                    qb::io::cout() << "Test duration completed, shutting down..." << std::endl;
-                    broadcast<qb::KillEvent>();
-                }
-            },
-            std::chrono::seconds(_test_duration_seconds));
+        scheduleTick<TestCompleteTick>(std::chrono::seconds(_test_duration_seconds));
     }
 
     /**
@@ -213,7 +280,13 @@ private:
     createTestFile(int index) {
         std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
 
-        // Create the file asynchronously
+        // NOTE: this is `qb::io::async::callback(fn)` — the ONE-argument overload — which runs
+        // `fn` INLINE, right now. Despite the name it schedules nothing: no timer, no loop turn
+        // (`qb/io/async/io.h`). It is therefore NOT the lifetime hazard the two-argument
+        // `callback(fn, delay)` is, and capturing `this` here is safe: the actor cannot have
+        // been destroyed between the call and the body. It is also, honestly, not asynchronous —
+        // the file write below blocks this core's loop. Kept as-is because that is what the
+        // example measurably does; use `defer(fn)` for "after this handler unwinds".
         qb::io::async::callback([this, filename, index]() {
             try {
                 qb::io::sys::file file;
@@ -241,7 +314,7 @@ private:
     modifyTestFile(int index) {
         std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
 
-        // Modify the file asynchronously
+        // One-argument overload: runs INLINE (see the note in createTestFile()).
         qb::io::async::callback([this, filename]() {
             try {
                 if (fs::exists(filename)) {
@@ -270,7 +343,7 @@ private:
     deleteTestFile(int index) {
         std::filesystem::path filename = _test_directory / ("test_file_" + std::to_string(index) + ".txt");
 
-        // Delete the file asynchronously
+        // One-argument overload: runs INLINE (see the note in createTestFile()).
         qb::io::async::callback([filename]() {
             try {
                 if (fs::exists(filename)) {
@@ -311,7 +384,7 @@ private:
 
         // Schedule the next operation
         double delay_s = 0.5 + (std::rand() % 1000) / 1000.0; // 0.5-1.5 seconds
-        qb::io::async::callback([this]() { scheduleRandomModifications(); }, std::chrono::duration<double>(delay_s));
+        scheduleTick<NextOperationTick>(std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(delay_s)));
     }
 
     /**

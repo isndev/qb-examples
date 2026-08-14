@@ -17,7 +17,8 @@
  *   `ChatRoomActor` when a client sends a chat message. Contains session ID and message content.
  * - `SendMessageEvent`: Sent by `ChatRoomActor` to a specific `ServerActor` to deliver
  *   a `chat::Message` (from `Protocol.h`) to a client connected to that `ServerActor`.
- *   Contains the target session ID and the `chat::Message`.
+ *   Contains the target session ID and a `std::shared_ptr` to the `chat::Message` — see the
+ *   note on `SendMessageEvent` below for why the message is boxed rather than held by value.
  * - `DisconnectEvent`: Sent by a `ServerActor` (notified by a `ChatSession`) to the
  *   `ChatRoomActor` when a client disconnects. Contains the session ID of the disconnected client.
  * - `ChatInputEvent`: Sent by the client-side `InputActor` to its `ClientActor` when the
@@ -28,12 +29,26 @@
  * - Data Encapsulation in Events: Events carry necessary data (e.g., sockets, IDs, strings).
  * - `qb::string<N>`: Fixed-size strings for event fields, potentially offering
  *   performance benefits by avoiding heap allocations for small strings when an event is created on the stack.
+ * - `std::shared_ptr<const T>`: The other sanctioned payload shape, for data with no useful bound.
  * - `qb::uuid`: For unique session identification.
- * - `qb::io::tcp::socket`: Carried by an event to transfer socket ownership.
+ * - `qb::io::tcp::socket`: Carried by an event to transfer socket ownership. Relocatable: the
+ *   class holds a file-descriptor integer, not a pointer into itself.
+ *
+ * @note EVENT PAYLOADS MUST BE TRIVIALLY RELOCATABLE. The engine moves an event with `memcpy`
+ *       and never runs the source destructor, so a payload member may hold no pointer into
+ *       itself. On libstdc++ a SHORT `std::string` holds exactly that — `_M_p` addresses its own
+ *       inline SSO buffer — so after the move it still points at the sender's vacated storage.
+ *       libc++ recomputes the pointer from `this`, which is why such a defect is structurally
+ *       invisible on macOS and corrupts on Linux. This is NOT a cross-core-only concern: pipe
+ *       growth, compaction, `reply()` and `forward()` relocate same-core events too. Bounded
+ *       payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
+ *       `std::vector`, `std::unique_ptr`, `std::shared_ptr` and PODs are safe; the authority is
+ *       `qb/tests/core/system/messaging/relocatable-payload.cpp`.
  */
 
 #pragma once
 
+#include <memory>
 #include <qb/event.h>
 #include <qb/io/tcp/socket.h>
 #include <qb/string.h>
@@ -102,10 +117,22 @@ struct ChatEvent : public qb::Event {
  *
  * This event enables direct message delivery to specific
  * clients while maintaining actor system boundaries.
+ *
+ * WHY THE MESSAGE IS BOXED. `ChatRoomActor` lives on core 3 and every `ServerActor` on core 1
+ * (`server/main.cpp`), so this event is relocated with `memcpy` on every delivery. A
+ * `chat::Message` held BY VALUE puts its `std::string payload` inside the event, and a short
+ * payload — every "Alice: hi", every "Welcome Bob" — lives in that string's inline SSO buffer on
+ * libstdc++, addressed by a pointer stored next to it. After the relocation that pointer still
+ * addresses the sender's pipe slot, which has since been rewound and reused: `ServerActor` then
+ * serialises freed bytes and `~basic_string()` calls `operator delete` on a pointer that never
+ * came from the heap. `std::shared_ptr` moves the characters to the heap and leaves nothing in
+ * the event that points at itself. It also costs one allocation per BROADCAST rather than one
+ * copy per recipient. `const` because the pointee is published to another core: the pointer is
+ * what becomes relocatable, not the object it addresses — never mutate a payload after sharing it.
  */
 struct SendMessageEvent : public qb::Event {
-    qb::uuid      session_id; ///< Target client's session ID
-    chat::Message message;    ///< Protocol message to deliver
+    qb::uuid                             session_id; ///< Target client's session ID
+    std::shared_ptr<const chat::Message> message;    ///< Protocol message to deliver (heap-owned)
 };
 
 /**

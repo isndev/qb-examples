@@ -16,7 +16,8 @@
  *     -   `onInit()`: Basic actor initialization.
  *     -   `on(WatchDirectoryRequest&)`: Handles requests to monitor a new directory. It normalizes the path,
  *         checks for existence, and calls `getOrCreateWatch()` to manage a `WatchInfo` struct.
- *         It then uses `qb::io::async::callback` to asynchronously call `setupDirectoryWatch()`.
+ *         It then calls `setupDirectoryWatch()` through `qb::io::async::callback(fn)` — the
+ *         one-argument overload, which runs `fn` INLINE rather than scheduling it.
  *         A `WatchDirectoryResponse` is sent back to the requestor.
  *     -   `on(UnwatchDirectoryRequest&)`: Handles requests to stop monitoring. Removes the subscriber
  *         and, if no subscribers remain for a path, stops the underlying `DirectoryMonitor`.
@@ -31,7 +32,8 @@
  * QB Features Demonstrated (in context of this implementation):
  * - `qb::Actor` event handling and lifecycle.
  * - `qb::io::async::directory_watcher<T>` methods and event structure (`qb::io::async::event::file`).
- * - Using `qb::io::async::callback` to defer potentially complex setup logic from an event handler.
+ * - `qb::io::async::callback(fn)`, the one-argument overload: it runs `fn` INLINE rather than
+ *   deferring it — see the note at the call site in `on(WatchDirectoryRequest&)`.
  * - `push<Event>(...)` for actor communication.
  * - Managing collections of watched resources and their subscribers.
  * - `qb::io::cout`, `qb::io::cerr`: Thread-safe console output.
@@ -137,7 +139,12 @@ DirectoryWatcher::on(WatchDirectoryRequest &request) {
         watch->subscribers.push_back(request.requestor);
     }
 
-    // Scan the directory and set up watchers asynchronously
+    // Scan the directory and set up watchers.
+    //
+    // NOTE: this is `qb::io::async::callback(fn)` — the ONE-argument overload — which runs `fn`
+    // INLINE, right now; despite the name it schedules nothing (`qb/io/async/io.h`). It is
+    // therefore NOT the lifetime hazard the two-argument `callback(fn, delay)` is, and capturing
+    // `this` here is safe: the actor cannot have been destroyed between the call and the body.
     qb::io::async::callback([this, normalized_path, watch, request]() {
         bool success = setupDirectoryWatch(normalized_path, watch, request.recursive);
 

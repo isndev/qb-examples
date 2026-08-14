@@ -80,10 +80,8 @@ ChatRoomActor::on(AuthEvent &evt) {
     _usernames[username]  = session_id;
 
     // Send confirmation
-    chat::Message response;
-    response.type    = chat::MessageType::AUTH_RESPONSE;
-    response.payload = "Welcome " + std::string(username);
-    sendToSession(session_id, server_id, response);
+    sendToSession(session_id, server_id,
+                  std::make_shared<const chat::Message>(chat::MessageType::AUTH_RESPONSE, "Welcome " + std::string(username)));
 
     // Broadcast arrival
     broadcastMessage(std::string(username) + " has joined the chat");
@@ -141,15 +139,20 @@ ChatRoomActor::on(DisconnectEvent &evt) {
  * Routes messages through the appropriate server actor
  * using QB's event system.
  *
+ * The message is taken as a `shared_ptr` rather than by value because `SendMessageEvent` carries
+ * it across a core boundary and the engine relocates an event with `memcpy` — see the note on
+ * `SendMessageEvent` in `shared/Events.h`. Passing the same `shared_ptr` to every recipient is
+ * also what makes `broadcastMessage()` one allocation instead of one copy per session.
+ *
  * @param session_id Target session's unique identifier
  * @param server_id Server actor handling the session
- * @param msg The message to send
+ * @param msg The heap-owned message to send
  */
 void
-ChatRoomActor::sendToSession(qb::uuid session_id, qb::ActorId server_id, const chat::Message &msg) {
+ChatRoomActor::sendToSession(qb::uuid session_id, qb::ActorId server_id, std::shared_ptr<const chat::Message> msg) {
     auto &evt      = push<SendMessageEvent>(server_id);
     evt.session_id = session_id;
-    evt.message    = msg;
+    evt.message    = std::move(msg);
 }
 
 /**
@@ -163,10 +166,7 @@ ChatRoomActor::sendToSession(qb::uuid session_id, qb::ActorId server_id, const c
  */
 void
 ChatRoomActor::sendError(qb::uuid session_id, qb::ActorId server_id, const std::string &error) {
-    chat::Message msg;
-    msg.type    = chat::MessageType::ERROR;
-    msg.payload = error;
-    sendToSession(session_id, server_id, msg);
+    sendToSession(session_id, server_id, std::make_shared<const chat::Message>(chat::MessageType::ERROR, error));
 }
 
 /**
@@ -181,9 +181,9 @@ ChatRoomActor::sendError(qb::uuid session_id, qb::ActorId server_id, const std::
  */
 void
 ChatRoomActor::broadcastMessage(const std::string &content) {
-    chat::Message msg;
-    msg.type    = chat::MessageType::CHAT_MESSAGE;
-    msg.payload = content;
+    // Built once and shared by every recipient: the message is immutable from here on, so all
+    // the sessions can read the same heap object instead of each event carrying its own copy.
+    auto msg = std::make_shared<const chat::Message>(chat::MessageType::CHAT_MESSAGE, content);
 
     for (const auto &[session_id, info] : _sessions) {
         sendToSession(session_id, info.server_id, msg);

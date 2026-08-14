@@ -85,8 +85,8 @@ public:
 };
 ```
 
-> The real definitions are `01_chat_server.cpp:342-343` and `:578-579`, and `02_chat_client.cpp:167-168` and
-> `:484-485` — all four are `qb::io::async::task<bool> onInit() override`.
+> The real definitions are `01_chat_server.cpp:342-343` and `:578-579`, and `02_chat_client.cpp:180-181` and
+> `:497-498` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
 

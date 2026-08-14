@@ -11,10 +11,12 @@
  * Key Responsibilities:
  * - Receives `ReadFileRequest` and `WriteFileRequest` events from the `FileManager`.
  * - Upon receiving a request, it marks itself as busy.
- * - Uses `qb::io::async::callback` to schedule the potentially blocking file operation
- *   (read or write using `qb::io::system::file`) off the main actor event processing path.
- *   This ensures the actor remains responsive and doesn't block its core's event loop.
- * - After the file operation completes (or fails) within the async callback:
+ * - Runs the potentially blocking file operation (read or write using `qb::io::system::file`)
+ *   inside `qb::io::async::callback(fn)`. Read that as a plain call, not as scheduling: the
+ *   ONE-argument overload invokes `fn` INLINE, so the I/O does block this worker's core loop.
+ *   What keeps the SYSTEM responsive is the worker pool — the blocking work happens on a worker
+ *   actor's core, not on the `FileManager`'s.
+ * - After the file operation completes (or fails):
  *   - It creates a `ReadFileResponse` or `WriteFileResponse` event containing the result
  *     (data read, bytes written, success status, error message) and the original request ID.
  *   - It `push`es this response event to the `requestor` specified in the original request
@@ -26,10 +28,10 @@
  * QB Features Demonstrated:
  * - `qb::Actor`: For encapsulating file operation logic.
  * - Event Handling: `onInit()`, `on(ReadFileRequest&)`, `on(WriteFileRequest&)`, `on(qb::KillEvent&)`.
- * - Asynchronous Task Execution: Using `qb::io::async::callback` to perform blocking I/O
- *   operations without stalling the actor's event loop.
- * - `qb::io::system::file`: For performing synchronous file open, read, write, and close operations
- *   within the `qb::io::async::callback`.
+ * - `qb::io::async::callback(fn)`, the one-argument overload, and what it actually does: it runs
+ *   `fn` INLINE. The distinction from `callback(fn, delay)` matters for lifetime, not just for
+ *   timing — see the note at the call site in `on(ReadFileRequest&)`.
+ * - `qb::io::system::file`: For performing synchronous file open, read, write, and close operations.
  * - Inter-Actor Communication: Sending response events (`ReadFileResponse`, `WriteFileResponse`)
  *   and status events (`WorkerAvailable`) using `push<Event>(...)`.
  * - Managing Actor State: `_is_busy` flag.
@@ -98,7 +100,15 @@ public:
         // Create a buffer to store the file content
         auto file_content = std::make_shared<std::vector<char>>();
 
-        // Open the file asynchronously
+        // Open and read the file.
+        //
+        // NOTE: this is `qb::io::async::callback(fn)` — the ONE-argument overload — which runs
+        // `fn` INLINE, right now; despite the name it schedules nothing (`qb/io/async/io.h`). It
+        // is therefore NOT the lifetime hazard the two-argument `callback(fn, delay)` is, and
+        // capturing `this` here is safe: the actor cannot have been destroyed between the call
+        // and the body. It is also not asynchronous — the read below blocks this core's loop.
+        // What the example really demonstrates is the WORKER-POOL shape: the blocking work is
+        // moved off the manager's core onto a worker actor's core, not off the loop.
         qb::io::async::callback([this, request, file_content]() {
             qb::io::sys::file file;
             bool              success = false;
@@ -154,7 +164,7 @@ public:
         _is_busy = true;
         qb::io::cout() << "FileWorker " << id() << " processing write request: " << request.filepath.c_str() << std::endl;
 
-        // Perform the write operation asynchronously
+        // One-argument overload: runs INLINE (see the note in on(ReadFileRequest&)).
         qb::io::async::callback([this, request]() {
             qb::io::sys::file file;
             bool              success       = false;
