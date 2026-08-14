@@ -16,27 +16,30 @@
 #
 
 # -----------------------------------------------------------------------------
-# qb Core + I/O Integration Examples - CMake Configuration
+# Pre-3.0 holding directory — one project the restructure has not placed yet.
 #
-# This file configures examples demonstrating integration between the core
-# actor system and I/O operations for real-world applications.
+# The other three moved to `05-services/` under derived target names. `file_monitor` did
+# not, because the architecture does not move it: it RETIRES it into three different
+# homes, and a retirement only lands with its replacements.
+#
+#   file_monitor/watcher.*   -> 02-io/08-timeouts-and-watchers, where "ev::stat polls one
+#                               path and cannot name the changed file" is the LESSON rather
+#                               than the disappointment
+#   file_monitor/events.h    -> its relocation comment is the text 01-actors/03-event-payloads
+#                               is to be written around
+#   file_monitor/processor.*  -> 05-services/03-file-pipeline, which is where a processor
+#                               that currently receives zero events belongs
+#
+# It keeps its pre-3.0 hand-written target name on purpose: a derived name would put it in
+# a tier, and it is not in one.
 # -----------------------------------------------------------------------------
 
-# Define project with same version as parent
-project(qb_core_io_examples
+project(qb_examples_core_io_holding
         LANGUAGES CXX
         VERSION ${QB_FRAMEWORK_VERSION}
-        DESCRIPTION "Core+I/O integration examples for the qb framework"
+        DESCRIPTION "Pre-3.0 core+I/O example awaiting its replacements"
 )
 
-qb_status_message("Building qb core+I/O integration examples")
-
-# File-based examples (Unix/Linux/macOS only)
 if (NOT QB_PLATFORM_WINDOWS)
-    add_subdirectory(file_processor)
     add_subdirectory(file_monitor)
 endif ()
-
-# Network-based examples (all platforms)
-add_subdirectory(chat_tcp)
-add_subdirectory(message_broker)

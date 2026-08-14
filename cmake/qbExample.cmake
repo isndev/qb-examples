@@ -21,7 +21,7 @@
 # THE PROBLEM THIS SOLVES. An example carries four names: the tier DIRECTORY it
 # lives in, its SOURCE file, its CMake TARGET, and the BINARY that comes out. Three
 # of them used to be written by hand, in two different files, and nothing made them
-# agree. They did not: `examples/coroutine/actor_example.cpp` used to document
+# agree. They did not: `examples/03-coroutines/02-actor-coroutines.cpp` used to document
 # `--target actor_coroutine_example`, a target that has never existed in this tree.
 # That instance has since been repaired BY HAND, and the repair is the argument for
 # this file rather than against it: the header now carries a parenthesis at :14
@@ -36,6 +36,22 @@
 #     target := qb-example-${tier}-${slug}                qb-example-io-tcp
 #     binary := the target, because OUTPUT_NAME is never set and this wrapper
 #               REFUSES the keyword (see the ARGN guard below).
+#
+# A tier's second level is one of exactly two things, told apart by whether it carries an
+# NN- prefix, and they mean different things because the trees under them differ:
+#
+#     05-services/01-tcp-chat/     a PROJECT   — one program, many files, maybe many
+#                                  binaries; the slug comes from the project directory
+#                                  and ROLE tells its binaries apart
+#     06-modules/http/             a GROUP     — many programs, one file each; the slug
+#                                  still comes from the SOURCE, and the group name is
+#                                  inserted so `qb-example-modules-http-routing` says
+#                                  which module it teaches
+#
+# The group shape exists because tier 06 is four module surfaces (http · ws · pgsql ·
+# redis) and flattening them would either collide slugs or renumber 36 files into an
+# order nobody chose. It is NOT a general nesting rule: a group holds single-file
+# examples only, takes no ROLE, and nothing goes below it.
 #
 # The derivation is total: every accepted input produces exactly one name, and every
 # input this convention does not accept is a configure-time FATAL_ERROR naming what
@@ -64,9 +80,11 @@
 # Pure string derivation — no filesystem, no targets, no side effects, so it is
 # testable with literal vectors (see the bottom of this file).
 #
-#   <dir_rel>  the example directory's path RELATIVE to examples/, either
-#              "02-io" (a tier holding single-file examples) or
-#              "05-services/01-tcp-chat" (a multi-file project inside a tier).
+#   <dir_rel>  the example directory's path RELATIVE to examples/, one of
+#              "02-io"                    a tier holding single-file examples
+#              "05-services/01-tcp-chat"  a multi-file project inside a tier
+#              "06-modules/http"          a module group inside a tier, holding
+#                                         single-file examples of one module
 #   <role>     "" for a single-file example; otherwise the role suffix that
 #              distinguishes one binary of a project from its siblings.
 #
@@ -84,6 +102,9 @@ function(_qb_example_derive out_target out_error dir_rel src_basename role)
     set(_src_re "^([0-9][0-9])-([a-z0-9]+(-[a-z0-9]+)*)\\.cpp$")
     # A role suffix telling one binary of a multi-binary project from its siblings.
     set(_role_re "^[a-z0-9]+(-[a-z0-9]+)*$")
+    # A module group: the same slug shape with NO number, because a group is not a step in
+    # a reading order -- it is which module the programs inside it are about.
+    set(_group_re "^[a-z0-9]+(-[a-z0-9]+)*$")
 
     set(${out_target} "" PARENT_SCOPE)
     set(${out_error} "" PARENT_SCOPE)
@@ -131,27 +152,47 @@ lowercase hyphenated slug, no underscores) — e.g. 03-tcp.cpp"
         endif ()
         set(_slug "${CMAKE_MATCH_2}")
     else ()
-        # Multi-file project: the slug comes from the project DIRECTORY, and each binary
-        # inside it is told apart by its role. The source file names are free here — a
-        # project has main.cpp, actors/*.cpp and so on, and numbering them would say
-        # nothing about reading order.
-        list(GET _segs 1 _proj_seg)
-        if (NOT "${_proj_seg}" MATCHES "${_tier_re}")
-            set(${out_error}
-                "project directory '${_proj_seg}' does not match NN-<slug> (two digits, hyphen, \
-lowercase hyphenated slug) — e.g. 01-tcp-chat"
-                PARENT_SCOPE)
-            return()
-        endif ()
-        set(_slug "${CMAKE_MATCH_2}")
-        if (NOT "${role}" STREQUAL "")
-            if (NOT "${role}" MATCHES "${_role_re}")
+        list(GET _segs 1 _second_seg)
+        if ("${_second_seg}" MATCHES "${_tier_re}")
+            # Multi-file project: the slug comes from the project DIRECTORY, and each binary
+            # inside it is told apart by its role. The source file names are free here — a
+            # project has main.cpp, actors/*.cpp and so on, and numbering them would say
+            # nothing about reading order.
+            set(_slug "${CMAKE_MATCH_2}")
+            if (NOT "${role}" STREQUAL "")
+                if (NOT "${role}" MATCHES "${_role_re}")
+                    set(${out_error}
+                        "ROLE '${role}' must be a lowercase hyphenated slug — e.g. server"
+                        PARENT_SCOPE)
+                    return()
+                endif ()
+                set(_slug "${_slug}-${role}")
+            endif ()
+        elseif ("${_second_seg}" MATCHES "${_group_re}")
+            # Module group: many single-file programs about ONE module. The slug still comes
+            # from the source file, exactly as it does at tier level, and the group name is
+            # inserted in front of it so the target says which module it is about.
+            if (NOT "${role}" STREQUAL "")
                 set(${out_error}
-                    "ROLE '${role}' must be a lowercase hyphenated slug — e.g. server"
+                    "ROLE '${role}' was given inside the module group '${_second_seg}'; a group \
+holds one program per file, so there is no project whose binaries a role could tell apart"
                     PARENT_SCOPE)
                 return()
             endif ()
-            set(_slug "${_slug}-${role}")
+            if (NOT "${src_basename}" MATCHES "${_src_re}")
+                set(${out_error}
+                    "source '${src_basename}' does not match NN-<slug>.cpp (two digits, hyphen, \
+lowercase hyphenated slug, no underscores) — e.g. 02-routing.cpp"
+                    PARENT_SCOPE)
+                return()
+            endif ()
+            set(_slug "${_second_seg}-${CMAKE_MATCH_2}")
+        else ()
+            set(${out_error}
+                "'${_second_seg}' is neither a project directory (NN-<slug>, e.g. 01-tcp-chat) \
+nor a module group (a lowercase hyphenated slug with no number, e.g. http)"
+                PARENT_SCOPE)
+            return()
         endif ()
     endif ()
 
@@ -239,8 +280,12 @@ function(qb_example)
     # only what was really created — a roster that lists phantom targets is worse than none.
     if (TARGET ${_target})
         set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_TARGETS "${_target}")
+        # `${_primary}` and not `${_primary_name}`: a project names its primary source with a
+        # subdirectory (`server/main.cpp`), and the basename alone would record a path that
+        # does not exist. Nothing reads this property yet -- it is the input to the generated
+        # capability index -- which is exactly why it has to be right before something does.
         set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_SOURCES
-                     "examples/${_dir_rel}/${_primary_name}")
+                     "examples/${_dir_rel}/${_primary}")
         if (QE_TARGET_VAR)
             set(${QE_TARGET_VAR} "${_target}" PARENT_SCOPE)
         endif ()
@@ -268,7 +313,14 @@ function(_qb_example_selftest)
             "03-coroutines|04-ask-request-response.cpp|.|qb-example-coroutines-ask-request-response"
             "05-services/01-tcp-chat|main.cpp|server|qb-example-services-tcp-chat-server"
             "05-services/01-tcp-chat|main.cpp|client|qb-example-services-tcp-chat-client"
-            "07-applications/03-market-data-hub|main.cpp|.|qb-example-applications-market-data-hub")
+            "07-applications/03-market-data-hub|main.cpp|.|qb-example-applications-market-data-hub"
+            # Module groups. The last pair is the one worth having: two modules with the
+            # SAME slug must still derive different targets, which is the whole reason the
+            # group name is in the string rather than only in the path.
+            "06-modules/http|02-routing.cpp|.|qb-example-modules-http-routing"
+            "06-modules/pgsql|03-transactions.cpp|.|qb-example-modules-pgsql-transactions"
+            "06-modules/redis|05-transactions.cpp|.|qb-example-modules-redis-transactions"
+            "06-modules/ws|01-chat-server.cpp|.|qb-example-modules-ws-chat-server")
     foreach (_v IN LISTS _ok)
         string(REPLACE "|" ";" _f "${_v}")
         list(GET _f 0 _d)
@@ -301,9 +353,17 @@ function(_qb_example_selftest)
             "02-io|03-tcp.cc|.|source is not .cpp"
             "02-io|03-tcp.cpp|server|ROLE on a single-file example"
             "02-io/a/b|main.cpp|.|three levels below examples/"
-            "05-services/tcp-chat|main.cpp|server|project directory carries no NN- prefix"
             "05-services/01-tcp-chat|main.cpp|Server|role is not lowercase"
-            ".|03-tcp.cpp|.|empty directory")
+            ".|03-tcp.cpp|.|empty directory"
+            # Module groups. `05-services/tcp-chat|main.cpp|server` is NOT here any more: a
+            # second segment with no number is now a legal GROUP, so that vector stopped
+            # testing "project directory carries no NN- prefix" and started testing whether a
+            # group accepts a ROLE. It is spelled that way below, which is what it now means.
+            "05-services/tcp-chat|main.cpp|server|ROLE inside a module group"
+            "06-modules/http|hello-server.cpp|.|group source carries no NN- prefix"
+            "06-modules/http|02_routing.cpp|.|group source uses an underscore"
+            "06-modules/HTTP|02-routing.cpp|.|group name is not lowercase"
+            "06-modules/http|02-routing.cc|.|group source is not .cpp")
     foreach (_v IN LISTS _bad)
         string(REPLACE "|" ";" _f "${_v}")
         list(GET _f 0 _d)

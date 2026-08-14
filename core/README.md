@@ -1,134 +1,33 @@
-# QB Core Framework Examples
+# Pre-3.0 holding directory — four core examples awaiting their replacements
 
-This directory contains a collection of examples demonstrating various features and patterns of the QB Core Actor
-Framework (`qb-core`) and its underlying asynchronous I/O library (`qb-io`).
+**This is not a tier.** The corpus is organised by level now (see
+[`examples/README.md`](../README.md)); six of the ten programs that used to live here moved to
+[`01-actors/`](../01-actors/README.md), where their descriptions moved with them.
 
-## Table of Contents
+The four below did not move, and the reason is the same for each: the architecture **retires**
+them, and a retirement only lands together with its replacement. Retiring one now would leave the
+corpus promising something no file delivers — the exact defect the tier structure exists to make
+impossible. They keep their pre-3.0 hand-written target names on purpose: a derived name would put
+them in a tier, and they are not in one.
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Building the Examples](#building-the-examples)
-- [Running the Examples](#running-the-examples)
-- [Example Descriptions](#example-descriptions)
-    - [`example1_simple_actor.cpp`](#example1_simple_actorcpp)
-    - [`example2_basic_actors.cpp`](#example2_basic_actorscpp)
-    - [`example3_multicore.cpp`](#example3_multicorecpp)
-    - [`example4_lifecycle.cpp`](#example4_lifecyclecpp)
-    - [`example5_timers.cpp`](#example5_timerscpp)
-    - [`example6_shared_queue.cpp`](#example6_shared_queuecpp)
-    - [`example7_pub_sub.cpp`](#example7_pub_subcpp)
-    - [`example8_state_machine.cpp`](#example8_state_machinecpp)
-    - [`example9_trading_system.cpp`](#example9_trading_systemcpp)
-    - [`example10_distributed_computing.cpp`](#example10_distributed_computingcpp)
+| Still here | To be replaced by | Why |
+|---|---|---|
+| `example6_shared_queue.cpp` | `01-actors/03-event-payloads` | 377 lines of `std::mutex` in the directory whose job is to teach that actors do not share state; its own header concedes it "demonstrates integration, not a QB-specific pattern". The replacement teaches the same foreign-thread problem with `lockfree::spsc::ringbuffer`, a qb API with zero coverage today. |
+| `example7_pub_sub.cpp` | `04-patterns/01-pubsub` | 969 lines hand-rolling what `qb::PubSub<Topic>` ships — a class this file names in a comment and then does not use. |
+| `example9_trading_system.cpp` | `07-applications/03-market-data-hub` | 1490 lines: a program of that size and ambition belongs in the applications tier, where its multi-core matching-engine shape becomes the corpus's one non-web application. |
+| `example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` | 1320 lines hand-rolling both, one of them assigning half the fleet no work at all. |
 
-## Overview
+When the last replacement lands, this directory goes with it.
 
-These examples are designed to illustrate fundamental and advanced concepts of the QB Actor Framework, such as:
-
-- Actor creation, communication, and lifecycle management.
-- Event-driven programming and custom event types.
-- Multi-core actor distribution and concurrency.
-- Periodic tasks and delayed actions using coroutine timers (`spawn(...)` + `co_await ctx.sleep(d)`), the every-turn
-  `qb::ICallback` hook, and self-messaging.
-- Common actor patterns like supervisor-worker, publish-subscribe, and finite state machines.
-- Integration with asynchronous I/O operations.
-
-Each example is a self-contained C++ application that uses `qb::Main` to orchestrate the actors.
-
-## Prerequisites
-
-1. **QB Framework**: The QB Actor Framework (specifically `qb-core` and `qb-io` modules) must be built and installed or
-   available as CMake targets.
-2. **CMake**: `examples/CMakeLists.txt:25` declares 3.22, but these examples are configured from the qb-dev
-   superproject, whose floor is **3.24** (`CMakeLists.txt:2`, `qb/CMakeLists.txt:31`). Using a preset from
-   `CMakePresets.json` requires **3.25** — that file is schema version 6.
-3. **C++20 Compiler**: every example here is a coroutine (`qb::io::async::task<bool> onInit()`, `spawn(...)` +
-   `co_await ctx.sleep(...)`). C++17 will not compile them.
-
-## Building the Examples
-
-`examples/core/CMakeLists.txt` calls `qb_add_executable()` and `qb_status_message()`, which are defined by qb's own
-CMake modules. **There is therefore no standalone build**: running `cmake` inside `examples/core/` fails at configure
-time with an unknown command. Always configure from the qb-dev superproject root, which force-enables
-`QB_BUILD_EXAMPLES` (`CMakeLists.txt:40`).
-
-1. **Configure and build from the superproject root**:
-   ```bash
-   cmake --preset dev
-   cmake --build --preset dev
-   ```
-2. **Build one example**:
-   ```bash
-   cmake --build build/presets/dev --target example1_simple_actor
-   ```
-
-Executables land next to their source tree inside the build directory — `build/presets/<preset>/examples/core/` — not
-in a `bin/` directory.
-
-## Running the Examples
+## Building and running
 
 ```bash
-./build/presets/dev/examples/core/example1_simple_actor
+cmake --preset release
+cmake --build --preset release --target example7_pub_sub
+./build/presets/release/examples/core/example7_pub_sub
 ```
 
-## Example Descriptions
-
-### `example1_simple_actor.cpp`
-
-* **Focus**: Fundamental actor creation, message passing, and lifecycle.
-* **Actors**:
-    * `SimpleActor`: Receives `SimpleEvent`s and terminates after a count.
-    * `SenderActor`: Uses `qb::ICallback` to send a `SimpleEvent` to `SimpleActor` on every turn of the event loop.
-* **QB Features**: `qb::Actor`, `engine.addActor`, `onInit`, custom `qb::Event`, `registerEvent`, `on(EventType&)`,
-  `push`, `kill`, `qb::ICallback`, `registerCallback`, `on(qb::LoopEvent const&)`, `qb::io::cout`.
-
-> `qb::ICallback` is the **every-turn** hook, not a timer. For work that must happen after a delay, use
-> `spawn(...)` + `co_await ctx.sleep(d)` (examples 2-10) and never `std::this_thread::sleep_for`, which freezes
-> every actor on the core.
-
-### `example2_basic_actors.cpp`
-
-* **Focus**: Request-response communication pattern.
-* **Actors**:
-    * `ReceiverActor`: Listens for `MessageEvent`s, simulates work **asynchronously**, sends `ResponseEvent` back to
-      the source.
-    * `SenderActor` (Alice, Bob): Pace their `MessageEvent`s with a coroutine timer, listen for `ResponseEvent`s.
-* **QB Features**: `event.getSource()`, `spawn(...)` + `co_await ctx.sleep(...)` for a non-blocking delay,
-  `ctx.push<T>()` to return to actor context, state tracking for termination.
-
-### `example3_multicore.cpp`
-
-* **Focus**: Distributing actors across multiple CPU cores and event broadcasting.
-* **Actors**:
-    * `WorkerActor`: Deployed on multiple cores, handles `HighPriorityEvent`, `StandardEvent`, `LowPriorityEvent` with
-      different processing times. Receives `SystemNotificationEvent`.
-    * `DispatcherActor`: Runs on a specific core, dispatches work to workers round-robin, sends
-      `SystemNotificationEvent`s system-wide with `broadcast<T>()`.
-* **QB Features**: Multi-core assignment with `engine.addActor(core_id, ...)`, `broadcast<T>()` **versus**
-  `qb::BroadcastId(core_id)` (which reaches one core's actors only), `getIndex()` for core ID.
-
-### `example4_lifecycle.cpp`
-
-* **Focus**: Advanced actor lifecycle management using a supervisor-worker pattern.
-* **Actors**:
-    * `WorkerActor`: Can be started (`StartWorkEvent`), monitored (`StatusRequestEvent`), and stopped (
-      `ShutdownRequestEvent`). Handles `qb::KillEvent` explicitly.
-    * `SupervisorActor`: Manages workers, sends start commands, polls status, and initiates coordinated shutdown.
-* **QB Features**: Supervisor-worker pattern, two-phase shutdown (drain with `ShutdownRequestEvent`, then terminate
-  with `broadcast<qb::KillEvent>()`), explicit `qb::KillEvent` handling via `registerEvent<qb::KillEvent>(*this)`,
-  coordinated startup/shutdown sequences.
-
-### `example5_timers.cpp`
-
-* **Focus**: Real timers and delayed actions, and choosing between the four mechanisms qb offers.
-* **Actors**:
-    * `TimerManager`: A timer service. Arms each interval with `spawn(...)` + `co_await ctx.sleep(interval)` and
-      answers the requester with `TimerFiredMsg`; `CancelTimerMsg` stops one.
-    * `Application`: Interacts with `TimerManager`, receives `TimerFiredMsg`, sequences its own steps with the same
-      mechanism, and initiates system shutdown via `broadcast<qb::KillEvent>()`.
-* **QB Features**: `spawn(...)` + `co_await ctx.sleep(...)`, `event.getSource()`, `broadcast<qb::KillEvent>()`. The
-  file header contrasts all four ways to do something later: `ctx.sleep`, `qb::io::async::callback(f, d)`,
-  `qb::io::async::defer(f)` and `qb::ICallback`.
+## Example descriptions
 
 ### `example6_shared_queue.cpp`
 
@@ -158,18 +57,6 @@ in a `bin/` directory.
 * **QB Features**: Decoupled messaging, dynamic subscriptions (simulated), one-shot `registerCallback` /
   `unregisterCallback`, `spawn(...)` + `co_await ctx.sleep(...)` for demo sequencing. `qb/core/patterns/pubsub.h`
   ships a tested broker that makes most of this file unnecessary in real code.
-
-### `example8_state_machine.cpp`
-
-* **Focus**: Implementing a finite state machine (FSM) within an actor.
-* **Actors**:
-    * `CoffeeMachineActor`: Implements FSM logic (states: IDLE, SELECTING, PAYMENT, etc.). Transitions based on
-      `InputEventMessage`. Uses `spawn(...)` + `co_await ctx.sleep(...)` for timed operations (brewing). Publishes
-      `StateChangeMessage`.
-    * `UserInterfaceActor`: Simulates user interaction, sends `InputEventMessage`s, subscribes to `StateChangeMessage`,
-      requests status.
-* **QB Features**: FSM logic encapsulation, `spawn(...)` + `co_await ctx.sleep(...)` for delayed self-events (bound
-  to the actor's lifetime, unlike `qb::io::async::callback(f, d)`), state notifications.
 
 ### `example9_trading_system.cpp`
 
@@ -222,4 +109,4 @@ almost all of it:
    ```
 
    `sanitize` is ASan + UBSan; `sanitize-thread` is TSan and is what finds a cross-core data race. Two examples in
-   this directory used to abort under `sanitize` while exiting 0 in release. 
+   this directory used to abort under `sanitize` while exiting 0 in release.

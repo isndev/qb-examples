@@ -16,87 +16,59 @@
 #
 
 # -----------------------------------------------------------------------------
-# qb Core Examples - CMake Configuration
+# Pre-3.0 holding directory — four programs the restructure has not placed yet.
 #
-# This file configures examples demonstrating the core actor system features
-# including actor creation, message passing, lifecycle management, and patterns.
+# The other six moved to `01-actors/` under derived target names. These four did not,
+# and the reason is the same for each: the architecture retires them, and a retirement
+# only lands WITH its replacement, which is not written yet. Retiring one now would
+# leave the corpus promising something no file delivers — the exact defect the tier
+# structure exists to make impossible.
+#
+#   example6_shared_queue.cpp          -> to be replaced by 01-actors/03-event-payloads,
+#                                         which teaches the same foreign-thread problem with
+#                                         lockfree::spsc::ringbuffer instead of a std::mutex
+#                                         queue in the directory whose job is to teach that
+#                                         actors do not share state
+#   example7_pub_sub.cpp               -> to be replaced by 04-patterns/01-pubsub, using the
+#                                         shipped qb::PubSub<Topic> this file names in a
+#                                         comment and then does not use
+#   example9_trading_system.cpp        -> to be replaced by 07-applications/03-market-data-hub
+#   example10_distributed_computing.cpp-> to be replaced by 04-patterns/03-worker-pool +
+#                                         04-patterns/04-scatter-gather
+#
+# They keep their pre-3.0 hand-written target names on purpose: a derived name would put
+# them in a tier, and they are not in one. When each replacement lands, this directory
+# and this file go with the last of them.
 # -----------------------------------------------------------------------------
 
-# Define project with same version as parent
 project(qb_core_examples
         LANGUAGES CXX
         VERSION ${QB_FRAMEWORK_VERSION}
-        DESCRIPTION "Core actor system examples for the qb framework"
+        DESCRIPTION "Pre-3.0 core examples awaiting their replacements"
 )
 
-qb_status_message("Building qb core examples")
+qb_status_message("Building qb core examples (pre-3.0, awaiting replacement)")
 
-# Example 1: Simple actor example
-qb_add_executable(
-        NAME example1_simple_actor
-        SOURCES example1_simple_actor.cpp
-        DEPENDS qb-core
-)
-
-# Example 2: Basic actor communication
-qb_add_executable(
-        NAME example2_basic_actors
-        SOURCES example2_basic_actors.cpp
-        DEPENDS qb-core
-)
-
-# Example 3: Multiple cores and event priorities
-qb_add_executable(
-        NAME example3_multicore
-        SOURCES example3_multicore.cpp
-        DEPENDS qb-core
-)
-
-# Example 4: Actor lifecycle and callbacks
-qb_add_executable(
-        NAME example4_lifecycle
-        SOURCES example4_lifecycle.cpp
-        DEPENDS qb-core
-)
-
-# Example 5: Timer usage with the latest API
-qb_add_executable(
-        NAME example5_timers
-        SOURCES example5_timers.cpp
-        DEPENDS qb-core
-)
-
-# Example 6: Shared queue between actors
 qb_add_executable(
         NAME example6_shared_queue
         SOURCES example6_shared_queue.cpp
         DEPENDS qb-core
 )
 
-# Example 7: Publisher/Subscriber pattern
 qb_add_executable(
         NAME example7_pub_sub
         SOURCES example7_pub_sub.cpp
         DEPENDS qb-core
 )
 
-# Example 8: State machine implementation
-qb_add_executable(
-        NAME example8_state_machine
-        SOURCES example8_state_machine.cpp
-        DEPENDS qb-core
-)
-
-# Example 9: Trading system simulation
 qb_add_executable(
         NAME example9_trading_system
         SOURCES example9_trading_system.cpp
         DEPENDS qb-core
 )
 
-# Example 10: Distributed computing system
 qb_add_executable(
         NAME example10_distributed_computing
         SOURCES example10_distributed_computing.cpp
         DEPENDS qb-core
-) 
+)

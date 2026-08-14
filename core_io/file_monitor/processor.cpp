@@ -21,13 +21,13 @@
  *   Updates tracked metadata if changed or if it's a newly seen file.
  * - `processFileDeleted()`: Removes the file from the `_tracked_files` map.
  * - `shouldProcessFile()`: Contains logic to skip directories or hidden files based on configuration.
- * - `extractMetadata()`: Uses `std::filesystem` and `qb::io::system::file` to get path, size,
+ * - `extractMetadata()`: Uses `std::filesystem` and `qb::io::sys::file` to get path, size,
  *   last modification time, and a simple content hash of a file.
  * - `updateStats()`: Increments counters in the `_stats` object based on event type.
  *
  * QB Features Demonstrated (in context of this implementation):
  * - `qb::Actor` event handling and state management.
- * - Use of `qb::io::system::file` for synchronous file reading (to get content for hashing).
+ * - Use of `qb::io::sys::file` for synchronous file reading (to get content for hashing).
  * - `qb::io::cout`, `qb::io::cerr` for logging.
  * - Standard C++ features like `std::filesystem` for path manipulation and file attribute checking.
  */

@@ -1,69 +1,68 @@
-# QB Framework - Code Examples
+# QB Framework — the example corpus
 
-Welcome to the QB Framework examples directory! This collection showcases the capabilities of the QB C++ Actor Framework
-and its associated modules. These examples are designed to help you understand how to use various components, from core
-actor functionalities to specialized modules for networking, database interaction, and more.
+The corpus is organised **by level** — the order in which a person should read it — rather than by
+which library a program links. The filesystem sorts, so the reading order is visible without
+opening anything; the topic is in the filename, so the tree is still greppable for someone who
+arrived with a task rather than a curriculum.
 
-## Example Categories
+An example's CMake **target** and **binary** are *derived* from its path
+(`examples/cmake/qbExample.cmake`) and never written by hand:
 
-Below is an overview of the different categories of examples available. Each category has its own detailed README with
-information on building and running the specific examples it contains.
+    02-io/03-tcp.cpp                     ->  qb-example-io-tcp
+    06-modules/http/02-routing.cpp       ->  qb-example-modules-http-routing
+    05-services/01-tcp-chat/ + ROLE server ->  qb-example-services-tcp-chat-server
 
-### 1. QB Core Examples (`./core/`)
+Every program also carries a header block — `@teaches`, `@demonstrates`, `@prerequisites`,
+`@expect` — and `dev/agent/check-example-headers.py` asserts that every `@demonstrates` name really
+occurs in that file's **code**. A name that is not true of the file under it is the corpus's
+recurring defect, and that is the guard against it.
 
-These examples focus on the fundamental concepts and features of the `qb-core` library, which provides the actor model
-implementation and concurrency management. You'll find demonstrations of:
+## The tiers
 
-- Basic actor creation, communication, and lifecycle.
-- Event-driven programming.
-- Multi-core actor deployment.
-- Common actor patterns (supervisor-worker, pub/sub, FSM).
+| Tier | What it teaches | Prerequisite |
+|---|---|---|
+| [`01-actors/`](./01-actors/) | The actor model: actors, events, cores, lifetime, state machines. | none |
+| [`02-io/`](./02-io/README.md) | `qb-io` **standalone** — an event loop, files, TCP, UDP and a hand-written wire protocol, with no actor and no `qb::Main`. | none, deliberately |
+| [`03-coroutines/`](./03-coroutines/) | The 3.0 concurrency model: `task<T>`, `run_sync`, and coroutines spawned from inside an actor. | 01, 02/01 |
+| `04-patterns/` | *(no directory yet)* The eleven shipped `qb/core/patterns/` headers — pub/sub, supervisor, worker pool, scatter/gather, resilience, saga, streaming, batching, discovery. **Demonstrated zero times today.** | 01, 03 |
+| [`05-services/`](./05-services/) | Actors **plus** `qb-io`: the architecture of a real server — a TCP chat, a pub/sub broker, a file pipeline. | 01–04 |
+| [`06-modules/`](./06-modules/README.md) | The qbm modules: [`http/`](./06-modules/http/README.md), [`ws/`](./06-modules/ws/README.md), [`pgsql/`](./06-modules/pgsql/README.md), [`redis/`](./06-modules/redis/README.md). | 01, 03 (+ 02 for the protocol tiers) |
+| [`07-applications/`](./07-applications/) | Full-stack projects: [taskmanager](./07-applications/01-taskmanager/README.md), [auction-house](./07-applications/02-auction-house/README.md). | everything |
 
-[**Dive into QB Core Examples &raquo;**](./core/README.md)
+**The gaps in the numbering are deliberate.** A tier's holes are its to-do list, and they are named
+in that tier's `CMakeLists.txt`. Numbering densely now would renumber every later file — and every
+citation of it — the day one is written.
 
-### 2. Tier 02 — `qb-io`, standalone (`./02-io/`)
+## The pre-3.0 holding directories
 
-`qb-io` on its own: an event loop, files, TCP and UDP sockets, and a hand-written wire protocol,
-with **no actor and no `qb::Main`**. It has no prerequisite on the actor examples — a reader who
-came for an event loop and a socket can start here.
+`core/`, `core_io/` and `qbm/` are not tiers. Each holds only the programs the restructure
+**retires or merges** rather than moves, and a retirement lands *with* its replacement — never
+before it, or the corpus promises something no file delivers. Each directory's `CMakeLists.txt`
+names which replacement it is waiting for; the last one to arrive takes the directory with it.
 
-This is the first directory converted to the by-level tree (`NN-<tier>/`), where the CMake target
-and the binary are *derived* from the path rather than written by hand. The categories below still
-carry their pre-3.0 names and move one at a time.
+| Still there | Waiting for |
+|---|---|
+| `core/example6_shared_queue.cpp` | `01-actors/03-event-payloads` |
+| `core/example7_pub_sub.cpp` | `04-patterns/01-pubsub` |
+| `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` |
+| `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` |
+| `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` + `05-services/03-file-pipeline` |
+| `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` |
+| `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` |
+| `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` |
 
-[**Read tier 02 &raquo;**](./02-io/README.md)
+## Building and running
 
-### 3. QB Core & IO Integration Examples (`./core_io/`)
+This directory is its own repository (`isndev/qb-examples`) and **cannot be configured standalone**:
+its `CMakeLists.txt` calls `qb_status_message`, `qb_add_executable` and
+`qb_stage_example_resources`, which only qb defines, and it returns without adding a target when
+`QB_BUILD_EXAMPLES` is undefined. Build it from the superproject:
 
-This section contains mini-projects that illustrate how to combine `qb-core` (actor model) with `qb-io` (asynchronous
-I/O, networking utilities) to build more complex, networked applications. Examples include:
+```bash
+cmake --preset release
+cmake --build --preset release --target qb-example-modules-http-routing
+./build/presets/release/examples/06-modules/http/qb-example-modules-http-routing
+```
 
-- TCP Chat System
-- File System Monitor
-- Distributed File Processor
-- Message Broker
-
-[**Explore QB Core & IO Integration Examples &raquo;**](./core_io/README.md)
-
-### 4. QB Module (QBM) Examples (`./qbm/`)
-
-The `qbm` directory houses examples for various specialized modules that extend the QB Framework's functionality. Each
-module provides a client or utilities for specific services or protocols.
-
-- **HTTP**: Examples for building HTTP/HTTPS/HTTP2 servers and clients.
-- **WebSocket**: Advanced WebSocket chat system with separated server architectures and CLI client.
-- **PostgreSQL**: Demonstrations of asynchronous interaction with PostgreSQL databases.
-- **Redis**: Examples for using Redis for caching, messaging (Pub/Sub), and data storage.
-
-[**Discover QB Module Examples &raquo;**](./qbm/README.md)
-
-## Getting Started
-
-To build and run any of these examples:
-
-1. Ensure the QB Framework and its dependencies are correctly built and installed.
-2. Navigate to the specific example's directory or its parent category's README for detailed build and execution
-   instructions. Most examples use CMake.
-
-We encourage you to explore these examples to gain a practical understanding of the QB Framework's power and
-flexibility. 
+Examples that read assets (`resources/...`) have them staged next to the binary, so they run from
+any working directory. Each tier and module directory has its own README with the details.
