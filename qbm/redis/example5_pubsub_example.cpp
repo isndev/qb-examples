@@ -166,7 +166,7 @@ public:
                 cout << "Message delivered to " << r.result() << " subscribers" << std::endl;
             }
 
-            _messages_published++;
+            _messages_published++; // safe by OWNERSHIP: `_redis` is a member, so a killed actor never resumes here
 
             if (_messages_published >= _target_messages) {
                 cout << "Published " << _messages_published << " messages, target reached" << std::endl;
@@ -266,6 +266,13 @@ public:
 
         // Same rule as the receive loop: everything the coroutine only READS is captured by
         // value before the first `co_await`, and the coordinator is addressed by id.
+        //
+        // The one thing that cannot be captured is the WRITE — `_subscribed_channels` has to
+        // be the actor's own vector, and it is touched after `co_await _consumer.subscribe()`.
+        // That is safe for a different reason than the reads: `_consumer` is a member, so
+        // `~Actor` destroys it with its pending-reply queue and the reply callback is dropped
+        // UNINVOKED — the coroutine never resumes at all, rather than resuming on a dead actor.
+        // Note this differs from the receive loop above, which DOES resume after destruction.
         spawn([this, channel, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << name << " subscribing to channel: " << channel << std::endl;

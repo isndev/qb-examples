@@ -59,9 +59,16 @@ AuctionManager::onInit() {
     // 3. WebSocket Redis subscriber + actor-scoped consume loop.
     if (!co_await _ws_handler.connect_subscriber())
         co_return false;
-    spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-        co_await _ws_handler.consume_loop(); // ends on shutdown(); cancelled on kill
-    });
+    // This loop OUTLIVES the actor, and neither half of the obvious explanation holds — both
+    // were measured, not read. `channel::recv()` registers nothing with the cancellation
+    // token (there is no `on_cancel` anywhere in `qb/io/async/coroutine/channel.h`), so
+    // `kill()` does not end it; and `shutdown()`'s disconnect is only *deferred* to the io
+    // watcher, which `~client()` stops during the same reap pass, so it is dropped. What
+    // actually ends the loop is `~RedisCoroConsumer` closing the message channel — and
+    // `close()` SCHEDULES a resume for every parked receiver. `consume_loop()` therefore
+    // resumes with `nullopt` after this actor's storage has been freed. See the comment on
+    // `consume_loop()` for the single invariant that makes that survivable.
+    spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await _ws_handler.consume_loop(); });
 
     // 4. Routes.
     setup_routes();

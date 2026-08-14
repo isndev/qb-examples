@@ -220,7 +220,15 @@ public:
             return;
         }
 
-        // Spawn a coroutine to perform the async stream write
+        // Spawn a coroutine to perform the async stream write.
+        //
+        // `produce_single_reading()` is a member coroutine that touches members after each
+        // `co_await _redis...`. Safe by OWNERSHIP, not by `spawn`'s scope: a qbm command
+        // awaiter registers nothing with the cancellation token, so `kill()` never reaches
+        // it, but `_redis` is a MEMBER — `~Actor` destroys the client with its pending-reply
+        // queue, the reply callback is discarded UNINVOKED, and the coroutine never resumes
+        // (measured: killed while parked on a 3 s BRPOP, no resume, ASan silent). An orphaned
+        // frame, not a use-after-free. A client outliving the actor would make it one.
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await produce_single_reading(); });
     }
 

@@ -63,7 +63,7 @@ WebSocketHandler::consume_loop() {
             qb::io::cerr() << "[WebSocketHandler] bad Redis message: " << e.what() << "\n";
         }
     }
-    qb::io::cout() << "[WebSocketHandler] consume loop ended\n";
+    qb::io::cout() << "[WebSocketHandler] consume loop ended\n"; // MUST touch no member: the actor is already gone
 }
 
 void
