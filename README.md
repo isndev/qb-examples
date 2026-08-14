@@ -21,7 +21,19 @@ implementation and concurrency management. You'll find demonstrations of:
 
 [**Dive into QB Core Examples &raquo;**](./core/README.md)
 
-### 2. QB Core & IO Integration Examples (`./core_io/`)
+### 2. Tier 02 — `qb-io`, standalone (`./02-io/`)
+
+`qb-io` on its own: an event loop, files, TCP and UDP sockets, and a hand-written wire protocol,
+with **no actor and no `qb::Main`**. It has no prerequisite on the actor examples — a reader who
+came for an event loop and a socket can start here.
+
+This is the first directory converted to the by-level tree (`NN-<tier>/`), where the CMake target
+and the binary are *derived* from the path rather than written by hand. The categories below still
+carry their pre-3.0 names and move one at a time.
+
+[**Read tier 02 &raquo;**](./02-io/README.md)
+
+### 3. QB Core & IO Integration Examples (`./core_io/`)
 
 This section contains mini-projects that illustrate how to combine `qb-core` (actor model) with `qb-io` (asynchronous
 I/O, networking utilities) to build more complex, networked applications. Examples include:
@@ -33,7 +45,7 @@ I/O, networking utilities) to build more complex, networked applications. Exampl
 
 [**Explore QB Core & IO Integration Examples &raquo;**](./core_io/README.md)
 
-### 3. QB Module (QBM) Examples (`./qbm/`)
+### 4. QB Module (QBM) Examples (`./qbm/`)
 
 The `qbm` directory houses examples for various specialized modules that extend the QB Framework's functionality. Each
 module provides a client or utilities for specific services or protocols.

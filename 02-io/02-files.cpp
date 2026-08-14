@@ -1,9 +1,19 @@
 /**
- * @file examples/io/example2_file_io.cpp
+ * @file examples/02-io/02-files.cpp
+ * @tier 02-io
+ * @teaches qb's synchronous file handle, and where it ends: open/read/write/close through qb::io::sys::file,
+ *          with mmap, stat and std::filesystem left to the platform because qb wraps none of them.
+ * @demonstrates qb::io::sys::file, open, read, write, close, qb::io::cout, qb::io::cerr
+ * @prerequisites none
+ * @expect "QB-IO File I/O Operations Example"
+ * @expect "Write throughput: "
+ * @expect "Memory-Mapped File I/O"
+ * @expect "File Operations Demo Completed"
+ *
  * @example Comprehensive File I/O Operations with QB-IO and POSIX
  *
  * @brief This example demonstrates a variety of file input/output operations,
- * primarily utilizing `qb::io::system::file` for basic read/write tasks,
+ * primarily utilizing `qb::io::sys::file` for basic read/write tasks,
  * and supplementing with standard C++/POSIX calls for memory-mapped files
  * and detailed file statistics.
  *
@@ -11,12 +21,12 @@
  * The example is structured around a `FileOperationsManager` class that performs several demonstrations:
  * 1.  **Writing Binary File**:
  *     -   Generates a buffer of random binary data.
- *     -   Writes this data to a test file using `qb::io::system::file::open()` (with `O_WRONLY | O_CREAT | O_TRUNC`)
- *         and `qb::io::system::file::write()`.
+ *     -   Writes this data to a test file using `qb::io::sys::file::open()` (with `O_WRONLY | O_CREAT | O_TRUNC`)
+ *         and `qb::io::sys::file::write()`.
  *     -   Measures and prints write throughput.
  * 2.  **Reading Binary File**:
- *     -   Reads the content of the previously written binary file using `qb::io::system::file::open()` (with `O_RDONLY`)
- *         and `qb::io::system::file::read()`.
+ *     -   Reads the content of the previously written binary file using `qb::io::sys::file::open()` (with `O_RDONLY`)
+ *         and `qb::io::sys::file::read()`.
  *     -   Measures and prints read throughput.
  *     -   Displays a sample of the read data.
  * 3.  **Memory-Mapped I/O**:
@@ -28,7 +38,7 @@
  *     -   This section illustrates high-performance I/O via memory mapping, using standard OS facilities.
  * 4.  **File Copy**:
  *     -   Copies a source file to a destination file by reading from the source and writing to the
- *         destination in chunks, using `qb::io::system::file` for both.
+ *         destination in chunks, using `qb::io::sys::file` for both.
  *     -   Measures and prints copy throughput.
  * 5.  **File Information**:
  *     -   Retrieves and displays metadata for a file (size, permissions, last modified time)
@@ -38,7 +48,7 @@
  * of a test directory and files. This example primarily showcases synchronous file operations.
  *
  * QB-IO Features Demonstrated:
- * - Synchronous File Operations: `qb::io::system::file` for `open()`, `read()`, `write()`, and `close()`.
+ * - Synchronous File Operations: `qb::io::sys::file` for `open()`, `read()`, `write()`, and `close()`.
  * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  *
  * Other POSIX/Standard C++ Features Shown:

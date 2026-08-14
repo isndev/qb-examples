@@ -1,5 +1,16 @@
 /**
- * @file examples/io/example3_tcp_networking.cpp
+ * @file examples/02-io/03-tcp.cpp
+ * @tier 02-io
+ * @teaches A TCP server, its per-connection session and a client, all as CRTP roles over one loop, framed by
+ *          the shipped newline protocol instead of a hand-written parser.
+ * @demonstrates qb::io::use<T>::tcp::server<S>, qb::io::use<T>::tcp::client<S>, transport().listen_v4,
+ *               transport().connect_v4, qb::protocol::text::command<T>, Protocol::end,
+ *               qb::io::SocketStatus::Done, qb::io::async::init, qb::io::async::run
+ * @prerequisites 02-io/01-event-loop
+ * @expect "QB-IO TCP Networking Example"
+ * @expect "Connected to server successfully"
+ * @expect "Total messages processed: "
+ *
  * @example Asynchronous TCP Client-Server Communication
  *
  * @brief This example demonstrates fundamental TCP networking using QB-IO's asynchronous

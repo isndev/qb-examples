@@ -1,5 +1,17 @@
 /**
- * @file examples/io/example5_custom_protocol.cpp
+ * @file examples/02-io/05-custom-protocol.cpp
+ * @tier 02-io
+ * @teaches Writing a wire protocol qb does not ship: framing in getMessageSize, dispatch in onMessage,
+ *          serialisation as a pipe<char>::put specialisation, and switch_protocol to change it mid-stream.
+ * @demonstrates qb::io::async::AProtocol<T>, getMessageSize, onMessage, qb::allocator::pipe<char>::put<T>,
+ *               switch_protocol<T>, qb::custom_message, qb::io::async::event::disconnected, qb::to_number<T>,
+ *               qb::io::use<T>::tcp::server<S>, qb::io::use<T>::tcp::client<S>, transport().listen_v4,
+ *               transport().connect_v4
+ * @prerequisites 02-io/01-event-loop, 02-io/03-tcp
+ * @expect "Starting echo server on port "
+ * @expect "Server bound to port "
+ * @expect "Client sent HELLO, ID: "
+ *
  * @example Custom Binary Protocol Implementation with QB-IO
  *
  * @brief This example demonstrates how to define, implement, and use a custom
