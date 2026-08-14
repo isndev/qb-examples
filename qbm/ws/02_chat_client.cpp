@@ -73,6 +73,19 @@ struct ConnectEvent : qb::Event {
 
 struct DisconnectEvent : qb::Event {};
 
+/**
+ * @brief Self-addressed wake-ups for `CommandLineActor`'s two delays.
+ *
+ * Both replace a `qb::io::async::callback([this]{ if (is_alive()) ... }, d)`. That overload
+ * heap-allocates a `Timeout` owned by the event loop, not by the actor: nothing cancels it when
+ * the actor is killed, so it fires against a destroyed object — and the `is_alive()` guard is
+ * not a guard at all, because CALLING it is already the read of freed memory. `spawn(...)` +
+ * `co_await ctx.sleep(d)` puts the wait inside the actor's cancellation scope instead, so a
+ * killed actor stops receiving ticks and the polling loop ends by itself.
+ */
+struct InputPollTick : qb::Event {}; ///< every 50 ms: drain one line from the input queue
+struct ShutdownTick : qb::Event {};  ///< 500 ms after /quit: broadcast the kill
+
 struct SetWebSocketActorEvent : qb::Event {
     qb::ActorId websocket_actor_id;
     explicit SetWebSocketActorEvent(qb::ActorId id)
@@ -497,6 +510,8 @@ public:
         // Register events
         registerEvent<DisplayMessageEvent>(*this);
         registerEvent<SetWebSocketActorEvent>(*this);
+        registerEvent<InputPollTick>(*this);
+        registerEvent<ShutdownTick>(*this);
 
         // Start input handling thread
         _input_thread = std::thread([this]() {
@@ -526,10 +541,38 @@ public:
         display_message("WebSocket actor connected to CommandLine interface", "info");
     }
 
+    /**
+     * @brief One turn of the input poll, 50 ms after the previous one
+     *
+     * A handler only ever runs on a live actor, so there is nothing to guard against here — the
+     * `if (is_alive())` that used to wrap this body was itself the use-after-free it pretended
+     * to prevent.
+     */
+    void
+    on(const InputPollTick &) {
+        poll_input_once();
+    }
+
+    void
+    on(const ShutdownTick &) {
+        broadcast<qb::KillEvent>();
+    }
+
 private:
     void
     schedule_input_check() {
-        if (!is_alive() || !_running)
+        // The 50 ms wait lives in a coroutine this actor's cancellation scope owns, so killing
+        // the actor ends the polling loop instead of leaving a timer aimed at freed memory.
+        // The body touches no actor state: `ctx.push` addresses the actor by id.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::milliseconds(50));
+            ctx.template push<InputPollTick>();
+        });
+    }
+
+    void
+    poll_input_once() {
+        if (!_running)
             return;
 
         // Check for input non-blockingly
@@ -539,13 +582,7 @@ private:
         }
 
         // Schedule next check in 50ms
-        qb::io::async::callback(
-            [this]() {
-                if (is_alive()) {
-                    schedule_input_check();
-                }
-            },
-            std::chrono::milliseconds(50));
+        schedule_input_check();
     }
 
     void
@@ -577,14 +614,13 @@ private:
                 push<DisconnectEvent>(_websocket_actor_id);
             }
 
-            // Broadcast KillEvent to all actors to shutdown gracefully
-            qb::io::async::callback(
-                [this]() {
-                    if (is_alive()) {
-                        broadcast<qb::KillEvent>();
-                    }
-                },
-                std::chrono::milliseconds(500)); // Small delay to let disconnect finish
+            // Broadcast KillEvent to all actors to shutdown gracefully. Small delay to let the
+            // disconnect finish; the broadcast itself is a call on this actor, so it happens in
+            // `on(ShutdownTick&)` rather than inside a timer holding `this`.
+            spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                co_await ctx.sleep(std::chrono::milliseconds(500));
+                ctx.template push<ShutdownTick>();
+            });
         } else if (command.substr(0, 9) == "/connect ") {
             std::string url = command.substr(9);
             if (!url.empty() && _websocket_actor_id.is_valid()) {

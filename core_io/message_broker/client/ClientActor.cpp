@@ -24,7 +24,8 @@
  * - `qb::Actor` methods for event handling and state.
  * - `qb::io::use<ClientActor>::tcp::client<>` for TCP operations.
  * - `qb::io::async::tcp::connect` for non-blocking connection.
- * - `qb::io::async::callback` for scheduling reconnections.
+ * - `spawn(...)` + `co_await ctx.sleep(d)` for scheduling reconnections with a timer the actor's
+ *   cancellation scope owns.
  * - `qb::io::cout`, `qb::io::cerr` for output.
  * - Sending messages via custom protocol: `*this << broker_message_object;`.
  */
@@ -57,6 +58,7 @@ qb::io::async::task<bool>
 ClientActor::onInit() {
     qb::io::cout() << "ClientActor initialized with ID: " << id() << std::endl;
     registerEvent<BrokerInputEvent>(*this);
+    registerEvent<ReconnectTickEvent>(*this);
     connect();
     co_return true;
 }
@@ -101,8 +103,6 @@ ClientActor::on(const broker::Message &msg) {
  * 1. Updates connection state
  * 2. Notifies user
  * 3. Initiates reconnection if enabled
- *
- * Uses QB's async callback system for reconnection timing.
  */
 void
 ClientActor::on(qb::io::async::event::disconnected const &) {
@@ -110,14 +110,46 @@ ClientActor::on(qb::io::async::event::disconnected const &) {
     _connected = false;
 
     if (_should_reconnect) {
-        // Schedule async reconnection with delay
-        qb::io::async::callback(
-            [this]() {
-                qb::io::cout() << "Attempting to reconnect..." << std::endl;
-                connect();
-            },
-            std::chrono::duration<double>(RECONNECT_DELAY));
+        scheduleReconnect();
     }
+}
+
+/**
+ * @brief Runs one reconnection attempt once the delay has elapsed
+ *
+ * This is an ordinary event handler, so it runs on the actor's own thread and only while the
+ * actor is alive — which is the whole reason the delay is served by a coroutine that pushes an
+ * event rather than by a timer that calls back into `this`.
+ */
+void
+ClientActor::on(const ReconnectTickEvent &) {
+    if (!_should_reconnect)
+        return;
+
+    qb::io::cout() << "Attempting to reconnect..." << std::endl;
+    connect();
+}
+
+/**
+ * @brief Waits RECONNECT_DELAY, then wakes this actor with a ReconnectTickEvent
+ *
+ * WHY NOT `qb::io::async::callback([this]{ connect(); }, RECONNECT_DELAY)`. That overload heap-
+ * allocates a `Timeout` owned by the event loop, NOT by the actor. Nothing cancels it when the
+ * actor is killed, so it fires against a destroyed object — and an `if (!is_alive()) return;`
+ * guard does not save it, because reading `is_alive()` is already the read of freed memory.
+ *
+ * `spawn()` runs the body inside this actor's cancellation scope and `ctx.sleep(d)` routes that
+ * scope's token, so killing the actor cancels the sleep and unwinds the coroutine. The body
+ * captures the delay BY VALUE and touches no actor state; `ctx.push` addresses the actor by id,
+ * which is safe whether or not it still exists.
+ */
+void
+ClientActor::scheduleReconnect() {
+    spawn([delay = std::chrono::duration_cast<qb::duration>(std::chrono::duration<double>(RECONNECT_DELAY))](
+              qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+        co_await ctx.sleep(delay);
+        ctx.template push<ReconnectTickEvent>();
+    });
 }
 
 /**
@@ -174,20 +206,12 @@ ClientActor::onConnected(qb::io::tcp::socket &&socket) {
  * Recovery process:
  * 1. Notifies user
  * 2. Schedules reconnection if enabled
- *
- * Uses QB's async callback for reconnection timing.
  */
 void
 ClientActor::onConnectionFailed() {
     qb::io::cout() << "Connection failed" << std::endl;
     if (_should_reconnect) {
-        // Schedule delayed reconnection
-        qb::io::async::callback(
-            [this]() {
-                qb::io::cout() << "Retrying connection..." << std::endl;
-                connect();
-            },
-            std::chrono::duration<double>(RECONNECT_DELAY));
+        scheduleReconnect();
     }
 }
 

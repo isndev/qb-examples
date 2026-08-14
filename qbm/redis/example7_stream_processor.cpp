@@ -111,6 +111,22 @@ struct ShutdownEvent : qb::Event {
 };
 
 // Final stats event when processing is complete
+/**
+ * @brief Self-addressed wake-ups for the two delays that end in a call on the actor.
+ *
+ * Both replace a `qb::io::async::callback([this]{ ... }, d)`, whose `Timeout` is owned by the
+ * event loop rather than by the actor: nothing cancels it when the actor is killed, so it fires
+ * against a destroyed object and a guard inside the lambda IS the read of freed memory. The
+ * replacement is `spawn(...)` + `co_await ctx.sleep(d)`, a wait the actor's cancellation scope
+ * owns, plus one of these events to do the work back on the actor.
+ *
+ * Note the site that deliberately did NOT change: the `qb::io::async::callback([]{
+ * qb::Main::stop(); }, 1s)` in `CoordinatorActor::on(ProcessingCompleteEvent&)` captures
+ * nothing, stops the engine rather than touching an actor, and is meant to outlive every actor.
+ */
+struct NotifyConsumersTick : qb::Event {};    ///< 2 s: nudge consumers that have not reported
+struct ConsumerFinalCountTick : qb::Event {}; ///< 500 ms: log the final count and leave
+
 struct ProcessingCompleteEvent : qb::Event {
     qb::string<32> entity_id;
     int            processed_count;
@@ -288,6 +304,7 @@ public:
         registerEvent<ProcessingCompleteEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
+        registerEvent<NotifyConsumersTick>(*this);
 
         // Connect to Redis
         if (!co_await _redis.connect()) {
@@ -322,21 +339,29 @@ public:
 
             // If consumers haven't reported completion yet, give them some time
             if (_completed_entities < _expected_entities) {
-                qb::io::async::callback(
-                    [this]() {
-                        // Check again after a delay
-                        if (_completed_entities < _expected_entities && !_shutdown_initiated) {
-                            qb::io::cout() << "Notifying consumers to report completion..." << std::endl;
-                            // If consumers haven't completed yet, send them a signal to complete
-                            // Comme getActorsByCore n'existe pas, on utilise une autre approche pour notifier les consommateurs
-                            for (int i = 2; i <= 3; i++) {
-                                // Alternative: Utiliser un évènement de shutdown global
-                                qb::io::cout() << "Broadcasting shutdown to core " << i << std::endl;
-                                push<ShutdownEvent>(qb::BroadcastId(i)); // Broadcast à tous les acteurs sur le core i
-                            }
-                        }
-                    },
-                    std::chrono::seconds(2)); // Wait 2 seconds before notifying consumers
+                // Wait 2 seconds before notifying consumers. The re-check reads
+                // `_completed_entities` and `_shutdown_initiated`, so it belongs in a handler:
+                // in a loop-owned timer's lambda those reads are the use-after-free, not a guard
+                // against it.
+                spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                    co_await ctx.sleep(std::chrono::seconds(2));
+                    ctx.template push<NotifyConsumersTick>();
+                });
+            }
+        }
+    }
+
+    void
+    on(const NotifyConsumersTick &) {
+        // The re-check now runs on the actor, where reading these members is legal.
+        if (_completed_entities < _expected_entities && !_shutdown_initiated) {
+            qb::io::cout() << "Notifying consumers to report completion..." << std::endl;
+            // If consumers haven't completed yet, send them a signal to complete
+            // Comme getActorsByCore n'existe pas, on utilise une autre approche pour notifier les consommateurs
+            for (int i = 2; i <= 3; i++) {
+                // Alternative: Utiliser un évènement de shutdown global
+                qb::io::cout() << "Broadcasting shutdown to core " << i << std::endl;
+                push<ShutdownEvent>(qb::BroadcastId(i)); // Broadcast à tous les acteurs sur le core i
             }
         }
     }
@@ -366,6 +391,9 @@ public:
             if (!_shutdown_initiated) {
                 _shutdown_initiated = true;
                 display_statistics();
+                // Stays a bare `callback(fn, d)` on purpose: it captures NOTHING, it stops the
+                // engine rather than touching an actor, and it must outlive every actor. That is
+                // exactly the case this overload is for.
                 qb::io::async::callback([]() { qb::Main::stop(); }, std::chrono::seconds(1));
             }
         }
@@ -445,6 +473,7 @@ public:
 
         // Register for events from coordinator
         registerEvent<ShutdownEvent>(*this);
+        registerEvent<ConsumerFinalCountTick>(*this);
 
         // Register for callback
         registerCallback(*this);
@@ -695,13 +724,19 @@ public:
         // Stop the callback
         unregisterCallback(*this);
 
-        // Delay to ensure last messages are processed
-        qb::io::async::callback(
-            [this]() {
-                qb::io::cout() << "StreamConsumer [" << _consumer_name << "] final count: " << _processed_count << " messages" << std::endl;
-                kill();
-            },
-            std::chrono::milliseconds(500));
+        // Delay to ensure last messages are processed. The body reads `_consumer_name` and
+        // `_processed_count` and then calls `kill()` — all three are actor state, so it belongs
+        // in a handler rather than in a timer the actor's death does not cancel.
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::milliseconds(500));
+            ctx.template push<ConsumerFinalCountTick>();
+        });
+    }
+
+    void
+    on(const ConsumerFinalCountTick &) {
+        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] final count: " << _processed_count << " messages" << std::endl;
+        kill();
     }
 };
 

@@ -38,8 +38,14 @@
  *   - `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>`
  *   - `co_await consumer.receive()` → `std::optional<qb::redis::message>` loop
  *   - `consumer.disconnect()` to close the channel and end the loop
- * - `spawn()` for actor-scoped background coroutines.
- * - `qb::io::async::callback` with `std::chrono::duration` timeout.
+ * - `spawn()` for actor-scoped background coroutines, and the rule that goes with it: capture
+ *   everything the body READS by value before the first `co_await`, and address other actors by
+ *   id through the context. A spawned loop can legitimately outlive the actor — see
+ *   `SubscriberActor::onInit()`, where closing the channel is itself part of destroying the actor.
+ * - `spawn(...)` + `co_await ctx.sleep(d)` + a self-addressed tick event as the way to wait —
+ *   and the one place where a bare `qb::io::async::callback(fn, d)` is still right, in
+ *   `CoordinatorActor::on(CoordinatorShutdownTick&)`, where the body captures nothing and is
+ *   meant to outlive every actor.
  */
 
 #include <chrono>
@@ -105,6 +111,15 @@ struct SubscriptionCompleteEvent : qb::Event {
     explicit SubscriptionCompleteEvent() {}
 };
 
+/**
+ * @brief Self-addressed wake-ups for `CoordinatorActor`'s two delays.
+ *
+ * Both replace a `qb::io::async::callback([this]{ ... }, d)`, whose timer is owned by the event
+ * loop rather than by the actor and so fires at an actor that may already be gone.
+ */
+struct SetupSubscriptionsTick : qb::Event {};  ///< 1 s after init: issue the subscriptions
+struct CoordinatorShutdownTick : qb::Event {}; ///< 2 s after shutdown starts: leave
+
 // Publisher actor that publishes messages to Redis channels
 class PublisherActor : public qb::Actor {
 private:
@@ -142,7 +157,7 @@ public:
         std::string channel = event.channel.c_str();
         std::string message = event.message ? *event.message : std::string{};
 
-        spawn([this, channel, message](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+        spawn([this, channel, message](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << "Publishing to channel '" << channel << "': " << message << std::endl;
 
@@ -155,7 +170,14 @@ public:
 
             if (_messages_published >= _target_messages) {
                 cout << "Published " << _messages_published << " messages, target reached" << std::endl;
-                qb::io::async::callback([this]() { push<ShutdownEvent>(id()); }, std::chrono::seconds(1));
+                // Already inside a coroutine the actor's cancellation scope owns, so the grace
+                // period is just another `co_await`: `ctx.sleep` routes that scope's token, and
+                // `ctx.push` addresses this actor by id. The
+                // `qb::io::async::callback([this]{ push<ShutdownEvent>(id()); }, 1s)` this
+                // replaced allocated a loop-owned timer holding a raw `this` that nothing
+                // cancelled when the actor died.
+                co_await ctx.sleep(std::chrono::seconds(1));
+                ctx.template push<ShutdownEvent>();
             }
         });
     }
@@ -201,17 +223,38 @@ public:
 
         cout << _name << " connected to Redis successfully!" << std::endl;
 
-        // Spawn the long-lived receive loop
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+        // Spawn the long-lived receive loop.
+        //
+        // `name` and `coordinator` are captured BY VALUE, before the first `co_await`, and the
+        // coordinator is addressed by id through `ctx`. That is not tidiness — it is what makes
+        // this loop correct, and reading `_name` here instead was a real defect: AddressSanitizer
+        // reported `heap-use-after-free` on the final line of this lambda, on every run.
+        //
+        // The mechanism is worth reading carefully, because it is not the one the code used to
+        // claim. `_msg_channel.close()` — the thing that ends this loop — is reached from two
+        // places: the consumer's `event::disconnected` handler, and `~RedisCoroConsumer`. In THIS
+        // program only the destructor path is taken, which was measured rather than assumed: with
+        // `kill()` deferred until the loop reported itself finished, the loop stayed parked for
+        // the entire three-second shutdown window and ended only when the engine stopped. So the
+        // real order is `on(ShutdownEvent)` → `kill()` → the actor is reaped → the consumer's
+        // destructor closes the channel → THIS coroutine resumes with `nullopt`, after `_name`
+        // has ceased to exist.
+        //
+        // Resuming there is safe by design: `qb::io::async::channel`'s `recv_awaiter` holds a
+        // `_ch_alive` flag and returns `nullopt` without touching the freed channel
+        // (`qb/io/async/coroutine/channel.h`). The framework anticipates the parked receiver
+        // outliving its channel. What it cannot anticipate is a lambda reading the actor's
+        // members afterwards — so it does not.
+        spawn([this, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             while (auto msg = co_await _consumer.receive()) {
-                cout << _name << " received on '" << msg->channel << "': " << msg->payload << std::endl;
+                cout << name << " received on '" << msg->channel << "': " << msg->payload << std::endl;
 
-                if (_coordinator_id != qb::ActorId()) {
-                    push<ReceivedMessageEvent>(_coordinator_id, std::string(msg->channel), std::string(msg->payload));
+                if (coordinator != qb::ActorId()) {
+                    ctx.template push_to<ReceivedMessageEvent>(coordinator, std::string(msg->channel), std::string(msg->payload));
                 }
             }
-            cout << _name << " receive loop ended" << std::endl;
+            cout << name << " receive loop ended" << std::endl;
         });
 
         co_return true;
@@ -221,19 +264,21 @@ public:
     on(const SubscribeEvent &event) {
         std::string channel = event.channel.c_str();
 
-        spawn([this, channel](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+        // Same rule as the receive loop: everything the coroutine only READS is captured by
+        // value before the first `co_await`, and the coordinator is addressed by id.
+        spawn([this, channel, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
-            cout << _name << " subscribing to channel: " << channel << std::endl;
+            cout << name << " subscribing to channel: " << channel << std::endl;
 
             auto r = co_await _consumer.subscribe(channel);
             if (r.ok()) {
-                cout << _name << " subscribed to channel: " << channel << std::endl;
+                cout << name << " subscribed to channel: " << channel << std::endl;
                 _subscribed_channels.push_back(channel);
 
                 // Notify coordinator that subscription is confirmed
-                push<SubscriptionCompleteEvent>(_coordinator_id);
+                ctx.template push_to<SubscriptionCompleteEvent>(coordinator);
             } else {
-                qb::io::cerr() << _name << " failed to subscribe to channel: " << channel << std::endl;
+                qb::io::cerr() << name << " failed to subscribe to channel: " << channel << std::endl;
             }
         });
     }
@@ -243,8 +288,11 @@ public:
         auto cout = qb::io::cout();
         cout << _name << " shutting down, unsubscribing from " << _subscribed_channels.size() << " channels" << std::endl;
 
-        // Disconnect the consumer — this closes the internal channel, which makes
-        // the receive() loop return nullopt and the spawned coroutine exit cleanly.
+        // Ask the consumer to drop the link, then leave. Do NOT read this as "and therefore the
+        // receive loop ends here": measured, the spawned loop is still parked when this handler
+        // returns, and it is `~RedisCoroConsumer` — running as part of the `kill()` below — that
+        // closes the message channel and resumes it. See the comment on the loop in `onInit()`
+        // for why resuming on a destroyed actor is survivable, and what the loop must not do.
         _consumer.disconnect();
 
         kill();
@@ -283,6 +331,8 @@ public:
         registerEvent<SubscriptionCompleteEvent>(*this);
         registerEvent<ShutdownEvent>(*this);
         registerEvent<qb::KillEvent>(*this);
+        registerEvent<SetupSubscriptionsTick>(*this);
+        registerEvent<CoordinatorShutdownTick>(*this);
         registerCallback(*this);
 
         // Create publisher
@@ -313,21 +363,10 @@ public:
         cout << "Created Subscriber1: " << _subscriber1_id << std::endl;
         cout << "Created Subscriber2: " << _subscriber2_id << std::endl;
 
-        // Subscribe to channels after a brief delay to let connections establish
-        qb::io::async::callback(
-            [this]() {
-                auto cout = qb::io::cout();
-                cout << "Setting up subscriptions..." << std::endl;
-
-                // Subscriber 1: news + sports
-                push<SubscribeEvent>(_subscriber1_id, _channels[0]);
-                push<SubscribeEvent>(_subscriber1_id, _channels[1]);
-
-                // Subscriber 2: sports + technology (overlap on sports)
-                push<SubscribeEvent>(_subscriber2_id, _channels[1]);
-                push<SubscribeEvent>(_subscriber2_id, _channels[2]);
-            },
-            std::chrono::seconds(1));
+        // Subscribe to channels after a brief delay to let connections establish. The wait lives
+        // in a coroutine this actor's cancellation scope owns; the work itself happens in
+        // `on(SetupSubscriptionsTick&)`, because it reads `_subscriber*_id` and `_channels`.
+        scheduleTick<SetupSubscriptionsTick>(std::chrono::seconds(1));
 
         co_return true;
     }
@@ -352,6 +391,39 @@ public:
         auto cout = qb::io::cout();
         cout << "Coordinator received forwarded message from channel '" << event.channel
              << "': " << (event.message ? *event.message : std::string{}) << std::endl;
+    }
+
+    /**
+     * @brief Sleep `d`, then wake this actor with a `TickEvent`
+     *
+     * The safe replacement for `qb::io::async::callback([this]{ ... }, d)`. That overload
+     * heap-allocates a `Timeout` owned by the event loop, not by the actor: nothing cancels it
+     * when the actor is killed, so it fires against a destroyed object. `spawn()` runs the body
+     * in this actor's cancellation scope and `ctx.sleep(d)` routes that scope's token, so
+     * killing the actor cancels the sleep. The body touches no actor state — everything that
+     * does lives in the `on(TickEvent)` handler, which only runs on a live actor.
+     */
+    template <typename TickEvent>
+    void
+    scheduleTick(qb::duration d) {
+        spawn([d](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(d);
+            ctx.template push<TickEvent>();
+        });
+    }
+
+    void
+    on(const SetupSubscriptionsTick &) {
+        auto cout = qb::io::cout();
+        cout << "Setting up subscriptions..." << std::endl;
+
+        // Subscriber 1: news + sports
+        push<SubscribeEvent>(_subscriber1_id, _channels[0]);
+        push<SubscribeEvent>(_subscriber1_id, _channels[1]);
+
+        // Subscriber 2: sports + technology (overlap on sports)
+        push<SubscribeEvent>(_subscriber2_id, _channels[1]);
+        push<SubscribeEvent>(_subscriber2_id, _channels[2]);
     }
 
     void
@@ -393,21 +465,29 @@ public:
         push<ShutdownEvent>(_subscriber1_id);
         push<ShutdownEvent>(_subscriber2_id);
 
-        qb::io::async::callback(
-            [this]() {
-                auto cout = qb::io::cout();
-                cout << "CoordinatorActor shutting down" << std::endl;
-                kill();
+        // Give the others two seconds to finish, then leave. `kill()` runs on the actor, so the
+        // wait must come back as an event rather than as a timer holding `this`.
+        scheduleTick<CoordinatorShutdownTick>(std::chrono::seconds(2));
+    }
 
-                qb::io::async::callback(
-                    []() {
-                        auto cout = qb::io::cout();
-                        cout << "Stopping engine..." << std::endl;
-                        qb::Main::stop();
-                    },
-                    std::chrono::seconds(1));
+    void
+    on(const CoordinatorShutdownTick &) {
+        auto cout = qb::io::cout();
+        cout << "CoordinatorActor shutting down" << std::endl;
+        kill();
+
+        // This one MUST stay a bare `qb::io::async::callback(fn, d)`, and it is the clearest
+        // example in this repository of when that overload is the right tool: it captures
+        // NOTHING, it stops the engine rather than touching an actor, and it is supposed to
+        // outlive every actor including this one. A `spawn(...)` here would be cancelled by the
+        // `kill()` on the line above and the engine would never stop.
+        qb::io::async::callback(
+            []() {
+                auto cout = qb::io::cout();
+                cout << "Stopping engine..." << std::endl;
+                qb::Main::stop();
             },
-            std::chrono::seconds(2));
+            std::chrono::seconds(1));
     }
 };
 

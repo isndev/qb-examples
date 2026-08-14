@@ -93,7 +93,10 @@ This example showcases a wide range of QB framework features:
 * **Timeout Handling**: `qb::io::use<T>::timeout` mixin used by `ChatSession` for inactivity timeouts (`setTimeout`,
   `updateTimeout`).
 * **URI Parsing**: `qb::io::uri` for handling server addresses.
-* **Asynchronous Callbacks**: `qb::io::async::callback(func, delay)` for tasks like client reconnection.
+* **Lifetime-bound delays**: `spawn(...)` + `co_await ctx.sleep(d)` + a self-addressed tick event, used by the client
+  for its reconnect delay (`ClientActor::scheduleReconnect()`). Not `qb::io::async::callback(func, delay)`: that timer
+  belongs to the event loop, not to the actor, so it fires after `~Actor()` — and an `is_alive()` guard inside it is
+  itself the use-after-free.
 * **Thread-Safe Console I/O**: `qb::io::cout()`, `qb::io::cerr()`.
 
 ## How to Build and Run

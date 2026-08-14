@@ -22,7 +22,8 @@
  * - Custom Protocol Handling: Integration with `BrokerProtocol`.
  * - Event Handling: `onInit()`, `on(const BrokerInputEvent&)`, `on(const broker::Message&)`,
  *   `on(qb::io::async::event::disconnected const&)`. Message sending via `*this << broker_message;`.
- * - Asynchronous Callbacks: `qb::io::async::callback` for reconnection.
+ * - Delayed work bound to the actor's lifetime: `spawn(...)` + `co_await ctx.sleep(d)`, waking the
+ *   actor with a self-addressed `ReconnectTickEvent` (see `scheduleReconnect()`).
  * - Inter-Actor Communication: Receiving `BrokerInputEvent`.
  */
 
@@ -34,6 +35,16 @@
 #include "../shared/Protocol.h"
 #include "../shared/Events.h"
 #include <atomic>
+
+/**
+ * @brief Self-addressed wake-up: "the reconnect delay has elapsed, try again".
+ *
+ * A coroutine may not touch actor state after a `co_await` — the actor may have been destroyed
+ * while it was suspended — so the timer body cannot call `connect()` directly. It pushes this
+ * event instead, and the handler runs on the actor, on its own thread, only if the actor is
+ * still there to receive it. Carries no payload: the whole message is "now".
+ */
+struct ReconnectTickEvent : public qb::Event {};
 
 /**
  * @brief Core client actor managing network communication and message handling
@@ -114,6 +125,14 @@ public:
      * 2. Initiates reconnection if enabled
      */
     void on(qb::io::async::event::disconnected const &);
+
+    /**
+     * @brief Runs one reconnection attempt, `RECONNECT_DELAY` after it was scheduled
+     *
+     * The delay itself is served by a coroutine (see `scheduleReconnect()`); this handler is
+     * where the actor state is touched, because a handler only runs on a live actor.
+     */
+    void on(const ReconnectTickEvent &);
 
     /**
      * @brief Processes user input events
@@ -215,6 +234,13 @@ private:
      * 3. Schedules reconnection if enabled
      */
     void onConnectionFailed();
+
+    /**
+     * @brief Waits `RECONNECT_DELAY`, then wakes this actor with a `ReconnectTickEvent`
+     *
+     * Cancelled with the actor, so a client that goes away mid-wait retries nothing.
+     */
+    void scheduleReconnect();
 
     /**
      * @brief Parses user commands
