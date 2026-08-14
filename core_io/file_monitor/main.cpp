@@ -59,7 +59,7 @@
  *   self-addressed tick event, in `ClientActor` (see `ClientActor::scheduleTick`). NOT
  *   `qb::io::async::callback([this]{...}, d)`, whose timer outlives the actor.
  * - `qb::io::async::directory_watcher` (used by `DirectoryWatcher` actor) for file system monitoring.
- * - `qb::io::system::file` for synchronous file operations within async contexts (e.g., in `ClientActor`'s test operations).
+ * - `qb::io::sys::file` for synchronous file operations within async contexts (e.g., in `ClientActor`'s test operations).
  * - Coordinated shutdown using `broadcast<qb::KillEvent>()`.
  */
 

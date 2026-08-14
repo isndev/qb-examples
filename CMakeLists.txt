@@ -51,24 +51,26 @@ set(QB_EXAMPLES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 # of that file for the defect class it closes.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExample.cmake)
 
-# NOTE: examples are being ported to the current qb API one at a time. Only the
-# adapted ones are enabled below; uncomment each category/example as it is ported.
+# The tree is organised BY LEVEL (`NN-<tier>/`) — the order in which a person should
+# read it — rather than by which library a program links, which is a fact about the
+# build system and not about learning. Six tiers are converted; `core/` is what remains
+# of the pre-3.0 layout, and it holds only the four programs whose replacements are not
+# written yet (see its own CMakeLists for which replaces which).
 #
-# NOTE: the tree is being re-organised BY LEVEL (`NN-<tier>/`) rather than by which
-# library a program links. `02-io/` is converted; the directories below it still carry
-# their pre-3.0 names and their hand-written target names, and move one tier per commit.
+# 04-patterns/ has no directory because it has no program: the eleven shipped
+# qb/core/patterns/ headers are demonstrated zero times, and that whole tier is new work.
 
-# Add subdirectories for each example category
-add_subdirectory(core)
+add_subdirectory(01-actors)
 add_subdirectory(02-io)
+add_subdirectory(03-coroutines)
+add_subdirectory(05-services)
+add_subdirectory(06-modules)
+add_subdirectory(07-applications)
+
+# Pre-3.0 holding directories. Each holds only programs the architecture RETIRES or MERGES
+# rather than moves, and a retirement lands with its replacement — not before it, or the
+# corpus promises something no file delivers. Each directory's own CMakeLists names which
+# replacement it is waiting for; the last one to arrive takes the directory with it.
+add_subdirectory(core)
 add_subdirectory(core_io)
-add_subdirectory(coroutine)
-
-# Add module examples
-add_subdirectory(qbm/redis)
-add_subdirectory(qbm/pgsql)
-add_subdirectory(qbm/http)
-add_subdirectory(qbm/ws)
-
-# Full-stack examples (HTTP + WS + DB + Redis)
-add_subdirectory(all)
+add_subdirectory(qbm)

@@ -16,41 +16,16 @@
 #
 
 # -----------------------------------------------------------------------------
-# qb Redis Module Examples - CMake Configuration
-#
-# This file configures Redis client examples demonstrating data structures,
-# pub/sub messaging, transactions, and stream processing.
+# Pre-3.0 holding directory — see examples/qbm/CMakeLists.txt for why this file is here.
 # -----------------------------------------------------------------------------
 
-project(qb_redis_examples
-        LANGUAGES CXX
-        VERSION ${QB_FRAMEWORK_VERSION}
-        DESCRIPTION "Redis module examples for the qb framework"
-)
-
-qb_status_message("Building qb Redis module examples")
-
-# Define Redis examples to build
-set(QB_REDIS_EXAMPLES
-        example1_basic_connection
-        example2_hash_operations
-        example3_list_operations
-        example4_async_operations
-        example5_pubsub_example
-        example6_transaction_example
-        example7_stream_processor
-        example8_complex_actor_system
-        coro_example
-)
-
-# Build each Redis example
-foreach (EXAMPLE_NAME ${QB_REDIS_EXAMPLES})
+foreach (EXAMPLE_NAME
+         example2_hash_operations
+         example3_list_operations
+         example8_complex_actor_system)
     qb_add_executable(
             NAME ${EXAMPLE_NAME}
             SOURCES ${EXAMPLE_NAME}.cpp
             DEPENDS qbm-redis
     )
 endforeach ()
-
-list(LENGTH QB_REDIS_EXAMPLES QB_REDIS_EXAMPLES_COUNT)
-qb_status_message("Redis examples configured with ${QB_REDIS_EXAMPLES_COUNT} targets") 

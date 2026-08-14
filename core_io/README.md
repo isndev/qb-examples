@@ -1,50 +1,32 @@
-# QB Core & IO Integration Examples
+# Pre-3.0 holding directory — one core+I/O project awaiting its replacements
 
-This directory contains examples that demonstrate the integration of `qb-core` (Actor model, concurrency) and `qb-io` (
-asynchronous I/O, networking, utilities) to build more complex, networked, and concurrent applications.
+**This is not a tier.** The corpus is organised by level now (see
+[`examples/README.md`](../README.md)). The three projects that used to live beside this one moved
+to [`05-services/`](../05-services/), keeping their own READMEs:
 
-Each subdirectory represents a mini-project showcasing a specific use case.
+| Was | Is |
+|---|---|
+| `core_io/chat_tcp/` | [`05-services/01-tcp-chat/`](../05-services/01-tcp-chat/README.md) |
+| `core_io/message_broker/` | [`05-services/02-pubsub-broker/`](../05-services/02-pubsub-broker/README.md) |
+| `core_io/file_processor/` | [`05-services/03-file-pipeline/`](../05-services/03-file-pipeline/README.md) |
 
-## Building the Examples
+`file_monitor/` did not move, because the architecture does not move it — it **retires** it into
+three different homes, and a retirement only lands with its replacements:
 
-To build these examples, navigate to the root of the QB Framework and use CMake.
+* `watcher.{h,cpp}` → `02-io/08-timeouts-and-watchers`, where "`ev::stat` polls one path and
+  cannot name the changed file" is the *lesson* rather than the disappointment.
+* `events.h`'s relocation comment → `01-actors/03-event-payloads`, which is to be written around it.
+* `processor.{h,cpp}` → `05-services/03-file-pipeline`, which is where a processor that currently
+  receives zero events belongs.
+
+It keeps its pre-3.0 hand-written target name on purpose: a derived name would put it in a tier,
+and it is not in one. It is Unix-only, as it always was — POSIX `stat()`/`mmap()` with no Windows
+equivalent here — so it is not created on Windows rather than failing to compile.
 
 ```bash
-# From the root directory of the qb-framework
-mkdir build && cd build
-cmake ..
-# To build a specific example, refer to its individual README for target names.
-# e.g., cmake --build . --target chat_server
-# Or build all examples
-cmake --build .
+cmake --preset release
+cmake --build --preset release --target file_monitor
+./build/presets/release/examples/core_io/file_monitor/file_monitor
 ```
 
-Executables will typically be located in a subdirectory within `build/examples/core_io/`.
-
-## Mini-Project Examples
-
-Detailed explanations, QB features demonstrated, and specific build/run instructions for each mini-project can be found
-in their respective README files:
-
-1. **TCP Chat System (`chat_tcp/`)**
-    * Implements a multi-client, multi-core TCP chat application.
-    * Demonstrates actor-based server architecture, custom protocols, and session management.
-    * [Detailed README](./chat_tcp/README.md)
-
-2. **File Monitor (`file_monitor/`)**
-    * A real-time file system monitoring application using actors and `qb-io`'s asynchronous file watching.
-    * Shows how to detect and process file system changes (creations, modifications, deletions).
-    * [Detailed README](./file_monitor/README.md)
-
-3. **File Processor (`file_processor/`)**
-    * Illustrates a distributed file processing system using a manager-worker actor pattern.
-    * Distributes file I/O across a pool of worker actors on several cores, with request queueing when every worker
-      is busy. (The I/O itself is *not* deferred — see the README, `file_worker.h:102`, `:158`.)
-    * [Detailed README](./file_processor/README.md)
-
-4. **Message Broker (`message_broker/`)**
-    * Implements a topic-based publish-subscribe message broker.
-    * Showcases a scalable server architecture, custom binary protocol, and zero-copy message handling techniques.
-    * [Detailed README](./message_broker/README.md)
-
-Please refer to the individual README files within each sub-project directory for more in-depth information. 
+See [`file_monitor/README.md`](./file_monitor/README.md) for what it does.

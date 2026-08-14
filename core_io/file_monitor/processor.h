@@ -10,7 +10,7 @@
  * Its key responsibilities include:
  * - Receiving `FileEvent`s.
  * - Extracting metadata for created or modified files (e.g., size, hash) using
- *   `qb::io::system::file` and standard filesystem operations.
+ *   `qb::io::sys::file` and standard filesystem operations.
  * - Maintaining a map (`_tracked_files`) of known files and their metadata to detect
  *   actual content changes versus mere timestamp updates for MODIFIED events.
  * - Handling file deletion events by removing files from its tracking map.
@@ -24,7 +24,7 @@
  * - `qb::Event`: Base for `FileEvent` and other control/stats events.
  * - Event Handling: `onInit()`, `on(FileEvent&)`, `on(SetProcessingConfigRequest&)`, etc.
  * - State Management: Maintaining `_tracked_files` and `_stats`.
- * - `qb::io::system::file`: Used for reading file content to calculate a hash (demonstrating
+ * - `qb::io::sys::file`: Used for reading file content to calculate a hash (demonstrating
  *   integration of synchronous file I/O within an actor context, typically for short operations
  *   or operations that would be further offloaded if very long).
  * - `qb::KillEvent` handling for graceful shutdown.
