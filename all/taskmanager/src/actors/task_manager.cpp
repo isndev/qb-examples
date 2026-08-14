@@ -61,7 +61,7 @@ TaskManager::onInit() {
     if (!co_await _ws_handler.connect_subscriber())
         co_return false;
     spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-        co_await _ws_handler.consume_loop(); // cancelled on kill; ends on shutdown()
+        co_await _ws_handler.consume_loop(); // ends at ~co_consumer, NOT here — see websocket_handler.h
     });
 
     // 4. HTTP routes — only now that every backend is up.
@@ -98,7 +98,7 @@ TaskManager::on(qb::KillEvent const &) {
 
 void
 TaskManager::shutdown_resources() {
-    _ws_handler.shutdown(); // closes the SUB → consume_loop() ends
+    _ws_handler.shutdown(); // drops the SUB link; does NOT end consume_loop() — see websocket_handler.h
     _redis.disconnect();
     if (_db)
         _db->disconnect();

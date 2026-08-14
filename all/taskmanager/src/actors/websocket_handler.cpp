@@ -65,9 +65,9 @@ WebSocketHandler::connect_subscriber() {
 }
 
 /**
- * Coroutine receive loop: pull every published message and fan it out to all WS
- * clients. `receive()` yields `std::nullopt` when the subscription closes
- * (shutdown() / disconnect), which ends the loop cleanly.
+ * Coroutine receive loop: pull every published message and fan it out to all WS clients.
+ * `receive()` yields `std::nullopt` when the message channel closes — which here means
+ * `~RedisCoroConsumer` (the actor's own destruction), NOT `shutdown()`. See the loop's tail.
  */
 qb::io::async::task<void>
 WebSocketHandler::consume_loop() {
@@ -80,10 +80,20 @@ WebSocketHandler::consume_loop() {
             qb::io::cerr() << "[WebSocketHandler] malformed payload: " << e.what() << '\n';
         }
     }
+    // NOTHING BELOW THIS LINE MAY TOUCH `this`, AND THAT IS LOAD-BEARING.
+    // The loop exits either because a message stopped arriving (actor alive) or because the
+    // channel was closed — and the only thing that closes it here is `~RedisCoroConsumer`,
+    // running as part of this actor's destruction. On that path we resume with `nullopt`
+    // *after* `~TaskManager`, so `this` (which is `&_ws_handler`, a member of the actor) is
+    // already freed. The framework anticipates the parked receiver outliving its channel —
+    // `recv_awaiter` holds a `_ch_alive` flag and returns `nullopt` without dereferencing
+    // the freed channel. It cannot anticipate this function reading its own members, so a
+    // `client_count()` or `_manager` access added here is an immediate use-after-free.
+    // Measured: adding one member read here reports ASan heap-use-after-free on every run.
     qb::io::cout() << "[WebSocketHandler] consume loop ended\n";
 }
 
-/** Close the subscriber connection so consume_loop() returns. */
+/** Drop the subscriber link. Does NOT end consume_loop() — see the loop's tail. */
 void
 WebSocketHandler::shutdown() {
     _sub.disconnect();

@@ -281,7 +281,20 @@ public:
             return;
         }
 
-        // Spawn a coroutine to perform the blocking pop + processing asynchronously
+        // Spawn a coroutine to perform the blocking pop + processing asynchronously.
+        //
+        // Every spawned body in this file touches members after a `co_await _redis...`, and
+        // that is safe by OWNERSHIP rather than by `spawn`'s scope. `spawn` cancels only at
+        // scope-routed suspensions (`ctx.sleep`, `ctx.cancellation_point`,
+        // `ctx.until_cancelled`, `ctx.cancellable`); a qbm command awaiter registers nothing
+        // with the token, so `kill()` never reaches these bodies. What protects them is that
+        // `_redis` is a MEMBER of the actor: `~Actor` destroys the client together with its
+        // pending-reply queue, so the reply callback is discarded UNINVOKED and the coroutine
+        // never resumes at all — measured by killing an actor parked on a 3 s BRPOP: the
+        // resume never arrives and ASan is silent. The cost is an orphaned coroutine frame,
+        // not a use-after-free. Copy this only while that invariant holds: give the client a
+        // lifetime that outlives the actor (a `shared_ptr`, a service actor) and the very
+        // same body becomes a use-after-free, because then the reply DOES arrive.
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             // Try to get one job with a 1-second timeout (moderate timeout)
             qb::io::cout() << "WorkerActor [" << _worker_id << "] polling for jobs..." << std::endl;

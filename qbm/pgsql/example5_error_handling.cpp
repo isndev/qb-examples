@@ -81,6 +81,22 @@ public:
             co_return false;
 
         // Run the error scenarios, then schedule the actor's shutdown + cleanup.
+        //
+        // Both helpers are member coroutines that touch `_db_connection` after every
+        // `co_await`, and the final line uses `this`. That is safe by OWNERSHIP, not by
+        // `spawn`'s scope: `spawn` cancels only at scope-routed suspensions (`ctx.sleep`,
+        // `ctx.cancellation_point`, `ctx.until_cancelled`, `ctx.cancellable`), and a pgsql
+        // awaiter is not one — it registers nothing with the cancellation token. What protects
+        // these bodies is that `_db_connection` is a MEMBER: `~Actor` destroys the database
+        // with its pending queries, `Transaction::~Transaction` pops them WITHOUT running
+        // `on_error`, and the completion hook is discarded uninvoked — so the coroutine never
+        // resumes. Measured: an actor killed while parked on `SELECT pg_sleep(3)` never
+        // resumes and ASan stays silent. An orphaned frame, not a use-after-free.
+        //
+        // Note the asymmetry, also measured: calling `_db->disconnect()` BEFORE `kill()` does
+        // the opposite — it fails every pending query synchronously and pumps the loop, so the
+        // coroutine resumes *inside* `disconnect()` while the actor is still alive. Safe, but
+        // reentrant: that body runs to completion in the middle of the shutdown handler.
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             co_await runErrorScenarios();
             co_await cleanupDatabase();

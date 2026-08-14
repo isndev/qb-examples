@@ -22,8 +22,10 @@
  *
  * ## Lifecycle
  * `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the owner
- * then spawns `consume_loop()` as an actor-scoped coroutine. `shutdown()` closes
- * the subscription so the loop ends (its `receive()` yields `std::nullopt`).
+ * then spawns `consume_loop()` as an actor-scoped coroutine. What ends that loop is
+ * `~RedisCoroConsumer` closing the message channel — part of the actor's own
+ * destruction — so the loop resumes with `std::nullopt` after the actor is gone.
+ * Neither `shutdown()` nor `kill()` ends it; both were measured and neither does.
  */
 #pragma once
 
@@ -59,12 +61,19 @@ public:
 
     /**
      * @brief Drain published messages forever, broadcasting each to WS clients.
-     * @details Runs until the subscription closes (`shutdown()` / disconnect),
-     *          at which point `receive()` yields `std::nullopt` and the loop ends.
+     * @details Ends when `~RedisCoroConsumer` closes the message channel — i.e. as part of
+     *          the owning actor's destruction — and therefore resumes one last time with
+     *          `std::nullopt` after that actor is gone. Nothing after the loop may touch
+     *          `this`; see the definition.
      */
     qb::io::async::task<void> consume_loop();
 
-    /** Close the subscriber so `consume_loop()` returns (idempotent). */
+    /**
+     * @brief Drop the subscriber connection (idempotent).
+     * @details Does NOT end `consume_loop()`, despite the intuition: `disconnect()` only
+     *          feeds the io watcher a deferred event, and when the actor is killed in the
+     *          same pass `~client()` stops that watcher before it ever fires.
+     */
     void shutdown();
 
     // ── qb-io callback ───────────────────────────────────────────────────────

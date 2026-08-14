@@ -142,6 +142,16 @@ public:
         std::string key   = event.key.c_str();
         std::string value = event.value ? *event.value : std::string{};
 
+        // Member access after `co_await _redis...` is safe HERE, and the reason is OWNERSHIP,
+        // not `spawn`'s scope. `spawn` cancels only at scope-routed suspensions (`ctx.sleep`,
+        // `ctx.cancellation_point`, `ctx.until_cancelled`, `ctx.cancellable`); a qbm command
+        // awaiter registers nothing with the token, so `kill()` does not reach this body.
+        // What protects it is that `_redis` is a MEMBER: `~Actor` destroys the client together
+        // with its pending-reply queue, the reply callback is discarded UNINVOKED, and this
+        // coroutine simply never resumes — measured by killing an actor parked on a 3 s BRPOP:
+        // no resume, ASan silent. The cost is an orphaned frame, not a use-after-free. Give
+        // the client a lifetime that outlives the actor (a `shared_ptr`, a service actor) and
+        // this exact body becomes one, because then the reply DOES arrive.
         spawn([this, key, value](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << "Storing data at key: " << key << std::endl;

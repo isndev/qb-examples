@@ -171,7 +171,16 @@ public:
 
         cout << "Connected to Redis successfully!" << std::endl;
 
-        // Spawn the inventory-setup coroutine — runs concurrently after activation
+        // Spawn the inventory-setup coroutine — runs concurrently after activation.
+        //
+        // `setup_inventory()` is a member coroutine: its implicit `this` is the actor, and it
+        // touches members after every `co_await _redis...`. That is safe by OWNERSHIP, not by
+        // `spawn`'s scope — a qbm command awaiter registers nothing with the cancellation
+        // token, so `kill()` never reaches it. `_redis` is a MEMBER, so `~Actor` destroys the
+        // client with its pending-reply queue, the reply callback is discarded UNINVOKED, and
+        // the coroutine never resumes (measured: an actor killed while parked on a 3 s BRPOP
+        // never resumes, ASan silent). The cost is an orphaned frame, not a use-after-free.
+        // The same body over a client that outlives the actor WOULD be a use-after-free.
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await setup_inventory(); });
 
         co_return true;

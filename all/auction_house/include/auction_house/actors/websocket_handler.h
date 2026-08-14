@@ -32,10 +32,30 @@ public:
     /** Connect the subscriber and subscribe to `auction:events`. */
     qb::io::async::task<bool> connect_subscriber();
 
-    /** Drain published messages forever, broadcasting each to WS clients. */
+    /**
+     * @brief Drain published messages forever, broadcasting each to WS clients.
+     *
+     * NOTHING AFTER THE LOOP MAY TOUCH `this`, AND THAT IS LOAD-BEARING. The loop ends when
+     * the message channel closes, and the only thing that closes it here is
+     * `~RedisCoroConsumer` — running as part of the owning actor's destruction. `close()`
+     * SCHEDULES a resume for every parked receiver, so the loop resumes with `std::nullopt`
+     * *after* `~AuctionManager`, with `this` (which is `&_ws_handler`, a member of that
+     * actor) already freed. The framework anticipates the parked receiver outliving its
+     * channel — `recv_awaiter` holds a `_ch_alive` flag and returns `nullopt` without
+     * dereferencing the freed channel. It cannot anticipate the loop's tail reading its own
+     * members, so a `client_count()` or `_manager` access added there is an immediate
+     * use-after-free: measured, one member read at that point is an ASan heap-use-after-free
+     * on every run.
+     */
     qb::io::async::task<void> consume_loop();
 
-    /** Close the subscriber so `consume_loop()` returns (idempotent). */
+    /**
+     * @brief Drop the subscriber connection (idempotent).
+     *
+     * Does NOT end `consume_loop()`, despite the intuition: `disconnect()` only feeds the io
+     * watcher a deferred event, and when the actor is killed in the same pass `~client()`
+     * stops that watcher before it ever fires. Measured, not assumed.
+     */
     void shutdown();
 
     // ── Callbacks ────────────────────────────────────────────────────────────
