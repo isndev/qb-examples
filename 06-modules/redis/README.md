@@ -101,7 +101,20 @@ the architecture MERGES into `02-data-types` and the one it retires.
 
 ---
 
-### 6. Transaction Example (`05-transactions.cpp`)
+### 6. Transactions (`05-transactions.cpp`) — **rewritten**
+
+Titled *Transactions and Atomic Operations*, 716 lines, and — measured — calling no `MULTI`,
+`EXEC`, `WATCH` or `DISCARD`. It was the one file in the restructured corpus whose filename was not
+true of it. It now exercises all five verbs against a live Redis, with a gated verdict for each,
+plus the trap that decides whether a MULTI block works: a queued command answers `+QUEUED`, and a
+TYPED client reacts three different ways to that — `status` gives `ok()==true` with the string
+`QUEUED`, `long long` gives `ok()==false` for a perfectly queued command, and
+`std::optional<std::string>` gives `ok()==true` with the value literally set to `"QUEUED"`, which
+is the silent one. It also shows how to tell an aborted `EXEC` (RESP nil, `raw()->is_null()`) from
+a genuine parse error, and how to read a heterogeneous batch through `raw()`.
+
+#### The original notes
+
 
 * **@example qbm-redis: Transactions and Atomic Operations with Actors (Coroutine API)**
 * **Purpose**: An inventory/ordering simulation. Note what it does **not** contain: there is no `MULTI`, no `EXEC`, no

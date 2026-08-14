@@ -10,15 +10,21 @@ The CMake target and the binary are **derived** from each file's path
 |---|---|
 | `01-hello-actor.cpp` | `qb-example-actors-hello-actor` |
 | `02-messaging.cpp` | `qb-example-actors-messaging` |
+| `03-event-payloads.cpp` | `qb-example-actors-event-payloads` |
 | `04-cores-and-placement.cpp` | `qb-example-actors-cores-and-placement` |
 | `05-lifecycle.cpp` | `qb-example-actors-lifecycle` |
 | `06-doing-things-later.cpp` | `qb-example-actors-doing-things-later` |
+| `07-service-actor.cpp` | `qb-example-actors-service-actor` |
+| `08-child-actors.cpp` | `qb-example-actors-child-actors` |
 | `09-state-machine.cpp` | `qb-example-actors-state-machine` |
+| `10-signals-and-shutdown.cpp` | `qb-example-actors-signals-and-shutdown` |
+| `11-hot-path.cpp` | `qb-example-actors-hot-path` |
 
-**The holes are the tier's to-do list, not an accident.** `03-event-payloads`, `07-service-actor`,
-`08-child-actors`, `10-signals-and-shutdown` and `11-hot-path` have no program yet — between them
-they are why `ServiceActor`, `getService`, `is_actor_alive`, `send<>`, `getPipe`, `build_event`
-and `to()` have zero demonstrators anywhere in the corpus.
+**The tier is now dense**, and the five programs that filled its holes are the ones that closed
+the corpus's third-largest measured gap: `ServiceActor`, `getService`, `getServiceId`,
+`is_actor_alive`, `addRefActor`, `send<>`, `getPipe`, `allocated_push`, `build_event`, `to()`,
+`no_default_events`, `registerSignal` and the `lockfree::spsc::ringbuffer` bridge all had **zero**
+demonstrators anywhere before them.
 
 ```bash
 cmake --preset release
@@ -89,6 +95,38 @@ the file's code.
   file header contrasts all four ways to do something later: `ctx.sleep`, `qb::io::async::callback(f, d)`,
   `qb::io::async::defer(f)` and `qb::ICallback`.
 
+### `03-event-payloads.cpp`
+
+* **Focus**: the one rule about event payloads a Mac cannot show you — an event is RELOCATED with
+  `memcpy` and its source destructor never runs, so no member may STORE a pointer into itself.
+* **Actors**: `Producer`/`Consumer` on two cores (the payload really crosses), and a `Bridge` that
+  drains a lock-free ring fed by an ordinary `std::thread`.
+* **QB Features**: `qb::string<N>`, `qb::ActorId`, a `shared_ptr`-boxed body, `qb::FillEvent<int>`,
+  `qb::lockfree::spsc::ringbuffer<T, N>`, `qb::ICallback` + `on(qb::LoopEvent const&)`,
+  `unregisterCallback`. It opens with a measurement — printed, not asserted — of which candidate
+  payload types keep a pointer inside themselves on YOUR standard library.
+
+### `07-service-actor.cpp`
+
+* **Focus**: the framework's standard bootstrap object. One singleton per core per tag, reachable
+  by TYPE with no id plumbing at all.
+* **Actors**: `ConfigService` (on two cores, with different contents), a core-0-only
+  `TelemetryService`, two `Worker`s whose constructors take nothing, and a `Reporter`.
+* **QB Features**: `qb::ServiceActor<Tag>`, `qb::Service`, `getService<T>()` (including its
+  `nullptr`, and the fact that it is the one lookup NOT phase-gated), and `getServiceId<Tag>(core)`
+  — which addresses the service on ANOTHER core without a lookup, because a service's id is
+  computed from its tag.
+
+### `08-child-actors.cpp`
+
+* **Focus**: actor trees, and the property the word "child" gets wrong.
+* **Actors**: a `Team` that creates four `Member`s at runtime, and a `Watcher` that measures what
+  survives the team.
+* **QB Features**: `addRefActor` / `addRefHandle`, `qb::ActorHandle<T>` (`id()` usable at once,
+  `get()` only for an ACTIVE actor on this thread), `is_actor_alive` as the thing that keeps a
+  parent's registry bounded — and the measurement that killing a parent leaves its "children"
+  running, because `addRefActor` makes a peer, not a subobject.
+
 ### `09-state-machine.cpp`
 
 * **Focus**: Implementing a finite state machine (FSM) within an actor.
@@ -100,3 +138,29 @@ the file's code.
       requests status.
 * **QB Features**: FSM logic encapsulation, `spawn(...)` + `co_await ctx.sleep(...)` for delayed self-events (bound
   to the actor's lifetime, unlike `qb::io::async::callback(f, d)`), state notifications.
+
+### `10-signals-and-shutdown.cpp`
+
+* **Focus**: the first thing anyone needs to ship a server — and the corpus got it wrong three
+  different ways before this.
+* **Actors**: a `Server` that reloads on SIGHUP and drains on SIGTERM, and a `Ticker` that raises
+  both against its own process so the program demonstrates itself.
+* **QB Features**: `qb::SignalEvent` and the `registerEvent<qb::SignalEvent>` that makes a derived
+  handler run; `qb::Main::registerSignal` / `unregisterSignal` / `ignoreSignal`; `qb::Main::stop`;
+  and the exit-code contract — including the measured reason `hasError()` is only half of it
+  (an ASYNC `onInit` failure sets no engine flag at all). Run it with `--fail-bind` to watch the
+  exit code change from 0 to 1.
+
+### `11-hot-path.cpp`
+
+* **Focus**: the performance knobs qb is sold on, measured rather than asserted.
+* **Actors**: a `Bench`, two `Sink`s (one per core) that opt OUT of the default event
+  registrations, and a `Reporter`.
+* **QB Features**: `send<>` vs `push<>`, `getPipe` + `allocated_push` for a variable-length event,
+  `build_event`, `to()` / `EventBuilder`, `qb::no_default_events`, `qb::EventQOS0`, `setLatency`,
+  `setAffinity` + `qb::CPU::ThreadPinningSupported()`, and `qb::tsc_ticks()`.
+
+> Two of its printed findings are worth reading even if you never need the knobs: enqueue cost is
+> the SAME same-core and cross-core (the boundary is paid at the flush, not at your call site),
+> and an actor that opts out of the default events needs `registerEvent<qb::SignalEvent>` as well
+> as `registerEvent<qb::KillEvent>`, because `qb::Main::stop()` travels as a signal.

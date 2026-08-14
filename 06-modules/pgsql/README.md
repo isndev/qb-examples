@@ -185,7 +185,20 @@ file.
     * `SELECT id, name, email FROM users WHERE id = $1;`
     * `DROP TABLE IF EXISTS users;`
 
-### `03-transactions.cpp`
+### `03-transactions.cpp` — **rewritten**
+
+Its `@brief` promised savepoints and its body contained none (measured: zero calls to `savepoint`,
+`rollback_savepoint` or `release_savepoint`); it had no `with_transaction`; and it ended by
+checking the balances of three accounts it never created. It now covers all five shapes, each with
+a gated verdict: manual `begin`/`commit`/`rollback`, `qb::pg::with_transaction` and its exact
+exception contract (`transaction_abort` → rollback + failed `Reply`; anything else → rollback then
+**rethrow**; nesting refused before a BEGIN is sent), SAVEPOINTs for partial rollback,
+`transaction_mode` for isolation and READ ONLY, and `set_timeout` for a `statement_timeout` that
+fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release_savepoint`, not
+`rollback_to` and `release`.
+
+#### The original notes
+
 
 * **Purpose**: Shows how to manage database transactions, including a simulated fund transfer scenario.
 * **Key Features**:

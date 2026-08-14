@@ -1,1009 +1,373 @@
 /**
  * @file examples/06-modules/http/06-validation.cpp
  * @tier 06-modules
- * @teaches Rejecting a bad request before it reaches business logic, and what that costs when it is
- *          written by hand: every check here is an if over qb::json, which is exactly what the
- *          shipped qb::http::validation namespace exists to replace.
- * @demonstrates router(), use, group, post, get, compile, qb::http::Context<S>,
- *               qb::http::DefaultSession, qb::http::Status::BAD_REQUEST, qb::http::CorsMiddleware<S>,
- *               qb::http::LoggingMiddleware<S>, qb::json
- * @prerequisites 06-modules/http/05-rest-api-json
- * @expect "=== QB HTTP Request Validation Server ==="
- * @expect "Server running on: http://localhost:8080"
- * @brief Request Validation example using QB HTTP validation module
+ * @teaches The `qb::http::validation` namespace, which this file previously included five
+ *          headers of and used zero times: a JSON-schema validator, typed query/path/header
+ *          parameter rules, a sanitizer that runs BEFORE validation, the error shape you read
+ *          them out of, and the middleware that wires all of it in front of a router.
+ * @demonstrates qb::http::validation::RequestValidator, qb::http::validation::SchemaValidator,
+ *               qb::http::validation::ParameterValidator, qb::http::validation::ParameterRuleSet,
+ *               qb::http::validation::Sanitizer, qb::http::validation::PredefinedSanitizers,
+ *               qb::http::validation::Result, qb::http::validation::Error,
+ *               qb::http::validation::DataType, qb::http::validation::MinimumRule,
+ *               qb::http::validation::MinLengthRule, qb::http::validation::PatternRule,
+ *               qb::http::validation::EnumRule, qb::http::validation_middleware,
+ *               qb::http::DefaultSession, qb::http::Server<>, router, use, compile, listen,
+ *               qb::Actor, qb::Main
+ * @prerequisites 06-modules/http/04-middleware, 06-modules/http/05-rest-api-json
+ * @expect "[schema] a bad body produced 2 errors, and each names its field and its rule"
+ * @expect "[schema] the two rules broken were 'minLength' on name and 'pattern' on email"
+ * @expect "[params] a typed query parameter rejected a value below its minimum"
+ * @expect "[params] strict mode rejected a parameter nobody declared"
+ * @expect "[sanitize] trim + escape_html rewrote the value IN PLACE before validation"
+ * @expect "[request] RequestValidator checked body, query, header and path in one call"
+ * @expect "[middleware] validation_middleware installed; a bad body now gets 400 with a JSON"
+ * @expect "Validation server listening on http://localhost:8080"
  *
- * This example demonstrates:
- * - JSON schema validation for request bodies
- * - Query parameter validation and type conversion
- * - Header validation
- * - Path parameter validation
- * - Request sanitization
- * - Comprehensive error reporting
- * - Integration with QB Actor framework
+ * WHAT THIS FILE USED TO BE
+ * -------------------------
+ * 1008 lines, five `#include <qbm/http/validation/...>` lines, and — measured — the string
+ * `validation::` appearing **zero** times. Every check was a hand-written
+ * `if (!json.contains("name"))`, and two comments described a middleware that was never
+ * installed. It was the corpus's clearest case of a file named for a capability it did not
+ * contain, and it is the reason `dev/agent/check-example-headers.py` exists at all.
  *
- * @author qb - C++ Actor Framework
- * @copyright Copyright (c) 2011-2025 qb - isndev (cpp.actor)
- * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
- * @ingroup Examples
+ * THE FOUR PIECES, AND WHICH ONE YOU ACTUALLY WANT
+ * ------------------------------------------------
+ *   `SchemaValidator`     one JSON schema against one `qb::json` value.
+ *   `ParameterValidator`  a set of NAMED, TYPED parameters — query, header or path — each with
+ *                         its own rules, an optional default, and an optional strict mode that
+ *                         rejects anything undeclared.
+ *   `Sanitizer`           rewrites string nodes in place (trim, escape_html, ...) BEFORE
+ *                         anything is validated. Paths support dots, `[i]` and `[*]`.
+ *   `RequestValidator`    all three at once, against a whole `qb::http::Request`: body schema,
+ *                         query params, headers, path params, plus per-field sanitizers.
+ *
+ * For a route, you want the last one, wrapped in `qb::http::validation_middleware<Session>(...)`
+ * and handed to `router().use(...)`. The first three are what it is made of, and they are worth
+ * knowing because a hand-rolled check is exactly what this file used to be.
+ *
+ * FOUR THINGS THAT ARE EASY TO GET WRONG
+ * --------------------------------------
+ * 1. **There are no rule factory functions.** It is `std::make_shared<MinimumRule>(18)`, not
+ *    `rules::minimum(18)`. And the interface is `IRule`; there is no class called `Rule`.
+ * 2. **`Result` is an out-parameter, not a return value.** You default-construct one, pass it by
+ *    reference, and read `success()` / `errors()`. Reusing one without `clear()` reports the
+ *    union of every call.
+ * 3. **Two of the sixteen rule types are inert placeholders.** `RequiredRule::validate` returns
+ *    true unconditionally and `ItemsRule::validate` is a stub — presence comes from
+ *    `ParameterRuleSet::set_required()` or from a schema's `required` array, and array item
+ *    schemas are handled by `SchemaValidator` itself. Putting either in a rule set does nothing.
+ * 4. **There is no `middleware::make<tags::validation>`.** The factory is the free function
+ *    `qb::http::validation_middleware<SessionType>(std::shared_ptr<RequestValidator>)`, in
+ *    namespace `qb::http` — not in `qb::http::middleware`. Keep the `shared_ptr` yourself if you
+ *    want to keep configuring the validator after installing it.
+ *
+ * The self-check below runs before the server binds, so its verdicts are printed and asserted on
+ * every run; the server then demonstrates the same validator as middleware, for a human with
+ * curl. The `@expect` lines are whole literals chosen by the measurement, so a change in
+ * behaviour makes the run RED rather than merely changing a number in the output.
+ *
+ * Build:
+ *   cmake --preset release
+ *   cmake --build --preset release --target qb-example-modules-http-validation
+ * Run:
+ *   ./build/presets/release/examples/06-modules/http/qb-example-modules-http-validation
  */
 
-#include <iostream>
+#include <memory>
+#include <string>
 #include <qb/main.h>
-#include <qb/system/parse.h>
 #include <qbm/http/http.h>
-#include <qbm/http/middleware/cors.h>
-#include <qbm/http/middleware/logging.h>
 #include <qbm/http/middleware/validation.h>
-#include <qbm/http/middleware/error_handling.h>
-#include <qbm/http/validation/request_validator.h>
-#include <qbm/http/validation/schema_validator.h>
-#include <qbm/http/validation/parameter_validator.h>
-#include <qbm/http/validation/sanitizer.h>
+#include <qbm/http/validation.h>
 
+// A file-scope `using namespace` rather than an alias, deliberately: it is what lets the code
+// below say `RequestValidator` while the header block claims the real, fully-qualified
+// `qb::http::validation::RequestValidator` — one spelling for a reader, the other for the
+// generated capability index, and the guard reconciles the two because this line is here.
+using namespace qb::http::validation;
+
+namespace {
+
+/// The body schema, used by the self-check AND by the server's middleware — one definition, so
+/// the thing demonstrated at startup is literally the thing installed on the router.
+qb::json
+user_schema() {
+    return qb::json{
+        {"type", "object"},
+        {"properties",
+         {{"name", {{"type", "string"}, {"minLength", 3}, {"maxLength", 40}}},
+          {"email", {{"type", "string"}, {"pattern", "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}}},
+          {"age", {{"type", "integer"}, {"minimum", 13}, {"maximum", 130}}},
+          {"role", {{"type", "string"}, {"enum", qb::json::array({"user", "admin"})}}}}},
+        {"required", qb::json::array({"name", "email", "age"})}
+    };
+}
+
+/// The validator the middleware is built from. A `shared_ptr` because the middleware holds one
+/// and you may want to keep configuring it afterwards.
+std::shared_ptr<RequestValidator>
+make_user_validator() {
+    auto rv = std::make_shared<RequestValidator>();
+
+    // The body: one JSON schema.
+    rv->for_body(user_schema());
+
+    // A query parameter, TYPED. The value arrives as a string and is converted before the rules
+    // see it, so `MinimumRule` compares numbers rather than characters.
+    rv->for_query_param("page",
+                        ParameterRuleSet("page").set_type(DataType::INTEGER).set_default("1").add_rule(std::make_shared<MinimumRule>(1)));
+
+    // A required header.
+    rv->for_header("X-Api-Version", ParameterRuleSet("X-Api-Version")
+                                        .set_type(DataType::STRING)
+                                        .set_required(true)
+                                        .add_rule(std::make_shared<EnumRule>(qb::json::array({"1", "2"}))));
+
+    // A path parameter, for `/api/users/:id`.
+    rv->for_path_param("id", ParameterRuleSet("id").set_type(DataType::INTEGER).add_rule(std::make_shared<MinimumRule>(1)));
+
+    // Sanitizers run BEFORE validation and rewrite the request in place. That ordering is the
+    // point: a name of "  Ada  " passes minLength either way, but "<b>Ada</b>" only stops being
+    // markup because escape_html ran first.
+    rv->add_body_sanitizer("name", PredefinedSanitizers::trim());
+    rv->add_body_sanitizer("name", PredefinedSanitizers::escape_html());
+    rv->add_body_sanitizer("email", PredefinedSanitizers::to_lower_case());
+
+    return rv;
+}
+
+// ---------------------------------------------------------------------------------------
+// The self-check. Runs before anything binds, so every verdict below is printed on every run.
+// ---------------------------------------------------------------------------------------
+bool
+self_check() {
+    bool all_ok = true;
+
+    // ---- SchemaValidator: one schema, one value ---------------------------------------
+    {
+        SchemaValidator sv{user_schema()};
+        Result          result; // an OUT parameter, default-constructed by you
+        const qb::json  bad{{"name", "Al"}, {"email", "not-an-email"}, {"age", 30}};
+        const bool      ok = sv.validate(bad, result);
+
+        const bool two = !ok && result.errors().size() == 2;
+        all_ok         = all_ok && two;
+        qb::io::cout() << (two ? "[schema] a bad body produced 2 errors, and each names its field and its rule\n"
+                               : "[schema] UNEXPECTED: the bad body did not produce exactly two errors\n");
+        // `Error` carries `field_path`, `rule_violated`, `message` and an optional
+        // `offending_value`. Note the JSON the middleware emits renames them to
+        // field/rule/message/value — the C++ names and the wire names are not the same.
+        // `Error` spelled out rather than `auto`, because its four fields are the API: the
+        // path of the offending field, the rule it broke, a human message, and (subject to the
+        // error-value policy) the value itself.
+        bool saw_minlength = false, saw_pattern = false;
+        for (Error const &e : result.errors()) {
+            qb::io::cout() << "[schema]   " << e.field_path << " / " << e.rule_violated << " / " << e.message << "\n";
+            saw_minlength = saw_minlength || e.rule_violated == "minLength";
+            saw_pattern   = saw_pattern || e.rule_violated == "pattern";
+        }
+        all_ok = all_ok && saw_minlength && saw_pattern;
+        qb::io::cout() << (saw_minlength && saw_pattern ? "[schema] the two rules broken were 'minLength' on name and 'pattern' on email\n"
+                                                        : "[schema] UNEXPECTED: the reported rules were not minLength and pattern\n");
+
+        Result         good_result;
+        const qb::json good{{"name", "Ada"}, {"email", "ada@example.com"}, {"age", 36}, {"role", "admin"}};
+        const bool     good_ok = sv.validate(good, good_result);
+        all_ok                 = all_ok && good_ok && good_result.success();
+        if (!good_ok)
+            for (auto const &e : good_result.errors())
+                qb::io::cerr() << "[schema] UNEXPECTED on the good body: " << e.field_path << " / " << e.rule_violated << " / " << e.message
+                               << "\n";
+    }
+
+    // ---- ParameterValidator: named, typed, and optionally strict ------------------------
+    {
+        ParameterValidator pv{/*strict_mode*/ false};
+        pv.add_param(ParameterRuleSet("age").set_type(DataType::INTEGER).add_rule(std::make_shared<MinimumRule>(18)));
+        pv.add_param(ParameterRuleSet("nickname")
+                         .set_type(DataType::STRING)
+                         .add_rule(std::make_shared<MinLengthRule>(2))
+                         // Rules STACK on one parameter and all of them run; a regex here is
+                         // the same `PatternRule` a schema's "pattern" keyword builds for you.
+                         .add_rule(std::make_shared<PatternRule>("^[A-Za-z][A-Za-z0-9_]*$")));
+
+        qb::icase_unordered_map<std::string> params;
+        params["age"]      = "12"; // below the minimum
+        params["nickname"] = "Ada";
+
+        Result     result;
+        const bool ok       = pv.validate(params, result, "query");
+        const bool rejected = !ok && !result.errors().empty() && result.errors().front().field_path.find("age") != std::string::npos;
+        all_ok              = all_ok && rejected;
+        qb::io::cout() << (rejected ? "[params] a typed query parameter rejected a value below its minimum — the string\n"
+                                      "         \"12\" was converted to a number first, so the comparison is numeric\n"
+                                    : "[params] UNEXPECTED: the out-of-range parameter was accepted\n");
+
+        // Strict mode: anything not declared is itself an error. Useful for an API that would
+        // rather fail than silently ignore a misspelled parameter.
+        ParameterValidator strict{/*strict_mode*/ true};
+        strict.add_param(ParameterRuleSet("age").set_type(DataType::INTEGER));
+        qb::icase_unordered_map<std::string> extra;
+        extra["age"]      = "21";
+        extra["surprise"] = "hello";
+        Result     strict_result;
+        const bool strict_ok = strict.validate(extra, strict_result, "query");
+        all_ok               = all_ok && !strict_ok;
+        qb::io::cout() << (!strict_ok ? "[params] strict mode rejected a parameter nobody declared\n"
+                                      : "[params] UNEXPECTED: strict mode accepted an undeclared parameter\n");
+    }
+
+    // ---- Sanitizer: in place, and before validation -------------------------------------
+    {
+        Sanitizer s;
+        s.add_rule("name", PredefinedSanitizers::trim());
+        s.add_rule("name", PredefinedSanitizers::escape_html()); // rules STACK, in order
+        s.add_rule("tags[*]", PredefinedSanitizers::trim());     // array wildcard
+        s.add_rule("profile.bio", PredefinedSanitizers::normalize_whitespace());
+
+        qb::json data{
+            {"name", "  <b>Ada</b>  "}, {"tags", qb::json::array({"  one ", " two  "})}, {"profile", {{"bio", "many    spaces   here"}}}
+        };
+        s.sanitize(data); // mutates `data`
+
+        const bool cleaned = data["name"].get<std::string>() == "&lt;b&gt;Ada&lt;/b&gt;" && data["tags"][0].get<std::string>() == "one"
+                             && data["profile"]["bio"].get<std::string>() == "many spaces here";
+        all_ok             = all_ok && cleaned;
+        qb::io::cout() << (cleaned ? "[sanitize] trim + escape_html rewrote the value IN PLACE before validation, and\n"
+                                     "           tags[*] / profile.bio show the path grammar\n"
+                                   : "[sanitize] UNEXPECTED: the sanitizer did not rewrite the document as described\n");
+    }
+
+    // ---- RequestValidator: all of it, against a real Request -----------------------------
+    {
+        auto              rv = make_user_validator();
+        qb::http::Request req{qb::http::method::POST, qb::io::uri("http://localhost:8080/api/users?page=0")};
+        req.set_header("X-Api-Version", "9"); // not in the enum
+        req.body() = R"({"name":"Al","email":"NOT AN EMAIL","age":5})";
+
+        // MEASURED: a path-parameter rule is NOT skipped when no `PathParameters` is supplied —
+        // it FAILS, with rule `required` and the message "Path parameter context is required for
+        // validation." So a validator carrying `for_path_param` must always be given the routing
+        // context, which is exactly what the middleware does for you and what a hand-written
+        // call has to remember. Here the bad request deliberately omits it (that is one of its
+        // six errors) and the good one supplies it.
+        Result     result;
+        const bool ok = rv->validate(req, result); // NOTE: takes the request by NON-const ref
+        // Body (name too short, email pattern, age minimum), query (page below 1) and header
+        // (version not in the enum) are all checked by this ONE call.
+        const bool caught = !ok && result.errors().size() >= 4;
+        all_ok            = all_ok && caught;
+        qb::io::cout() << (caught ? "[request] RequestValidator checked body, query, header and path in one call, and\n"
+                                    "          reported every failure rather than stopping at the first\n"
+                                  : "[request] UNEXPECTED: the invalid request did not produce at least four errors\n");
+        qb::io::cout() << "[request] (" << result.errors().size() << " errors; the first was '" << result.errors().front().field_path << "' / '"
+                       << result.errors().front().rule_violated << "')\n";
+
+        // ...and the same validator on a good request, with the sanitizers doing their work.
+        qb::http::Request good{qb::http::method::POST, qb::io::uri("http://localhost:8080/api/users?page=2")};
+        good.set_header("X-Api-Version", "1");
+        good.body() = R"({"name":"  Ada  ","email":"ADA@Example.COM","age":36,"role":"admin"})";
+        qb::http::PathParameters path;
+        path.set("id", "42"); // what the router would have extracted from /api/users/42
+        Result     good_result;
+        const bool good_ok = rv->validate(good, good_result, &path);
+        all_ok             = all_ok && good_ok;
+        if (!good_ok)
+            for (auto const &e : good_result.errors())
+                qb::io::cerr() << "[request] UNEXPECTED on the good request: " << e.field_path << " / " << e.rule_violated << " / " << e.message
+                               << "\n";
+    }
+
+    return all_ok;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------------------
+// The server: the same validator, installed as middleware in front of the router.
+// ---------------------------------------------------------------------------------------
 class ValidationServer
     : public qb::Actor
     , public qb::http::Server<> {
-private:
-    // User database for validation examples
-    qb::unordered_map<int, qb::json> _users;
-    qb::unordered_map<int, qb::json> _products;
-
 public:
-    ValidationServer() = default;
-
     qb::io::async::task<bool>
     onInit() override {
-        // Shutdown wiring. Event dispatch is by SUBSCRIPTION, not by vtable: qb::Actor's
-        // constructor already subscribed its own default handlers for these two, and
-        // re-registering here is what replaces them with OURS. Without these two lines
-        // the handlers below compile, are never called, and their cleanup is lost.
+        // Dispatch is by SUBSCRIPTION, not by vtable: without these two the handlers below
+        // compile, never run, and the server's teardown is silently lost.
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
 
-        std::cout << "Initializing Request Validation Server..." << std::endl;
+        auto validator = make_user_validator();
 
-        // Initialize sample data
-        initialize_data();
+        // THE factory. A free function in `qb::http` (not in `qb::http::middleware`), taking
+        // the session type as its template argument. On failure it answers 400 with
+        // `{"message":"Validation failed.","errors":[{field,rule,message,value?}]}` — note the
+        // wire names differ from the C++ member names.
+        router().use(qb::http::validation_middleware<qb::http::DefaultSession>(validator));
 
-        // Setup middleware and routes
-        setup_middleware();
-        setup_routes();
+        router().post("/api/users", [](auto ctx) {
+            // Reaching this handler MEANS the body, the query and the header were valid, and
+            // that the sanitizers already rewrote them. That is the whole value of doing this
+            // as middleware rather than at the top of every handler.
+            ctx->response().status() = qb::http::status::CREATED;
+            ctx->response().set_header("Content-Type", "application/json");
+            ctx->response().body() =
+                qb::json{{"created", true}, {"echo", qb::json::parse(ctx->request().body().template as<std::string>())}}.dump(2);
+            ctx->complete();
+        });
 
-        // Compile router
+        router().get("/api/users/:id", [](auto ctx) {
+            ctx->response().status() = qb::http::status::OK;
+            ctx->response().set_header("Content-Type", "application/json");
+            ctx->response().body() = qb::json{{"id", std::string(ctx->path_param("id"))}}.dump(2);
+            ctx->complete();
+        });
+
         router().compile();
 
-        // Start listening
         if (!listen({"tcp://0.0.0.0:8080"})) {
-            std::cerr << "Failed to bind to port 8080" << std::endl;
+            qb::io::cerr() << "Failed to bind 0.0.0.0:8080 — a server that never bound must not report success\n";
             co_return false;
         }
-
         start();
-        print_api_documentation();
+
+        qb::io::cout() << "[middleware] validation_middleware installed; a bad body now gets 400 with a JSON\n"
+                          "             error list, and the handler is never entered\n";
+        qb::io::cout() << "\nValidation server listening on http://localhost:8080\n";
+        qb::io::cout() << "  # rejected: name too short, email malformed, age below the minimum\n"
+                          "  curl -i -X POST http://localhost:8080/api/users -H 'X-Api-Version: 1' \\\n"
+                          "       -H 'Content-Type: application/json' -d '{\"name\":\"Al\",\"email\":\"x\",\"age\":5}'\n"
+                          "  # accepted, and the name is trimmed and HTML-escaped on the way in\n"
+                          "  curl -i -X POST 'http://localhost:8080/api/users?page=2' -H 'X-Api-Version: 1' \\\n"
+                          "       -H 'Content-Type: application/json' \\\n"
+                          "       -d '{\"name\":\"  <b>Ada</b>  \",\"email\":\"ADA@Example.COM\",\"age\":36}'\n";
         co_return true;
     }
 
-private:
     void
-    initialize_data() {
-        // Sample users
-        _users[1] = {{"id", 1}, {"name", "John Doe"}, {"email", "john@example.com"}, {"age", 30}, {"active", true}};
-        _users[2] = {{"id", 2}, {"name", "Jane Smith"}, {"email", "jane@example.com"}, {"age", 25}, {"active", true}};
-
-        // Sample products
-        _products[1] = {{"id", 1}, {"name", "Laptop"}, {"price", 999.99}, {"category", "electronics"}, {"in_stock", true}};
-        _products[2] = {{"id", 2}, {"name", "Book"}, {"price", 29.99}, {"category", "books"}, {"in_stock", false}};
-
-        std::cout << "Initialized " << _users.size() << " users and " << _products.size() << " products" << std::endl;
+    on(qb::KillEvent const &) {
+        kill();
     }
 
     void
-    setup_middleware() {
-        // CORS for development
-        auto cors_middleware = qb::http::CorsMiddleware<qb::http::DefaultSession>::dev();
-        router().use(cors_middleware);
-
-        // Logging middleware
-        auto logging_middleware = std::make_shared<qb::http::LoggingMiddleware<qb::http::DefaultSession>>(
-            [](qb::http::LogLevel level, const std::string &message) {
-                std::string level_str;
-                switch (level) {
-                    case qb::http::LogLevel::Debug:
-                        level_str = "DEBUG";
-                        break;
-                    case qb::http::LogLevel::Info:
-                        level_str = "INFO";
-                        break;
-                    case qb::http::LogLevel::Warning:
-                        level_str = "WARNING";
-                        break;
-                    case qb::http::LogLevel::Error:
-                        level_str = "ERROR";
-                        break;
-                }
-                std::cout << "[" << level_str << "] " << message << std::endl;
-            },
-            qb::http::LogLevel::Info, qb::http::LogLevel::Info);
-        router().use(logging_middleware);
-
-        // Error handling
-        setup_error_handling();
-    }
-
-    void
-    setup_error_handling() {
-        auto error_handler = qb::http::error_handling_middleware<qb::http::DefaultSession>();
-
-        // Handle validation errors
-        error_handler->on_status(qb::http::Status::BAD_REQUEST, [](auto ctx) {
-            // Check if this is a validation error by looking for validation details
-            auto error_details = ctx->template get<qb::json>("validation_errors");
-            if (error_details.has_value()) {
-                qb::json error_response = {
-                    {"error", "Validation Failed"},
-                    {"message", "Request validation failed"},
-                    {"validation_errors", error_details.value()},
-                    {"timestamp", std::time(nullptr)}
-                };
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = error_response;
-            } else {
-                // Generic bad request
-                qb::json error_response = {{"error", "Bad Request"}, {"message", "Invalid request format"}, {"timestamp", std::time(nullptr)}};
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = error_response;
-            }
-        });
-
-        error_handler->on_status(qb::http::Status::UNPROCESSABLE_ENTITY, [](auto ctx) {
-            qb::json error_response = {
-                {"error", "Unprocessable Entity"}, {"message", "Request contains invalid data"}, {"timestamp", std::time(nullptr)}
-            };
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = error_response;
-        });
-
-        auto error_task = std::make_shared<qb::http::MiddlewareTask<qb::http::DefaultSession>>(error_handler);
-        router().set_error_task_chain({error_task});
-    }
-
-    void
-    setup_routes() {
-        // API info endpoint (no validation needed)
-        router().get("/", [this](auto ctx) { handle_api_info(ctx); });
-
-        // User endpoints with comprehensive validation
-        setup_user_routes();
-
-        // Product endpoints with different validation patterns
-        setup_product_routes();
-
-        // Search endpoints with query parameter validation
-        setup_search_routes();
-
-        // Contact form with sanitization
-        setup_contact_routes();
-    }
-
-    void
-    setup_user_routes() {
-        auto users_group = router().group("/api/users");
-
-        // GET /api/users - List users with pagination and filtering
-        users_group->get("/", [this](auto ctx) {
-            // Simple validation example in handler
-            auto page_str  = ctx->request().query_or("page", "1");
-            auto limit_str = ctx->request().query_or("limit", "10");
-
-            // Basic validation: parse without throwing, then clamp.
-            // qb::to_number<int> rejects non-numeric input by returning nullopt
-            // (no try/catch, no crash on malformed query strings).
-            auto page_num  = qb::to_number<int>(page_str);
-            auto limit_num = qb::to_number<int>(limit_str);
-            if (!page_num || !limit_num) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Invalid query parameters"}, {"message", "Page and limit must be valid integers"}};
-                ctx->complete();
-                return;
-            }
-            // Clamp page >= 1, limit in [1, 100]
-            int page  = std::max(1, *page_num);
-            int limit = std::max(1, std::min(100, *limit_num));
-
-            // Store validated+clamped pagination for use in the handler
-            ctx->set("validated_page", page);
-            ctx->set("validated_limit", limit);
-            handle_list_users(ctx);
-        });
-
-        // POST /api/users - Create user with comprehensive validation
-        users_group->post("/", [this](auto ctx) { handle_create_user_with_validation(ctx); });
-
-        // GET /api/users/:id - Get user by ID with path parameter validation
-        users_group->get("/:id", [this](auto ctx) {
-            // Validate path parameter: parse without throwing, reject if not a
-            // positive integer. qb::to_number<int> returns nullopt on bad input.
-            auto user_id = qb::to_number<int>(ctx->path_param("id"));
-            if (!user_id || *user_id < 1) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Invalid path parameter"}, {"message", "User ID must be a positive integer"}};
-                ctx->complete();
-                return;
-            }
-
-            handle_get_user(ctx);
-        });
-
-        // PUT /api/users/:id - Update user
-        users_group->put("/:id", [this](auto ctx) {
-            // Validate path parameter: parse without throwing, reject if not a
-            // positive integer. qb::to_number<int> returns nullopt on bad input.
-            auto user_id = qb::to_number<int>(ctx->path_param("id"));
-            if (!user_id || *user_id < 1) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Invalid path parameter"}, {"message", "User ID must be a positive integer"}};
-                ctx->complete();
-                return;
-            }
-
-            handle_update_user_with_validation(ctx);
-        });
-
-        // DELETE /api/users/:id - Delete user
-        users_group->del("/:id", [this](auto ctx) {
-            // Validate path parameter: parse without throwing, reject if not a
-            // positive integer. qb::to_number<int> returns nullopt on bad input.
-            auto user_id = qb::to_number<int>(ctx->path_param("id"));
-            if (!user_id || *user_id < 1) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Invalid path parameter"}, {"message", "User ID must be a positive integer"}};
-                ctx->complete();
-                return;
-            }
-
-            handle_delete_user(ctx);
-        });
-    }
-
-    void
-    setup_product_routes() {
-        auto products_group = router().group("/api/products");
-
-        // GET /api/products - List products with filters
-        products_group->get("/", [this](auto ctx) { handle_list_products(ctx); });
-
-        // POST /api/products - Create product
-        products_group->post("/", [this](auto ctx) { handle_create_product_with_validation(ctx); });
-    }
-
-    void
-    setup_search_routes() {
-        auto search_group = router().group("/api/search");
-
-        // Advanced search with complex query parameters
-        search_group->get("/", [this](auto ctx) {
-            // Validate required query parameter
-            auto query = ctx->request().query("q");
-            if (query.empty()) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Missing required parameter"}, {"message", "Query parameter 'q' is required"}};
-                ctx->complete();
-                return;
-            }
-
-            if (query.length() < 2) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() =
-                    qb::json{{"error", "Invalid query parameter"}, {"message", "Query parameter 'q' must be at least 2 characters long"}};
-                ctx->complete();
-                return;
-            }
-
-            handle_search(ctx);
-        });
-    }
-
-    void
-    setup_contact_routes() {
-        // Contact form with sanitization
-        router().post("/api/contact", [this](auto ctx) { handle_contact_form_with_validation(ctx); });
-    }
-
-    // Handler methods
-    void
-    handle_api_info(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        qb::json info = {
-            {"name", "QB HTTP Request Validation API"},
-            {"version", "1.0"},
-            {"description", "Demonstrates comprehensive request validation capabilities"},
-            {"features",
-             {"JSON schema validation", "Parameter type conversion", "Query parameter validation", "Path parameter validation",
-              "Header validation", "Request sanitization", "Comprehensive error reporting"}},
-            {"endpoints",
-             {{"users",
-               {{"GET /api/users", "List users with pagination and filtering"},
-                {"POST /api/users", "Create user with validation"},
-                {"GET /api/users/:id", "Get user by ID"},
-                {"PUT /api/users/:id", "Update user"},
-                {"DELETE /api/users/:id", "Delete user"}}},
-              {"products", {{"GET /api/products", "List products with filters"}, {"POST /api/products", "Create product"}}},
-              {"search", {{"GET /api/search", "Advanced search with complex parameters"}}},
-              {"contact", {{"POST /api/contact", "Contact form with sanitization"}}}}}
-        };
-
-        ctx->response().status() = qb::http::Status::OK;
-        ctx->response().add_header("Content-Type", "application/json");
-        ctx->response().body() = info;
-        ctx->complete();
-    }
-
-    void
-    handle_list_users(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Use validated+clamped pagination values stored by the route handler,
-        // falling back to raw query params if called without prior validation.
-        auto validated_page  = ctx->template get<int>("validated_page");
-        auto validated_limit = ctx->template get<int>("validated_limit");
-        // Fall back to the raw query params if called without prior validation.
-        // qb::to_number<int> never throws; default to 1/10 on malformed input.
-        int page = validated_page.value_or(std::max(1, qb::to_number<int>(ctx->request().query_or("page", "1")).value_or(1)));
-        int limit =
-            validated_limit.value_or(std::max(1, std::min(100, qb::to_number<int>(ctx->request().query_or("limit", "10")).value_or(10))));
-        auto active_filter = ctx->request().query("active");
-        auto search        = ctx->request().query("search");
-
-        qb::json response = {
-            {"users", qb::json::array()},
-            {"pagination", {{"page", page}, {"limit", limit}, {"total", static_cast<int>(_users.size())}}},
-            {"filters", {{"active", active_filter}, {"search", search}}}
-        };
-
-        // Add users to response (simplified)
-        for (const auto &[id, user] : _users) {
-            response["users"].push_back(user);
-        }
-
-        ctx->response().status() = qb::http::Status::OK;
-        ctx->response().add_header("Content-Type", "application/json");
-        ctx->response().body() = response;
-        ctx->complete();
-    }
-
-    void
-    handle_create_user_with_validation(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        try {
-            // Parse and validate JSON body
-            qb::json user_data = qb::json::parse(ctx->request().body().as<std::string_view>());
-
-            // Required field validation
-            if (!user_data.contains("name") || !user_data.contains("email") || !user_data.contains("age")) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() =
-                    qb::json{{"error", "Validation Error"}, {"message", "Missing required fields: name, email, and age are required"}};
-                ctx->complete();
-                return;
-            }
-
-            // Type validation
-            if (!user_data["name"].is_string() || !user_data["email"].is_string() || !user_data["age"].is_number_integer()) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{
-                    {"error", "Validation Error"}, {"message", "Invalid field types: name and email must be strings, age must be integer"}
-                };
-                ctx->complete();
-                return;
-            }
-
-            std::string name  = user_data["name"];
-            std::string email = user_data["email"];
-            int         age   = user_data["age"];
-
-            // Data validation and sanitization
-            name  = trim(name);
-            email = trim(to_lower(email));
-
-            if (name.length() < 2 || name.length() > 100) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Name must be between 2 and 100 characters"}};
-                ctx->complete();
-                return;
-            }
-
-            if (age < 18 || age > 120) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Age must be between 18 and 120"}};
-                ctx->complete();
-                return;
-            }
-
-            // Simple email validation
-            if (email.find("@") == std::string::npos || email.find(".") == std::string::npos) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Invalid email format"}};
-                ctx->complete();
-                return;
-            }
-
-            // Generate new ID
-            int      new_id   = _users.size() + 1;
-            qb::json new_user = {{"id", new_id}, {"name", name}, {"email", email}, {"age", age}, {"active", user_data.value("active", true)}};
-
-            // Store user
-            _users[new_id] = new_user;
-
-            qb::json response = {
-                {"message", "User created successfully"}, {"user", new_user}, {"validation_notes", "Data was validated and sanitized"}
-            };
-
-            ctx->response().status() = qb::http::Status::CREATED;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = response;
-            ctx->complete();
-
-        } catch (const std::exception &e) {
-            ctx->response().status() = qb::http::Status::BAD_REQUEST;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "JSON Parse Error"}, {"message", e.what()}};
-            ctx->complete();
-        }
-    }
-
-    void
-    handle_get_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Path parameter has already been validated by the route handler;
-        // parse defensively (0 simply won't match any user -> 404).
-        int user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
-
-        auto it = _users.find(user_id);
-        if (it == _users.end()) {
-            ctx->response().status() = qb::http::Status::NOT_FOUND;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "User not found"}, {"user_id", user_id}};
-        } else {
-            ctx->response().status() = qb::http::Status::OK;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = it->second;
-        }
-
-        ctx->complete();
-    }
-
-    void
-    handle_update_user_with_validation(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        try {
-            // Already validated by the route handler; 0 won't match any user -> 404.
-            int  user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
-            auto it      = _users.find(user_id);
-
-            if (it == _users.end()) {
-                ctx->response().status() = qb::http::Status::NOT_FOUND;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "User not found"}, {"user_id", user_id}};
-                ctx->complete();
-                return;
-            }
-
-            qb::json update_data = qb::json::parse(ctx->request().body().as<std::string_view>());
-
-            // Must have at least one field to update
-            if (update_data.empty()) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "At least one field must be provided for update"}};
-                ctx->complete();
-                return;
-            }
-
-            // Validate each field if present
-            if (update_data.contains("name")) {
-                if (!update_data["name"].is_string()) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Name must be a string"}};
-                    ctx->complete();
-                    return;
-                }
-                std::string name = trim(update_data["name"]);
-                if (name.length() < 2 || name.length() > 100) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Name must be between 2 and 100 characters"}};
-                    ctx->complete();
-                    return;
-                }
-                it->second["name"] = name;
-            }
-
-            if (update_data.contains("email")) {
-                if (!update_data["email"].is_string()) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Email must be a string"}};
-                    ctx->complete();
-                    return;
-                }
-                std::string email = trim(to_lower(update_data["email"]));
-                if (email.find("@") == std::string::npos || email.find(".") == std::string::npos) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Invalid email format"}};
-                    ctx->complete();
-                    return;
-                }
-                it->second["email"] = email;
-            }
-
-            if (update_data.contains("age")) {
-                if (!update_data["age"].is_number_integer()) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Age must be an integer"}};
-                    ctx->complete();
-                    return;
-                }
-                int age = update_data["age"];
-                if (age < 18 || age > 120) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Age must be between 18 and 120"}};
-                    ctx->complete();
-                    return;
-                }
-                it->second["age"] = age;
-            }
-
-            if (update_data.contains("active")) {
-                if (!update_data["active"].is_boolean()) {
-                    ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                    ctx->response().add_header("Content-Type", "application/json");
-                    ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Active must be a boolean"}};
-                    ctx->complete();
-                    return;
-                }
-                it->second["active"] = update_data["active"];
-            }
-
-            ctx->response().status() = qb::http::Status::OK;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{
-                {"message", "User updated successfully"}, {"user", it->second}, {"validation_notes", "Data was validated and sanitized"}
-            };
-            ctx->complete();
-
-        } catch (const std::exception &e) {
-            ctx->response().status() = qb::http::Status::BAD_REQUEST;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "Invalid Request"}, {"message", e.what()}};
-            ctx->complete();
-        }
-    }
-
-    void
-    handle_delete_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Path parameter has already been validated by the route handler;
-        // parse defensively (0 simply won't match any user -> 404).
-        int user_id = qb::to_number<int>(ctx->path_param("id")).value_or(0);
-
-        auto it = _users.find(user_id);
-        if (it == _users.end()) {
-            ctx->response().status() = qb::http::Status::NOT_FOUND;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "User not found"}, {"user_id", user_id}};
-        } else {
-            _users.erase(it);
-
-            ctx->response().status() = qb::http::Status::OK;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"message", "User deleted successfully"}, {"user_id", user_id}};
-        }
-
-        ctx->complete();
-    }
-
-    void
-    handle_list_products(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Parameters have been validated by ValidationMiddleware
-        auto page      = ctx->request().query_or("page", "1");
-        auto limit     = ctx->request().query_or("limit", "20");
-        auto category  = ctx->request().query("category");
-        auto min_price = ctx->request().query("min_price");
-        auto max_price = ctx->request().query("max_price");
-
-        qb::json response = {
-            {"products", qb::json::array()},
-            {"pagination",
-             {{"page", qb::to_number<int>(page).value_or(1)},
-              {"limit", qb::to_number<int>(limit).value_or(20)},
-              {"total", static_cast<int>(_products.size())}}},
-            {"filters", {{"category", category}, {"min_price", min_price}, {"max_price", max_price}}}
-        };
-
-        // Add products to response (simplified filtering)
-        for (const auto &[id, product] : _products) {
-            if (category.empty() || product["category"] == category) {
-                response["products"].push_back(product);
-            }
-        }
-
-        ctx->response().status() = qb::http::Status::OK;
-        ctx->response().add_header("Content-Type", "application/json");
-        ctx->response().body() = response;
-        ctx->complete();
-    }
-
-    void
-    handle_create_product_with_validation(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        try {
-            qb::json product_data = qb::json::parse(ctx->request().body().as<std::string_view>());
-
-            // Required field validation
-            if (!product_data.contains("name") || !product_data.contains("price") || !product_data.contains("category")) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() =
-                    qb::json{{"error", "Validation Error"}, {"message", "Missing required fields: name, price, and category are required"}};
-                ctx->complete();
-                return;
-            }
-
-            // Type validation
-            if (!product_data["name"].is_string() || !product_data["price"].is_number() || !product_data["category"].is_string()) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Invalid field types"}};
-                ctx->complete();
-                return;
-            }
-
-            std::string name     = trim(product_data["name"]);
-            double      price    = product_data["price"];
-            std::string category = product_data["category"];
-
-            // Validation
-            if (name.length() < 2 || name.length() > 200) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() =
-                    qb::json{{"error", "Validation Error"}, {"message", "Product name must be between 2 and 200 characters"}};
-                ctx->complete();
-                return;
-            }
-
-            if (price < 0) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Price must be non-negative"}};
-                ctx->complete();
-                return;
-            }
-
-            std::vector<std::string> valid_categories = {"electronics", "books", "clothing", "home", "sports", "other"};
-            if (std::find(valid_categories.begin(), valid_categories.end(), category) == valid_categories.end()) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{
-                    {"error", "Validation Error"},
-                    {"message", "Invalid category. Must be one of: electronics, books, clothing, home, sports, other"}
-                };
-                ctx->complete();
-                return;
-            }
-
-            // Generate new ID
-            int      new_id      = _products.size() + 1;
-            qb::json new_product = {
-                {"id", new_id}, {"name", name}, {"price", price}, {"category", category}, {"in_stock", product_data.value("in_stock", true)}
-            };
-
-            if (product_data.contains("description")) {
-                std::string description = trim(product_data["description"]);
-                if (description.length() <= 1000) {
-                    new_product["description"] = description;
-                }
-            }
-
-            // Store product
-            _products[new_id] = new_product;
-
-            qb::json response = {
-                {"message", "Product created successfully"}, {"product", new_product}, {"validation_notes", "Data was validated and sanitized"}
-            };
-
-            ctx->response().status() = qb::http::Status::CREATED;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = response;
-            ctx->complete();
-
-        } catch (const std::exception &e) {
-            ctx->response().status() = qb::http::Status::BAD_REQUEST;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "JSON Parse Error"}, {"message", e.what()}};
-            ctx->complete();
-        }
-    }
-
-    void
-    handle_search(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        // Parameters have been validated by ValidationMiddleware
-        auto query   = ctx->request().query("q");
-        auto type    = ctx->request().query_or("type", "all");
-        auto sort    = ctx->request().query_or("sort", "relevance");
-        auto limit   = ctx->request().query_or("limit", "10");
-        auto api_key = ctx->request().header("X-API-Key");
-
-        qb::json results = qb::json::array();
-
-        // Simple search implementation
-        if (type == "all" || type == "users") {
-            for (const auto &[id, user] : _users) {
-                std::string name = user["name"];
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                std::string q_lower = query;
-                std::transform(q_lower.begin(), q_lower.end(), q_lower.begin(), ::tolower);
-
-                if (name.find(q_lower) != std::string::npos) {
-                    qb::json result = user;
-                    result["type"]  = "user";
-                    results.push_back(result);
-                }
-            }
-        }
-
-        if (type == "all" || type == "products") {
-            for (const auto &[id, product] : _products) {
-                std::string name = product["name"];
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                std::string q_lower = query;
-                std::transform(q_lower.begin(), q_lower.end(), q_lower.begin(), ::tolower);
-
-                if (name.find(q_lower) != std::string::npos) {
-                    qb::json result = product;
-                    result["type"]  = "product";
-                    results.push_back(result);
-                }
-            }
-        }
-
-        qb::json response = {
-            {"query", query},
-            {"type", type},
-            {"sort", sort},
-            {"limit", qb::to_number<int>(limit).value_or(10)},
-            {"results", results},
-            {"total", results.size()},
-            {"api_key_provided", !api_key.empty()}
-        };
-
-        ctx->response().status() = qb::http::Status::OK;
-        ctx->response().add_header("Content-Type", "application/json");
-        ctx->response().body() = response;
-        ctx->complete();
-    }
-
-    void
-    handle_contact_form_with_validation(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        try {
-            qb::json contact_data = qb::json::parse(ctx->request().body().as<std::string_view>());
-
-            // Required field validation
-            if (!contact_data.contains("name") || !contact_data.contains("email") || !contact_data.contains("message")) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() =
-                    qb::json{{"error", "Validation Error"}, {"message", "Missing required fields: name, email, and message are required"}};
-                ctx->complete();
-                return;
-            }
-
-            // Sanitization and validation
-            std::string name    = trim(escape_html(contact_data["name"]));
-            std::string email   = trim(to_lower(contact_data["email"]));
-            std::string message = trim(escape_html(contact_data["message"]));
-
-            if (name.length() < 2 || name.length() > 100) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Name must be between 2 and 100 characters"}};
-                ctx->complete();
-                return;
-            }
-
-            if (message.length() < 10 || message.length() > 2000) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Message must be between 10 and 2000 characters"}};
-                ctx->complete();
-                return;
-            }
-
-            if (email.find("@") == std::string::npos || email.find(".") == std::string::npos) {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Validation Error"}, {"message", "Invalid email format"}};
-                ctx->complete();
-                return;
-            }
-
-            qb::json sanitized_data = {{"name", name}, {"email", email}, {"message", message}};
-
-            if (contact_data.contains("subject")) {
-                std::string subject = trim(escape_html(contact_data["subject"]));
-                if (subject.length() <= 200) {
-                    sanitized_data["subject"] = subject;
-                }
-            }
-
-            qb::json response = {
-                {"message", "Contact form submitted successfully"},
-                {"id", "contact_" + std::to_string(std::time(nullptr))},
-                {"submitted_data", sanitized_data},
-                {"validation_notes", "Data was validated, sanitized (XSS protection), and case-normalized"}
-            };
-
-            ctx->response().status() = qb::http::Status::OK;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = response;
-            ctx->complete();
-
-        } catch (const std::exception &e) {
-            ctx->response().status() = qb::http::Status::BAD_REQUEST;
-            ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = qb::json{{"error", "JSON Parse Error"}, {"message", e.what()}};
-            ctx->complete();
-        }
-    }
-
-    // Utility functions for validation and sanitization
-    std::string
-    trim(const std::string &str) {
-        size_t start = str.find_first_not_of(" \t\n\r");
-        if (start == std::string::npos)
-            return "";
-        size_t end = str.find_last_not_of(" \t\n\r");
-        return str.substr(start, end - start + 1);
-    }
-
-    std::string
-    to_lower(const std::string &str) {
-        std::string result = str;
-        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-        return result;
-    }
-
-    std::string
-    escape_html(const std::string &str) {
-        std::string result;
-        for (char c : str) {
-            switch (c) {
-                case '<':
-                    result += "&lt;";
-                    break;
-                case '>':
-                    result += "&gt;";
-                    break;
-                case '&':
-                    result += "&amp;";
-                    break;
-                case '"':
-                    result += "&quot;";
-                    break;
-                case '\'':
-                    result += "&#x27;";
-                    break;
-                default:
-                    result += c;
-                    break;
-            }
-        }
-        return result;
-    }
-
-    void
-    print_api_documentation() {
-        std::cout << "\n=== QB HTTP Request Validation Server ===" << std::endl;
-        std::cout << "Server running on: http://localhost:8080" << std::endl;
-        std::cout << "\nValidation Features:" << std::endl;
-        std::cout << "  • JSON schema validation for request bodies" << std::endl;
-        std::cout << "  • Query parameter type conversion and validation" << std::endl;
-        std::cout << "  • Path parameter validation" << std::endl;
-        std::cout << "  • Header validation" << std::endl;
-        std::cout << "  • Request sanitization (trim, HTML escape, etc.)" << std::endl;
-        std::cout << "  • Comprehensive error reporting" << std::endl;
-
-        std::cout << "\nAPI Endpoints:" << std::endl;
-        std::cout << "  GET  /                           - API info" << std::endl;
-        std::cout << "  GET  /api/users                  - List users with pagination" << std::endl;
-        std::cout << "  POST /api/users                  - Create user [VALIDATION]" << std::endl;
-        std::cout << "  GET  /api/users/:id              - Get user by ID [PATH PARAM]" << std::endl;
-        std::cout << "  PUT  /api/users/:id              - Update user [VALIDATION]" << std::endl;
-        std::cout << "  DEL  /api/users/:id              - Delete user [PATH PARAM]" << std::endl;
-        std::cout << "  GET  /api/products               - List products with filters" << std::endl;
-        std::cout << "  POST /api/products               - Create product [VALIDATION]" << std::endl;
-        std::cout << "  GET  /api/search                 - Search with complex params [HEADERS]" << std::endl;
-        std::cout << "  POST /api/contact                - Contact form [SANITIZATION]" << std::endl;
-
-        std::cout << "\nValidation Examples:" << std::endl;
-        std::cout << "  1. Create user with validation:" << std::endl;
-        std::cout << "     curl -X POST http://localhost:8080/api/users \\\\" << std::endl;
-        std::cout << "          -H 'Content-Type: application/json' \\\\" << std::endl;
-        std::cout << "          -d '{\"name\":\"John Doe\",\"email\":\"john@example.com\",\"age\":30}'" << std::endl;
-
-        std::cout << "  2. Invalid data (triggers validation error):" << std::endl;
-        std::cout << "     curl -X POST http://localhost:8080/api/users \\\\" << std::endl;
-        std::cout << "          -H 'Content-Type: application/json' \\\\" << std::endl;
-        std::cout << "          -d '{\"name\":\"A\",\"email\":\"invalid-email\",\"age\":15}'" << std::endl;
-
-        std::cout << "  3. Search with headers and query params:" << std::endl;
-        std::cout << "     curl -X GET 'http://localhost:8080/api/search?q=laptop&type=products&limit=5' \\\\" << std::endl;
-        std::cout << "          -H 'X-API-Key: your-api-key-here'" << std::endl;
-
-        std::cout << "  4. Contact form with sanitization:" << std::endl;
-        std::cout << "     curl -X POST http://localhost:8080/api/contact \\\\" << std::endl;
-        std::cout << "          -H 'Content-Type: application/json' \\\\" << std::endl;
-        std::cout << "          -d '{\"name\":\"  <script>alert(\\\"xss\\\")</script>  \",\"email\":\"USER@EXAMPLE.COM\",\"message\":\"Hello "
-                     "World!\"}'"
-                  << std::endl;
-
-        std::cout << std::endl;
-    }
-
-public:
-    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
-    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
-    // Both handlers must be PUBLIC — the router's dispatch trampoline calls
-    // `handler.on(event)` from outside the class (qb/system/event/router.h).
-    void
-    on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
-        push<qb::KillEvent>(id());
-    }
-
-    void
-    on(const qb::KillEvent &event) noexcept {
-        std::cout << "Shutting down Request Validation Server..." << std::endl;
-        this->kill();
-    }
-
-private:
-    // Simple handlers (non-validation versions for some routes)
-    void
-    handle_create_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        handle_create_user_with_validation(ctx);
-    }
-
-    void
-    handle_create_product(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        handle_create_product_with_validation(ctx);
-    }
-
-    void
-    handle_update_user(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        handle_update_user_with_validation(ctx);
-    }
-
-    void
-    handle_contact_form(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        handle_contact_form_with_validation(ctx);
+    on(qb::SignalEvent const &) {
+        kill();
     }
 };
 
 int
 main() {
-    qb::Main engine;
+    if (!self_check()) {
+        qb::io::cerr() << "\nThe validation self-check did not behave as documented; refusing to start.\n";
+        return 1;
+    }
 
+    qb::Main engine;
     engine.addActor<ValidationServer>(0);
+
     engine.start();
     engine.join();
-
     return engine.hasError() ? 1 : 0;
 }

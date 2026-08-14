@@ -9,7 +9,7 @@
  *               qb::ask_quorum, qb::deadline, qb::deadline_in, qb::remaining, qb::ask_by,
  *               qb::io::async::timeout_error, spawn, qb::ScopedCoroContext,
  *               ctx.sleep, ctx.time, ctx.push_to<Quote>, registerEvent<E>, qb::Main
- * @prerequisites 03-coroutines/02-actor-coroutines, 04-patterns/03-worker-pool
+ * @prerequisites 03-coroutines/04-ask-request-response, 04-patterns/03-worker-pool
  * @expect "[ask] one request, one reply, one line: BTC ="
  * @expect "[ask_all] 5 venues, unbounded:"
  * @expect "[ask_all] 5 venues, max_in_flight=2:"
@@ -28,6 +28,14 @@
  * "what I was doing", a reply handler that looks the id up and resumes that work, and a timer
  * that cleans the entry up when no reply comes. All three are below, in the library, and the
  * asker's code is a straight line.
+ *
+ * WHERE THE EXCHANGE ITSELF IS TAUGHT
+ * -----------------------------------
+ * This file landed BEFORE `03-coroutines/04-ask-request-response`, which is why it also states
+ * the one-to-one exchange. That file now owns it — the correlation id, the `registerEvent` you
+ * cannot leave out, the two ways to get it wrong — and this one owns what is built on top: the
+ * four fan-out shapes and the one budget that bounds a whole chain. Read them in that order;
+ * neither repeats the other.
  *
  * THE ONE LINE YOU CANNOT LEAVE OUT
  * ---------------------------------
