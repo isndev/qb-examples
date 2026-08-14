@@ -28,7 +28,8 @@ These examples are designed to illustrate fundamental and advanced concepts of t
 - Actor creation, communication, and lifecycle management.
 - Event-driven programming and custom event types.
 - Multi-core actor distribution and concurrency.
-- Periodic tasks and delayed actions using callbacks and self-messaging.
+- Periodic tasks and delayed actions using coroutine timers (`spawn(...)` + `co_await ctx.sleep(d)`), the every-turn
+  `qb::ICallback` hook, and self-messaging.
 - Common actor patterns like supervisor-worker, publish-subscribe, and finite state machines.
 - Integration with asynchronous I/O operations.
 
@@ -38,47 +39,36 @@ Each example is a self-contained C++ application that uses `qb::Main` to orchest
 
 1. **QB Framework**: The QB Actor Framework (specifically `qb-core` and `qb-io` modules) must be built and installed or
    available as CMake targets.
-2. **CMake**: CMake version 3.14 or higher is required to build the examples.
-3. **C++17 Compiler**: A C++17 compatible compiler (e.g., GCC 7+, Clang 5+).
+2. **CMake**: `examples/CMakeLists.txt:25` declares 3.22, but these examples are configured from the qb-dev
+   superproject, whose floor is **3.24** (`CMakeLists.txt:2`, `qb/CMakeLists.txt:31`). Using a preset from
+   `CMakePresets.json` requires **3.25** — that file is schema version 6.
+3. **C++20 Compiler**: every example here is a coroutine (`qb::io::async::task<bool> onInit()`, `spawn(...)` +
+   `co_await ctx.sleep(...)`). C++17 will not compile them.
 
 ## Building the Examples
 
-The `CMakeLists.txt` file in this directory is configured to build all core examples. Each example links against the
-`qb-core` library (which implicitly includes `qb-io`).
+`examples/core/CMakeLists.txt` calls `qb_add_executable()` and `qb_status_message()`, which are defined by qb's own
+CMake modules. **There is therefore no standalone build**: running `cmake` inside `examples/core/` fails at configure
+time with an unknown command. Always configure from the qb-dev superproject root, which force-enables
+`QB_BUILD_EXAMPLES` (`CMakeLists.txt:40`).
 
-1. **Navigate to the QB build directory**: This is the directory where you've built the main QB framework (if building
-   as part of QB).
-   *Alternatively, if building standalone, navigate to `examples/core/`.*
-2. **Build a specific example** (if part of a larger QB build):
+1. **Configure and build from the superproject root**:
    ```bash
-   # From your QB build directory
-   cmake --build . --target <example_name>
-   # e.g.,
-   cmake --build . --target example1_simple_actor
+   cmake --preset dev
+   cmake --build --preset dev
    ```
-3. **Build all core examples** (if building standalone or as part of QB):
+2. **Build one example**:
    ```bash
-   # If building standalone:
-   cd examples/core
-   mkdir build
-   cd build
-   cmake .. 
-   make # or your specific build system command (e.g., ninja)
-   
-   # If part of QB, building the qb-core target or all examples might suffice.
+   cmake --build build/presets/dev --target example1_simple_actor
    ```
 
-The executables will typically be placed in your CMake build system's binary output directory (e.g.,
-`your_qb_build_dir/bin/` or `examples/core/build/`).
+Executables land next to their source tree inside the build directory — `build/presets/<preset>/examples/core/` — not
+in a `bin/` directory.
 
 ## Running the Examples
 
-Once built, you can run each example directly from its location in the build output directory:
-
 ```bash
-./<example_name>
-# e.g.,
-./example1_simple_actor
+./build/presets/dev/examples/core/example1_simple_actor
 ```
 
 ## Example Descriptions
@@ -151,9 +141,10 @@ Once built, you can run each example directly from its location in the build out
 * **QB Features**: Demonstrates integration of actors with external shared state, contrasting with pure message passing.
 
 > **This one is a counter-example, not a pattern.** A mutex-protected container shared by five actors is the opposite
-> of what the rest of this directory teaches, and the file's own header lists what it costs you (no back-pressure, a
-> lock on the hot path, polling instead of delivery). Read it for the seam where an actor system meets code you did
-> not write.
+> of what the rest of this directory teaches, and the file's own header lists what it costs you
+> (`example6_shared_queue.cpp:32-38`): back-pressure disappears, the queue is a lock on a hot path taken by four
+> different actors, and nothing in the type system stops you reaching further into shared state later. Read it for
+> the seam where an actor system meets code you did not write.
 
 ### `example7_pub_sub.cpp`
 

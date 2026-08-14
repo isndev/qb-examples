@@ -58,7 +58,8 @@ private:
     qb::ActorId _chat_server_id;
 
 public:
-    bool onInit() override {
+    // Since qb 3.0 onInit() is a COROUTINE. `bool onInit()` will not compile.
+    qb::io::async::task<bool> onInit() override {
         // ... setup for static files and other routes ...
 
         // This route handles the WebSocket upgrade request.
@@ -79,10 +80,13 @@ public:
         router().compile();
         listen({"tcp://0.0.0.0:" + std::to_string(_port)});
         start();
-        return true;
+        co_return true;   // NOT `return true;`
     }
 };
 ```
+
+> The real definitions are `01_chat_server.cpp:342-343` and `:578-579`, and `02_chat_client.cpp:167-168` and
+> `:484-485` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
 
@@ -93,9 +97,9 @@ clients.
 class ChatServer : public qb::Actor,
                    public qb::io::use<ChatServer>::tcp::io_handler<ChatSession> {
 public:
-    bool onInit() override {
+    qb::io::async::task<bool> onInit() override {
         registerEvent<TransferToWebSocketEvent>(*this);
-        return true;
+        co_return true;
     }
 
     void on(TransferToWebSocketEvent& event) {
@@ -235,7 +239,11 @@ public:
 
     // Handle a close frame from the client
     void on(ws_protocol::close &&event) {
-        uint16_t status = qb::http::ws::CloseStatus::Normal;
+        // `CloseStatus` is a SCOPED enum (`enum class CloseStatus : std::uint16_t`,
+        // qbm/http/src/qbm/http/ws/ws.h:210) — there is no implicit conversion, so the cast
+        // is required. `opcode` above is a plain `enum opcode : unsigned char` (ws.h:74),
+        // which is why THAT comparison needs no cast.
+        uint16_t status = static_cast<uint16_t>(qb::http::ws::CloseStatus::Normal);
         std::string_view reason;
 
         // The status and reason are in the payload.

@@ -80,8 +80,12 @@ taskmanager/
 Core 0   TcpListener         ← dedicated accept loop
 Core 1   TaskManager #0      ← HTTP io_handler + DB + Redis + WS
 Core 2   TaskManager #1
-Core 1   TaskManager #2      ← cores reused when workers > cores
+Core 3   TaskManager #2
 ```
+
+`src/main.cpp:49` sets `NUM_TASK_MANAGERS = 3` and `:91` places worker `i` on core `1 + (i % 4)`, so the three
+managers land on cores 1, 2 and 3 — one each, no core reused. The `% 4` is the wrap-around rule and only bites at
+five or more managers (`#4` would return to core 1).
 
 ```
 Client TCP connect
@@ -239,14 +243,19 @@ co_await _redis.publish("tasks:events", event_json.dump()); // notify WS clients
 
 ## Build
 
-The rest of `examples/` is mid-port, so this example is wired behind an opt-in
-flag that builds **only** taskmanager (and its qbm dependencies):
+There is no opt-in flag. `examples/all/CMakeLists.txt:12` adds this directory unconditionally, so the target exists in
+any configuration of the superproject (which force-enables `QB_BUILD_EXAMPLES`). Build it by name:
 
 ```bash
 # From the workspace root
-cmake --preset dev -DQB_BUILD_TASKMANAGER=ON
+cmake --preset dev
 cmake --build build/presets/dev --target taskmanager -j4
 ```
+
+One real gate, and it is not a flag you pass: `qb_add_executable(... REQUIRES ssl)` (`CMakeLists.txt:56-64`). In an
+SSL-off build the `taskmanager` target is **not created at all** — the WebSocket handshake needs `qb::io::crypto`
+for SHA-1 + base64, so `ws/ws.h` `#error`s without it. `--target taskmanager` will then fail with "no rule to make
+target", which is the symptom of an SSL-off configure, not of a missing option.
 
 The binary is placed in `build/presets/dev/examples/all/taskmanager/taskmanager`.
 The static files are copied to `build/presets/dev/bin/taskmanager/resources/static/` — the

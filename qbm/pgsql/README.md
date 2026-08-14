@@ -1,7 +1,8 @@
 # QB PostgreSQL (`qbm-pgsql`) Module Examples
 
-This directory contains a set of examples demonstrating the usage of the `qbm-pgsql` module, a C++17 asynchronous
-PostgreSQL client integrated with the QB Actor Framework.
+This directory contains a set of examples demonstrating the usage of the `qbm-pgsql` module, a C++20 asynchronous
+PostgreSQL client integrated with the QB Actor Framework. All five use the **coroutine** API: every statement is
+`co_await`ed and yields a `qb::pg::Reply<T>`.
 
 ## Table of Contents
 
@@ -27,7 +28,45 @@ These examples are designed to illustrate core functionalities of the `qbm-pgsql
 - Handling various PostgreSQL data types.
 - Implementing error handling strategies.
 
-Each example is a self-contained `qb::Actor` application that interacts with a PostgreSQL database.
+Only `example5_error_handling.cpp` is an actor application (`ErrorHandlingActor`, driven by `qb::Main`,
+`example5_error_handling.cpp:60`, `:252-258`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
+coroutines, scaffolded as `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(...)`
+(`example1_basic_query.cpp:6-7`).
+
+### The API in one block
+
+```cpp
+qb::pg::tcp::database db;
+
+if (!co_await db.connect(PG_CONNECTION_STRING))   // yields bool
+    co_return;
+
+auto reply = co_await db.execute("SELECT version();");   // Reply<resultset>
+if (reply.ok()) {
+    const auto &rs = reply.result();
+    if (!rs.empty())
+        std::cout << rs[0][0].as<std::string>();
+} else {
+    std::cerr << reply.error().what();               // qb::pg::error::db_error
+}
+
+// Prepared statements
+co_await db.prepare(NAME, "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;",
+                    qb::pg::type_oid_sequence{qb::pg::oid::text, qb::pg::oid::text});
+auto ins = co_await db.execute(NAME, qb::pg::params{name, email});   // Reply<resultset>
+
+// Transactions — explicit and manual; nothing commits or rolls back for you
+if (!(co_await db.begin()).ok())
+    co_return;
+// ... statements; on the first !ok() call `co_await db.rollback();` yourself ...
+co_await db.commit();
+```
+
+There is **no** `.then()` / `.success()` / `.error()` continuation chain and no `tr.execute(...)` transaction object —
+that API is gone, and error handling is now linear (`example5_error_handling.cpp:10-16`). `db_error` carries `what()`,
+`severity`, `code` (SQLSTATE string), `detail` and a structured `sqlstate` enum. Client-side conversion failures are
+still **thrown**: `qb::pg::error::value_is_null` and `qb::pg::error::field_type_mismatch`, caught with `try`/`catch`
+(`example5_error_handling.cpp:215`, `:225`).
 
 ## Prerequisites
 
@@ -36,8 +75,10 @@ Each example is a self-contained `qb::Actor` application that interacts with a P
    DML/DDL operations on that database. The examples default to a database named `test` and a user `test` with password
    `test`.
 3. **QB Framework**: The QB Actor Framework, including `qb-core`, `qb-io`, and `qbm-pgsql` modules, must be built.
-4. **CMake**: CMake version 3.14 or higher is required to build the examples.
-5. **C++17 Compiler**: A C++17 compatible compiler (e.g., GCC 7+, Clang 5+).
+4. **CMake**: 3.22 is the floor declared by `examples/CMakeLists.txt:25`, but the examples are built from the
+   superproject, whose own floor is **3.24** (`CMakeLists.txt:2`, `qb/CMakeLists.txt:31`). Configuring through a
+   `CMakePresets.json` preset needs **3.25** (the file is schema v6).
+5. **C++20 Compiler**: the examples are coroutines; C++17 will not compile them.
 
 ## Connection String
 
@@ -108,13 +149,15 @@ file.
 * **Purpose**: Demonstrates the most basic interaction with a PostgreSQL database: establishing a connection and
   executing a simple query.
 * **Key Features**:
-    * Creating a `qb::pg::tcp::database` client.
-    * Connecting to the database using a connection string.
-    * Basic error checking for the connection.
-    * Starting a simple transaction with `_db_connection->begin(...)`.
-    * Executing a single SQL query (`SELECT version();`) using `tr.execute(...)`.
-    * Retrieving and displaying a single field from the result set.
-    * Graceful shutdown of the actor.
+    * Standalone `qb-io` scaffolding — no actor, no `qb::Main`: `init()` + `coro_scheduler().spawn()` + `run_until()`
+      (`example1_basic_query.cpp:6-7`).
+    * Creating a `qb::pg::tcp::database` client (`:44`).
+    * `co_await db.connect(uri)` — yields `bool`; on failure `db.error().what()` says why (`:47-51`).
+    * `co_await db.execute("SELECT version();")` — yields `Reply<resultset>`; no explicit transaction is opened
+      (`:56`).
+    * `reply.ok()` / `reply.result()` / `reply.error()`, then `rs[0][0].as<std::string>()` to read one field
+      (`:57-64`).
+    * A scope guard flips the `running` flag on **every** exit path so `run_until()` stops (`:37-42`).
 * **Database Operations**:
     * `SELECT version();`
 
@@ -122,16 +165,20 @@ file.
 
 * **Purpose**: Illustrates the use of prepared statements for enhanced performance and security.
 * **Key Features**:
-    * Creating a table (`users`) if it doesn't exist.
-    * Preparing SQL statements (`CREATE TABLE`, `INSERT`, `SELECT`) using `tr.prepare(...)`.
-        * Specifying parameter type OIDs (e.g., `qb::pg::oid::text`, `qb::pg::oid::int4`).
-    * Executing prepared statements with parameters:
-        * `_db_connection->execute(PREPARE_INSERT_USER, {name, email}, ...)`
-        * `_db_connection->execute(PREPARE_SELECT_USER_BY_ID, {user_id}, ...)`
-    * Handling results from prepared statements, including retrieving generated IDs.
-    * Using `std::optional` for nullable database columns (e.g., `email`).
-    * Basic error handling for unique constraint violations during insert.
-    * Cleaning up (dropping the table) in the destructor using a synchronous `.await()` for simplicity in cleanup.
+    * Creating the `users` table with a plain `co_await db.execute(sql)` (`example2_prepared_statements.cpp:116`) —
+      DDL is not prepared.
+    * Preparing the INSERT and SELECT with
+      `co_await db.prepare(name, sql, qb::pg::type_oid_sequence{...})` → `Reply<PreparedQuery>` (`:129`, `:139`),
+      specifying parameter type OIDs (`qb::pg::oid::text`, `qb::pg::oid::int4`).
+    * Executing them by **name** with packed parameters:
+        * `co_await db.execute(PREPARE_INSERT_USER, qb::pg::params{name, email})` (`:53`)
+        * `co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{new_id})` (`:70`)
+    * Retrieving a generated id from the `RETURNING id` result set.
+    * `std::optional` for nullable columns — `qb::pg::params` accepts `std::nullopt` transparently (`:151`).
+    * Detecting a unique-constraint violation by SQLSTATE: `std::string(err.code) == "23505"` (`:57-58`).
+    * A miss: selecting id `999` and finding an empty result set (`:157`).
+    * Cleanup is an ordinary awaited statement at the end of the coroutine, not a destructor and not a blocking
+      `.await()` (`:168`).
 * **Database Operations**:
     * `CREATE TABLE IF NOT EXISTS users (...)`
     * `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;`
@@ -142,15 +189,15 @@ file.
 
 * **Purpose**: Shows how to manage database transactions, including a simulated fund transfer scenario.
 * **Key Features**:
-    * Full transaction lifecycle: `_db_connection->begin(...)`, followed by a chain of operations, and automatic
-      commit/rollback based on the success of the chain.
-    * Using `tr.then(...)` to sequence operations within a transaction.
-    * Using `tr.success(...)` and `tr.error(...)` for specific outcomes of the transaction chain.
-    * Demonstrating a common pattern: ensuring accounts exist (insert if not, ignore if unique violation) before
-      attempting updates.
-    * Simulating a successful fund transfer between two accounts.
-    * Simulating a transaction that is expected to fail (e.g., due to a unique constraint violation during an
-      intermediate step), leading to a rollback.
+    * **Explicit, manual** transaction control — there is no chain and no automatic commit/rollback. You write
+      `co_await db.begin()` (`example3_transaction_management.cpp:148`), then the statements, then
+      `co_await db.commit()` (`:181`) or `co_await db.rollback()` (`:163`, `:174`) yourself, on the branch you decide.
+    * Sequencing is ordinary control flow: check `reply.ok()` after each `co_await` and `rollback()` on the first
+      failure (`:160-176`).
+    * Ensuring accounts exist before updating them (insert, tolerate the unique violation).
+    * A successful fund transfer: two `UPDATE`s inside one BEGIN/COMMIT (`:160`, `:171`).
+    * A transfer that is **meant** to fail — a duplicate insert of `'Eve'` inside the transaction — followed by an
+      explicit `ROLLBACK` (`:203-222`).
     * Reading and displaying account balances.
     * Data type: `DOUBLE PRECISION` for account balances.
 * **Database Operations**:
@@ -168,7 +215,8 @@ file.
 * **Key Features**:
     * Creating a table (`data_types_test`) with columns of many different PostgreSQL types (integers, text, boolean,
       numeric/decimal, float, date/time, UUID, bytea, JSON/JSONB, arrays).
-    * Preparing an `INSERT` statement with placeholders for all supported types and specifying their OIDs.
+    * Preparing an `INSERT` with placeholders for all supported types and specifying their OIDs, via
+      `co_await db.prepare(name, sql, qb::pg::type_oid_sequence{...})`.
     * Preparing a `SELECT` statement to retrieve all columns.
     * Inserting sample data using C++ types like `int`, `short`, `long long`, `std::string`, `bool`, `float`, `double`,
       `qb::wall_time`, `qb::uuid`, `std::vector<char>` (for bytea), `qb::json`, `std::vector<int>`,
@@ -184,9 +232,11 @@ file.
 ### `example5_error_handling.cpp`
 
 * **Purpose**: Focuses on demonstrating how `qbm-pgsql` reports various database and client-side errors.
+  **The only actor-based example here** — `ErrorHandlingActor : public qb::Actor` (`:60`) with
+  `qb::io::async::task<bool> onInit()` that `co_await db.connect(...)`, added to a `qb::Main` engine (`:252-258`).
 * **Key Features**:
-    * A helper function `printDbError` to display detailed information from `qb::pg::error::db_error` objects (severity,
-      SQLSTATE, message, detail, hint).
+    * A helper `printDbError` to display detailed information from a `qb::pg::error::db_error` (severity, SQLSTATE,
+      message, detail) — `:104`.
     * **Scenario 1: Syntax Error**: Executing an intentionally malformed SQL query to trigger a `42601 (syntax_error)`.
     * **Scenario 2: Unique Constraint Violation**: Attempting to insert a duplicate value into a column with a `UNIQUE`
       constraint, triggering a `23505 (unique_violation)`.
@@ -197,7 +247,10 @@ file.
           `qb::pg::error::value_is_null` exception.
         * Attempting to retrieve an integer column using `.as<std::string>()` (type mismatch), expecting a
           `qb::pg::error::field_type_mismatch` exception.
-    * Utilizing the error callbacks in `tr.execute(...)` and `_db_connection->begin(...)`.
+    * Two different mechanisms, deliberately: server-side failures arrive as data — `if (!reply.ok())
+      printDbError(..., reply.error())` — while client-side conversion failures are **thrown** and caught with
+      `try`/`catch` (`:215`, `:225`).
+    * Driving an SQL-issuing coroutine from a synchronous actor handler with `spawn(...)`.
 * **Database Operations**:
     * `CREATE TABLE IF NOT EXISTS error_test_items (...)` (with `UNIQUE` and `CHECK` constraints)
     * `INSERT INTO error_test_items (name, quantity, description) VALUES ($1, $2, $3);`

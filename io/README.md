@@ -37,7 +37,10 @@ Below is a detailed explanation of each example within this directory.
         * Uses `qb::io::async::with_timeout<FileProcessor>` for periodic actions.
         * Alternates writing to and reading from `qb_io_example.txt` using synchronous `qb::io::system::file` calls,
           triggered by asynchronous timer events.
-        * Reschedules itself using `updateTimeout()`.
+        * Reschedules itself with **`setTimeout(_interval)`** (`example1_async_io.cpp:168`). Not `updateTimeout()`:
+          the watcher that just fired is one-shot and is not re-armed on that branch, and `updateTimeout()` only
+          stamps the last-activity time — it never restarts the timer. The source says so at `:165-167`.
+          `TimerDemonstration` re-arms the same way at `:280`.
     * **`TimerDemonstration`**:
         * Also uses `qb::io::async::with_timeout<TimerDemonstration>`.
         * Shows a simple recurring timer logging "tick" messages.
@@ -54,7 +57,7 @@ Below is a detailed explanation of each example within this directory.
     * Asynchronous System Initialization: `qb::io::async::init()`.
     * Event Loop Integration: `qb::io::async::run()`.
     * Timer-Based Operations: `qb::io::async::with_timeout<T>`, `on(qb::io::async::event::timer const&)`,
-      `updateTimeout()`.
+      `setTimeout(d)` to re-arm.
     * Basic File I/O: `qb::io::system::file` for synchronous file operations, orchestrated asynchronously.
     * Low-Level File Watching: Direct use of `ev::stat` with `qb::io::async::listener::current.loop()`.
     * Thread-Safe Output: `qb::io::cout()`, `qb::io::cerr()`.
