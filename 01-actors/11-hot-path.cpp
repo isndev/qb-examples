@@ -34,17 +34,20 @@
  * `build_event<E>(source, ...)` is the odd one out — it QUEUES NOTHING. It constructs an event
  * locally, addressed to you, for immediate hand-processing.
  *
- * TWO THINGS THE DOCUMENTATION SAYS THAT THE COMPILER DOES NOT
- * ------------------------------------------------------------
+ * TWO THINGS WORTH KNOWING BEFORE YOU PICK A PRIMITIVE
+ * ----------------------------------------------------
  * Both were measured against the headers rather than assumed, and both matter here:
  *
- * 1. `send<E>`'s contract is "E must be trivially destructible" (`Actor.h:889`) — and nothing
- *    enforces it. The only `static_assert` on the subject (`VirtualCore.h:795`) is gated on
- *    `event_qos0_type<T>`, i.e. on deriving from `qb::EventQOS0`, and the concept
- *    `qb::trivial_event` that exists for exactly this purpose (`Actor.h:126`) has **zero** uses
- *    in the entire tree. So a `send` of an event holding a `std::string` compiles clean. Treat
- *    the rule as a rule anyway — or derive from `qb::EventQOS0`, which is the one spelling that
- *    does get checked.
+ * 1. "`send<E>` requires a trivially destructible event" is a GUIDELINE, except for one case
+ *    where it is a compile error. The rule exists for the DROP path, and only a `qb::EventQOS0`
+ *    event has one: the cross-core flush discards a `qos == 0` event on backpressure without
+ *    disposing it, so a heap-owning member leaks there. Every other event is retried, and any
+ *    event that is actually delivered has its destructor run exactly once by the receiver
+ *    whichever primitive queued it — `send` included. So a `send` of a plain `qb::Event` holding
+ *    a `std::string` compiles and is correct; a `qb::EventQOS0` holding one is rejected at every
+ *    enqueue sink, `getPipe().push` and `allocated_push` included. Derive fire-and-forget events
+ *    from `qb::EventQOS0` and the compiler will hold you to the rule. (`Actor.h:889`,
+ *    `Event.h` `routing_safe_type_id`, `VirtualCore.h:795`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
  *    (`Event.h:499`, `:509`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.
