@@ -53,16 +53,18 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExample.cmake)
 
 # The tree is organised BY LEVEL (`NN-<tier>/`) — the order in which a person should
 # read it — rather than by which library a program links, which is a fact about the
-# build system and not about learning. Six tiers are converted; `core/` is what remains
-# of the pre-3.0 layout, and it holds only the four programs whose replacements are not
+# build system and not about learning. Seven tiers are converted; `core/` is what remains
+# of the pre-3.0 layout, and it holds only the programs whose replacements are not
 # written yet (see its own CMakeLists for which replaces which).
 #
-# 04-patterns/ has no directory because it has no program: the eleven shipped
-# qb/core/patterns/ headers are demonstrated zero times, and that whole tier is new work.
+# 04-patterns/ is the one tier that is entirely NEW rather than moved: the eleven shipped
+# qb/core/patterns/ headers had zero demonstrators anywhere in the corpus, and `qb::ask` —
+# the primitive six of them are built on — had zero call sites in 55 programs.
 
 add_subdirectory(01-actors)
 add_subdirectory(02-io)
 add_subdirectory(03-coroutines)
+add_subdirectory(04-patterns)
 add_subdirectory(05-services)
 add_subdirectory(06-modules)
 add_subdirectory(07-applications)

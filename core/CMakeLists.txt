@@ -29,12 +29,19 @@
 #                                         lockfree::spsc::ringbuffer instead of a std::mutex
 #                                         queue in the directory whose job is to teach that
 #                                         actors do not share state
-#   example7_pub_sub.cpp               -> to be replaced by 04-patterns/01-pubsub, using the
-#                                         shipped qb::PubSub<Topic> this file names in a
-#                                         comment and then does not use
+#   example7_pub_sub.cpp               -> replaced by 04-patterns/01-pubsub, which LANDED: it
+#                                         uses the shipped qb::PubSub<Topic> this file names in
+#                                         a comment at :64 and then does not use. The
+#                                         retirement is unblocked and is a step of its own --
+#                                         a deletion is never a side effect of writing the
+#                                         replacement
 #   example9_trading_system.cpp        -> to be replaced by 07-applications/03-market-data-hub
-#   example10_distributed_computing.cpp-> to be replaced by 04-patterns/03-worker-pool +
-#                                         04-patterns/04-scatter-gather
+#   example10_distributed_computing.cpp-> the two things it hand-rolls are replaced by
+#                                         04-patterns/03-worker-pool and
+#                                         04-patterns/04-scatter-gather, which BOTH LANDED.
+#                                         Its monitoring half still has no home; that is
+#                                         02-io/11-logging-and-metrics, and it is what this
+#                                         file is now waiting for
 #
 # They keep their pre-3.0 hand-written target names on purpose: a derived name would put
 # them in a tier, and they are not in one. When each replacement lands, this directory
