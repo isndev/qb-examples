@@ -61,14 +61,20 @@
 using namespace std::chrono_literals;
 
 // ---- part 1: batching -----------------------------------------------------
-// NOTE THE FIELD NAME, AND DO NOT "SIMPLIFY" IT TO `id`. `qb::Event` carries four private
-// routing fields — `id`, `dest`, `source`, `bucket_size` — and a derived member of the same
-// name HIDES the base one. `VirtualCore::fill_event` then writes the event's type id into YOUR
-// field and leaves the routing header unset, so every instance of the event is constructed,
-// pushed, and silently never delivered. Measured here while writing this file: with the member
-// called `id`, all thirteen rows below vanished with no warning at compile time (not even under
+// NOTE THE FIELD NAME, AND DO NOT "SIMPLIFY" IT TO `id`. `qb::Event` carries five private
+// routing fields — `state`, `bucket_size`, `id`, `dest`, `source` — and a derived member of the
+// same name HIDES the base one. `VirtualCore::fill_event` then writes the event's type id into
+// YOUR field and leaves the routing header unset, so every instance of the event is constructed,
+// pushed, and never delivered. Measured here while writing this file: with the member called
+// `id`, all thirteen rows below vanished with no warning at compile time (not even under
 // -Wshadow-field, because the base fields are private), no error at run time, and no diagnostic
 // anywhere. Renaming it to `row_id` fixed it completely.
+//
+// THAT SILENCE IS NOW CLOSED, and this note is kept as the worked example rather than as a live
+// hazard: `qb::detail::routing_safe_type_id<T>` (Event.h) turns each of those five names — plus
+// `ServiceEvent`'s `forward` and `service_event_id` — into a `static_assert` naming the field and
+// the type, at all three sites that stamp the header (`fill_event`, `Pipe::push`,
+// `Pipe::allocated_push`). Writing `int id;` here no longer drops rows; it fails to compile.
 struct Row : public qb::Event {
     int row_id;
     explicit Row(int i)
