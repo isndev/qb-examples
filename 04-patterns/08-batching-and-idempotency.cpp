@@ -6,7 +6,8 @@
  *          time trigger, whichever comes first), and `qb::dedup_map` + `qb::answer_idempotent`
  *          make a responder run its side effect at most once per key, however many times the
  *          same request arrives.
- * @demonstrates qb::batcher<int>, add, flush, pending, qb::dedup_map, qb::answer_idempotent, qb::ask, qb::ask_retry, qb::retry_policy,
+ * @demonstrates qb::batcher<int>, add, flush, pending, qb::dedup_map<std::uint64_t, int>,
+ * qb::answer_idempotent, qb::ask, qb::ask_retry, qb::retry_policy,
  * resolve_ask, qb::Request<int>, context(), spawn, registerEvent<E>, push<E>, qb::Main
  * @prerequisites 04-patterns/05-resilience
  * @expect " rows written as ONE batch (count trigger: the buffer filled)"

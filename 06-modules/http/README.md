@@ -55,14 +55,22 @@ Below is a list of the available examples and the key features they showcase:
 
 ### 2. `10-client.cpp`
 
-* **Description**: An HTTP client actor that makes various requests to `httpbin.org`.
+* **Description**: The **persistent** HTTP/1.1 client, measured against an upstream this program
+  hosts itself. **Rewritten**: it used to make three one-shot calls to the public `httpbin.org`,
+  which meant it could not run offline and — measured — printed "HTTP Client demo completed!" and
+  exited 0 on a run in which all three requests came back **503**. Meanwhile `make_client` had
+  zero occurrences anywhere in the corpus.
 * **Features**:
-    * Using `qb::http::async::REQUEST`, `qb::http::async::GET`, `qb::http::async::POST`.
-    * Setting custom request headers.
-    * Sending JSON and form data in POST requests.
-    * Handling responses asynchronously.
-    * Making multiple requests sequentially.
-* **Interaction**: Makes requests to `httpbin.org/get`, `httpbin.org/post`, `httpbin.org/headers`.
+    * `qb::http1::make_client` / `qb::http1::Client`, the coroutine `connect()` and its
+      `ConnectResult`, and the callback form beside it.
+    * `push_request` (coroutine and callback), `push_requests` for a batch whose results are
+      indexed by the ORIGINAL request position.
+    * `set_request_timeout`, `set_auto_reconnect`, `is_connected`, `get_stats`.
+    * A `qb::http::use<T>::server<Session>` upstream on the SAME event loop, so the connection
+      counts it prints are the server's own observation.
+* **The number it exists for**: three sequential requests on the persistent client cost **one**
+  connection; the same three through the one-shot `qb::http::GET` cost **three**.
+* **Interaction**: none. It binds `127.0.0.1:18081` in-process and needs no network.
 
 ### 3. `02-routing.cpp`
 
@@ -198,21 +206,31 @@ Below is a list of the available examples and the key features they showcase:
 
 ### 10. `06-validation.cpp`
 
-* **Description**: Showcases request data validation for body, parameters, and headers.
+* **Description**: The `qb::http::validation` namespace. **Rewritten**: the previous version was
+  1008 lines, included five `validation/` headers, and contained the string `validation::`
+  **zero** times — every check was a hand-written `if (!json.contains(...))` and two comments
+  described a middleware that was never installed. It is the defect
+  `dev/agent/check-example-headers.py` exists to make impossible.
 * **Features**:
-    * `qb::http::validation::RequestValidator` for defining validation rules.
-    * `qb::http::ValidationMiddleware` to apply validation automatically.
-    * Validating JSON request bodies against a schema (types, required fields, patterns, ranges).
-    * Validating query parameters, path parameters, and headers (type, required, format).
-    * Custom error responses for validation failures (400 Bad Request, 422 Unprocessable Entity).
-    * Data sanitization (`SanitizerFunction`).
+    * `SchemaValidator` — one JSON schema against one `qb::json` value.
+    * `ParameterValidator` + `ParameterRuleSet` — named, TYPED parameters with defaults, stacked
+      rules and an optional strict mode that rejects anything undeclared.
+    * `Sanitizer` + `PredefinedSanitizers` — in-place rewrites (`trim`, `escape_html`,
+      `normalize_whitespace`), with the `a.b`, `a[i]` and `a[*]` path grammar.
+    * `RequestValidator` — body schema, query, header and path params, plus per-field sanitizers,
+      in one call against a whole `qb::http::Request`.
+    * `qb::http::validation_middleware<Session>(...)` handed to `router().use(...)`.
+    * `Result` / `Error` — the out-parameter and the `{field_path, rule_violated, message,
+      offending_value}` shape you read failures out of.
+* **How it is checked**: a self-check runs BEFORE the server binds and prints a gated verdict for
+  each of the four pieces, so the run is red if any of them stops behaving as documented. The
+  server then serves the same validator as middleware, for a human with `curl`.
+* **Two things it measures that are easy to get wrong**: there are no rule factory functions (it
+  is `std::make_shared<MinimumRule>(18)`), and a validator carrying `for_path_param` **fails**
+  when no `PathParameters` is supplied — it is not silently skipped.
 * **Key Endpoints**:
-    * `POST /api/users` (validates user creation payload)
-    * `PUT /api/users/:id` (validates user update payload and path param)
-    * `GET /api/products` (validates query parameters for filtering)
-    * `POST /api/products` (validates product creation payload)
-    * `GET /api/search` (validates multiple query parameters with various rules)
-    * `POST /api/contact` (validates a contact form submission with sanitizers)
+    * `POST /api/users` (body schema + query `page` + header `X-Api-Version`, with sanitizers)
+    * `GET /api/users/:id` (path parameter, typed and range-checked)
 
 ### 11. `11-https.cpp`
 

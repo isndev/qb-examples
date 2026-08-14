@@ -1,716 +1,270 @@
 /**
  * @file examples/06-modules/redis/05-transactions.cpp
  * @tier 06-modules
- * @teaches An order pipeline over Redis hashes and lists, with the inventory check and the decrement
- *          written as separate awaited commands. NOTE the gap this file's own title claims to close
- *          and does not: it calls no MULTI, EXEC, WATCH or DISCARD, so nothing here is atomic.
- * @demonstrates qb::redis::tcp::client, spawn, qb::ScopedCoroContext, ctx.sleep,
- *               qb::io::async::callback, qb::io::async::task<void>, registerEvent<E>, qb::KillEvent
+ * @teaches Redis transactions as this client actually implements them: MULTI queues, EXEC runs
+ *          the batch in one atomic step, DISCARD throws it away, and WATCH makes the whole
+ *          thing conditional on nobody else having touched a key. Plus the trap that decides
+ *          whether your MULTI block works: what a QUEUED reply looks like to a TYPED client.
+ * @demonstrates qb::redis::tcp::client, multi, exec<std::string>, discard, watch, unwatch,
+ *               is_in_multi, qb::redis::Reply<T>, ok, result, raw, error,
+ *               qb::io::async::init, qb::io::async::run_until, qb::io::async::coro_scheduler,
+ *               qb::io::async::task<void>
  * @prerequisites 06-modules/redis/03-coroutines-and-pipelining
  * @expect "Connected to Redis successfully!"
- * @expect "=== Current Inventory ==="
- * @example qbm-redis: Transactions and Atomic Operations with Actors (Coroutine API)
+ * @expect "[multi] queued 2 commands; is_in_multi() = yes, and each answered 'QUEUED' rather"
+ * @expect "[exec] both commands ran atomically: OK OK, and the block is closed again"
+ * @expect "[queued] SET (status)  -> ok=yes, value 'QUEUED' — the assertable shape"
+ * @expect "[queued] INCR (long long) -> ok=no: a QUEUED reply is not an integer, so the typed"
+ * @expect "[queued] GET (optional<string>) -> ok=yes and the value is literally \"QUEUED\". THIS is"
+ * @expect "[discard] the queued SET never happened; the key still reads "
+ * @expect "[watch] another client changed the key, so EXEC ABORTED"
+ * @expect "[watch] raw()->is_null() = yes — THAT is how an abort is told from a parse error"
+ * @expect "[watch] with nobody interfering, the guarded EXEC committed"
+ * @expect "[raw] a heterogeneous EXEC read through raw(): string, integer, error — and one"
+ * @expect "=== transactions complete: MULTI, EXEC, DISCARD, WATCH, UNWATCH all exercised ==="
  *
- * @brief This example demonstrates concepts related to Redis transactions and atomic
- * operations within a QB actor system, simulating a simple inventory management
- * scenario.  It uses the modern coroutine API throughout.
+ * WHAT THIS FILE USED TO BE
+ * -------------------------
+ * It was titled *Transactions and Atomic Operations*, it was 716 lines of inventory actors, and
+ * it called **no** MULTI, EXEC, WATCH or DISCARD — measured, zero call sites. It was the one
+ * file in the restructured corpus whose filename was not true of it. The read-then-write it
+ * demonstrated ("HGET the quantity, decide, HINCRBY it down") is exactly the race a transaction
+ * exists to close, and it closed nothing.
  *
- * @details
- * The system includes several actors:
- * 1.  `InventoryManagerActor`:
- *     -   Connects to Redis via `co_await _redis.connect()` in its `onInit()` coroutine.
- *     -   `setup_inventory()` is spawned from onInit after connect: populates Redis with
- *         initial product data using `co_await _redis.hset()` etc.
- *     -   `on(const OrderRequestEvent&)` spawns a coroutine to:
- *         -   `co_await _redis.hget(key, "quantity")` for current stock.
- *         -   Check availability, then `co_await _redis.hincrby()` to decrement.
- *         -   `co_await _redis.hset()` to record the order.
- *     -   `demonstrate_redis_operations()` shows INCR, SET, LPUSH, GET, LRANGE, DEL.
- *     -   `on(const ShutdownEvent&)` spawns cleanup (del inventory/order keys) then kills.
- * 2.  `OrderClientActor` (multiple instances):
- *     -   Simulates a client placing orders.  Each order is a spawned coroutine with a
- *         scheduled delay between orders.
- *     -   Receives `OrderResultEvent`s and logs the outcome.
- * 3.  `CoordinatorActor`:
- *     -   Manages the overall simulation lifecycle.
- *     -   Waits for setup and demo completion before starting clients.
- *     -   Orchestrates graceful shutdown.
+ * THE MODEL, IN FOUR SENTENCES
+ * ----------------------------
+ * `MULTI` opens a block. Every command you send afterwards is not executed — the server queues
+ * it and answers `+QUEUED`. `EXEC` runs the whole queue as one atomic step and answers with an
+ * ARRAY of the individual results, in order. `DISCARD` throws the queue away instead.
  *
- * QB/QBM Redis Features Demonstrated:
- * - `qb::io::async::task<bool>` onInit() and spawned coroutines.
- * - `co_await client.connect()` and `co_await client.<command>()`.
- * - `qb::redis::Reply<T>`: `ok()` and `result()`.
- * - Hash commands: `hset`, `hget`, `hgetall`, `hincrby`.
- * - Key commands: `keys`, `del`.
- * - String commands: `set`, `get`, `incr`, `setex`.
- * - List commands: `lpush`, `lrange`.
- * - Waiting without outliving the actor: `spawn(...)` + `co_await ctx.sleep(d)` + a
- *   self-addressed tick event, and the one case where a bare `qb::io::async::callback(fn, d)`
- *   is still correct — see the comment on `DemoOperationsTick` and
- *   `CoordinatorActor::on(CoordinatorShutdownTick&)`.
- * - `addRefActor` returning `qb::ActorHandle<T>` with `.valid()` / `.id()`.
+ * `WATCH key` makes the next `EXEC` conditional: if any watched key was modified by anyone else
+ * between the WATCH and the EXEC, the EXEC does nothing and returns nil. That is optimistic
+ * concurrency control, and it is the *only* way to make a read-then-write atomic in Redis,
+ * because you cannot read a value inside a MULTI block — the reply is not available until EXEC.
+ *
+ * THE TRAP: A TYPED CLIENT MEETS +QUEUED — three outcomes, and one is silent
+ * --------------------------------------------------------------------------
+ * This client is typed: `set()` resolves to `Reply<status>`, `incr()` to `Reply<long long>`,
+ * `get()` to `Reply<std::optional<std::string>>`. Inside a MULTI block the server answers every
+ * one of them with the simple string `+QUEUED`, and the typed parser reacts differently to that
+ * depending on the type it expected. Measured against the parser, not guessed:
+ *
+ *   status                    ok() == true, result().str() == "QUEUED"    the assertable shape
+ *   long long                 ok() == false, error() = "expect INTEGER reply, but got
+ *                             SIMPLE_STRING reply"                        a false-looking failure
+ *   std::optional<std::string> ok() == true, result() == "QUEUED"          a SILENT WRONG VALUE
+ *
+ * The last one is the dangerous one: `co_await redis.get(k)` inside a MULTI block hands you a
+ * perfectly healthy-looking reply whose value is the string "QUEUED". Nothing in the API stops
+ * you reading it. **The rule for a MULTI block is therefore: `co_await` every command — you must
+ * consume its reply or the reply FIFO desynchronises permanently — but never read a value out of
+ * one.** Read values from the EXEC array, which is where they actually are.
+ *
+ * READING THE EXEC ARRAY
+ * ----------------------
+ * `exec<T>()` has no default for `T` and it is not deducible, so `exec()` does not compile.
+ * `co_await redis.exec<std::string>()` resolves to `Reply<std::vector<std::string>>`, which is
+ * ONE reply containing a vector — not a vector of replies. That homogeneous form is convenient
+ * and brittle: one element that is not a `T` makes the whole reply `ok() == false`. For a mixed
+ * batch, read `raw()` and walk the RESP array with `is_string()` / `is_integer()` / `is_error()`,
+ * which the last section does.
+ *
+ * Build:
+ *   cmake --preset release
+ *   cmake --build --preset release --target qb-example-modules-redis-transactions
+ * Run (needs a Redis on 127.0.0.1:6379):
+ *   ./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-transactions
  */
 
-#include <iomanip>
-#include <iostream>
-#include <random>
-#include <string_view>
-#include <qbm/redis/redis.h>
 #include <string>
 #include <vector>
-#include <qb/actor.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
-#include <qb/main.h>
-#include <qb/string.h>
-#include <qb/system/parse.h>
+#include <qbm/redis/redis.h>
 
-// Redis Configuration - must be in initializer list format
 #define REDIS_URI {"tcp://localhost:6379"}
 
-// Structure to represent a product in inventory
-struct Product {
-    std::string id;
-    std::string name;
-    int         price;
-    int         quantity;
-};
+namespace {
 
-// NOTE ON EVENT PAYLOADS: the engine relocates an event with `memcpy` and never runs the source
-// destructor, so a payload member may hold no pointer into itself. On libstdc++ a SHORT
-// std::string holds exactly that -- `_M_p` addresses its own inline buffer -- so after the
-// relocation it still points at the old storage. libc++ recomputes the pointer from `this`, which
-// is why the defect is invisible on macOS and corrupts on Linux. This is NOT a cross-core-only
-// concern: pipe growth, compaction, `reply()` and `forward()` relocate same-core events too.
-// Bounded payloads use `qb::string<N>`; unbounded ones are boxed behind a `std::shared_ptr`.
-//
-// Event to request an order
-struct OrderRequestEvent : qb::Event {
-    qb::string<64> product_id;
-    int            quantity;
-    qb::ActorId    sender_id;
+constexpr const char *K_A       = "qb:example:tx:a";
+constexpr const char *K_B       = "qb:example:tx:b";
+constexpr const char *K_GUARDED = "qb:example:tx:guarded";
+constexpr const char *K_COUNTER = "qb:example:tx:counter";
 
-    OrderRequestEvent(std::string_view id, int qty, qb::ActorId sender)
-        : product_id(id)
-        , quantity(qty)
-        , sender_id(sender) {}
-};
+} // namespace
 
-// Event to report order result
-struct OrderResultEvent : qb::Event {
-    qb::string<64>  product_id;
-    int             quantity;
-    bool            success;
-    qb::string<128> message;
-
-    OrderResultEvent(std::string_view id, int qty, bool succ, std::string_view msg)
-        : product_id(id)
-        , quantity(qty)
-        , success(succ)
-        , message(msg) {}
-};
-
-// Event to signal that inventory setup is complete
-struct SetupCompletedEvent : qb::Event {
-    explicit SetupCompletedEvent() {}
-};
-
-// Event to signal that operations demo is complete
-struct TransactionDemoCompletedEvent : qb::Event {
-    explicit TransactionDemoCompletedEvent() {}
-};
-
-/**
- * @brief Self-addressed wake-ups, one per delay in this example.
- *
- * Every one of these replaces a `qb::io::async::callback([this]{ ... }, d)`. That overload
- * heap-allocates a `Timeout` owned by the event loop, not by the actor, so nothing cancels it
- * when the actor is killed and it fires against a destroyed object. That is not theoretical
- * here: `OrderClientActor::on(OrderResultEvent&)` used to schedule its shutdown notification
- * that way, and AddressSanitizer reported `heap-use-after-free` in the lambda on every run of
- * this example. The replacement is `spawn(...)` + `co_await ctx.sleep(d)` — a wait the actor's
- * cancellation scope owns — plus one of these events to do the work back on the actor.
- */
-struct DemoOperationsTick : qb::Event {};      ///< 1 s after setup: run the extra Redis demo
-struct PlaceOrderTick : qb::Event {};          ///< staggered: place one random order
-struct NotifyCoordinatorTick : qb::Event {};   ///< 500 ms after the last result: tell the coordinator
-struct CoordinatorShutdownTick : qb::Event {}; ///< 1 s after shutdown starts: leave
-
-// Event to signal shutdown
-struct ShutdownEvent : qb::Event {
-    explicit ShutdownEvent() {}
-};
-
-// Helper function to generate example products
-std::vector<Product>
-initialize_inventory() {
-    return {
-        {"p1", "Laptop", 999, 10},
-        {"p2", "Smartphone", 699, 20},
-        {"p3", "Headphones", 99, 50},
-        {"p4", "Monitor", 299, 15},
-        {"p5", "Keyboard", 59, 30}
-    };
-}
-
-// Actor for managing inventory with Redis
-class InventoryManagerActor : public qb::Actor {
-private:
-    qb::redis::tcp::client _redis{REDIS_URI};
-    qb::ActorId            _coordinator_id;
-
-public:
-    explicit InventoryManagerActor(qb::ActorId coordinator)
-        : _coordinator_id(coordinator) {}
-
-    qb::io::async::task<bool>
-    onInit() override {
-        auto cout = qb::io::cout();
-        cout << "InventoryManagerActor initialized" << std::endl;
-
-        // Register for events before the first co_await
-        registerEvent<OrderRequestEvent>(*this);
-        registerEvent<ShutdownEvent>(*this);
-        registerEvent<DemoOperationsTick>(*this);
-
-        if (!co_await _redis.connect()) {
-            qb::io::cerr() << "Failed to connect to Redis" << std::endl;
-            co_return false;
+qb::io::async::task<void>
+run_transactions(bool &running) {
+    // Flip `running` on EVERY exit path, so a failure stops the loop instead of hanging it.
+    struct StopOnExit {
+        bool &r;
+        ~StopOnExit() {
+            r = false;
         }
+    } stop{running};
 
-        cout << "Connected to Redis successfully!" << std::endl;
+    qb::redis::tcp::client redis{REDIS_URI};
+    if (!co_await redis.connect()) {
+        qb::io::cerr() << "Failed to connect to Redis\n";
+        co_return;
+    }
+    qb::io::cout() << "Connected to Redis successfully!\n\n";
 
-        // Spawn the inventory-setup coroutine — runs concurrently after activation.
-        //
-        // `setup_inventory()` is a member coroutine: its implicit `this` is the actor, and it
-        // touches members after every `co_await _redis...`. That is safe by OWNERSHIP, not by
-        // `spawn`'s scope — a qbm command awaiter registers nothing with the cancellation
-        // token, so `kill()` never reaches it. `_redis` is a MEMBER, so `~Actor` destroys the
-        // client with its pending-reply queue, the reply callback is discarded UNINVOKED, and
-        // the coroutine never resumes (measured: an actor killed while parked on a 3 s BRPOP
-        // never resumes, ASan silent). The cost is an orphaned frame, not a use-after-free.
-        // The same body over a client that outlives the actor WOULD be a use-after-free.
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await setup_inventory(); });
+    (void) co_await redis.del(K_A, K_B, K_GUARDED, K_COUNTER);
 
-        co_return true;
+    // -----------------------------------------------------------------------------------
+    // 1. MULTI / EXEC — the batch, and what the queued replies look like
+    // -----------------------------------------------------------------------------------
+    auto opened = co_await redis.multi();
+    if (!opened.ok()) {
+        qb::io::cerr() << "MULTI failed: " << opened.error() << "\n";
+        co_return;
     }
 
-    // Setup inventory with initial products
-    qb::io::async::task<void>
-    setup_inventory() {
-        auto cout = qb::io::cout();
+    // Every queued command is still `co_await`ed. The reply must be consumed — this client
+    // holds one FIFO of pending reply handlers, and skipping one desynchronises it for the rest
+    // of the connection's life.
+    auto q1 = co_await redis.set(K_A, "first");
+    auto q2 = co_await redis.set(K_B, "second");
+    // Each asserted sentence below is a WHOLE literal chosen by the measurement, never a value
+    // spliced into one. That is what makes the example runner's `@expect` check an assertion
+    // about behaviour instead of an assertion that this line was reached.
+    const bool queued_ok = redis.is_in_multi() && q1.result().str() == "QUEUED" && q2.result().str() == "QUEUED";
+    qb::io::cout() << (queued_ok ? "[multi] queued 2 commands; is_in_multi() = yes, and each answered 'QUEUED' rather\n"
+                                   "        than a value — the server has not run them\n"
+                                 : "[multi] UNEXPECTED: the queued replies were not QUEUED\n");
 
-        // Clean up any existing inventory/order keys
-        auto inv_keys = co_await _redis.keys("inventory:*");
-        if (inv_keys.ok() && !inv_keys.result().empty()) {
-            [[maybe_unused]] auto d1 = co_await _redis.del(inv_keys.result());
-        }
-        auto ord_keys = co_await _redis.keys("order:*");
-        if (ord_keys.ok() && !ord_keys.result().empty()) {
-            [[maybe_unused]] auto d2 = co_await _redis.del(ord_keys.result());
-        }
-
-        auto products = initialize_inventory();
-
-        for (const auto &p : products) {
-            std::string           key = "inventory:" + p.id;
-            [[maybe_unused]] auto s1  = co_await _redis.hset(key, "name", p.name);
-            [[maybe_unused]] auto s2  = co_await _redis.hset(key, "price", std::to_string(p.price));
-            [[maybe_unused]] auto s3  = co_await _redis.hset(key, "quantity", std::to_string(p.quantity));
-        }
-
-        cout << "Inventory initialized with " << products.size() << " products" << std::endl;
-
-        co_await display_inventory();
-
-        // Notify coordinator that setup is complete
-        push<SetupCompletedEvent>(_coordinator_id);
-
-        // Demonstrate other Redis operations after a brief pause. The pause is a coroutine this
-        // actor's cancellation scope owns; the work restarts from `on(DemoOperationsTick&)`.
-        scheduleTick<DemoOperationsTick>(std::chrono::seconds(1));
+    // `exec<T>()`: T is not deducible and has no default, so `exec()` will not compile. The
+    // result is ONE Reply holding a vector, indexed in the order the commands were queued.
+    qb::redis::Reply<std::vector<std::string>> ran = co_await redis.exec<std::string>();
+    if (!ran.ok()) {
+        qb::io::cerr() << "EXEC failed: " << ran.error() << "\n";
+        co_return;
     }
+    const bool both = ran.result().size() == 2 && ran.result()[0] == "OK" && ran.result()[1] == "OK" && !redis.is_in_multi();
+    qb::io::cout() << (both ? "[exec] both commands ran atomically: OK OK, and the block is closed again\n\n"
+                            : "[exec] UNEXPECTED: the EXEC array was not two OKs\n\n");
 
-    void
-    on(const DemoOperationsTick &) {
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await demonstrate_redis_operations(); });
-    }
+    // -----------------------------------------------------------------------------------
+    // 2. The three shapes a QUEUED reply takes, measured rather than described
+    // -----------------------------------------------------------------------------------
+    (void) co_await redis.set(K_COUNTER, "41");
+    (void) co_await redis.multi();
 
-    /**
-     * @brief Sleep `d`, then wake this actor with a `TickEvent`
-     *
-     * See the comment on `DemoOperationsTick` for why this exists rather than
-     * `qb::io::async::callback([this]{ ... }, d)`.
-     */
-    template <typename TickEvent>
-    void
-    scheduleTick(qb::duration d) {
-        spawn([d](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            co_await ctx.sleep(d);
-            ctx.template push<TickEvent>();
-        });
-    }
+    auto queued_set  = co_await redis.set(K_A, "ignored"); // Reply<status>
+    auto queued_incr = co_await redis.incr(K_COUNTER);     // Reply<long long>
+    auto queued_get  = co_await redis.get(K_A);            // Reply<std::optional<std::string>>
 
-    // Display current inventory
-    qb::io::async::task<void>
-    display_inventory() {
-        auto cout = qb::io::cout();
+    qb::io::cout() << (queued_set.ok() && queued_set.result().str() == "QUEUED"
+                           ? "[queued] SET (status)  -> ok=yes, value 'QUEUED' — the assertable shape\n"
+                           : "[queued] SET did not produce the documented QUEUED status\n");
+    qb::io::cout() << (!queued_incr.ok() ? "[queued] INCR (long long) -> ok=no: a QUEUED reply is not an integer, so the typed\n"
+                                           "         parser reports a FAILURE for a command that was queued perfectly well\n"
+                                         : "[queued] INCR reported ok, which the parser should not do inside MULTI\n");
+    qb::io::cout() << "         (its error text was: " << queued_incr.error() << ")\n";
+    qb::io::cout() << (queued_get.ok() && queued_get.result().has_value() && *queued_get.result() == "QUEUED"
+                           ? "[queued] GET (optional<string>) -> ok=yes and the value is literally \"QUEUED\". THIS is\n"
+                             "         the silent one: never read a value out of a queued reply\n"
+                           : "[queued] GET did not silently return the QUEUED string\n");
 
-        auto keys_r = co_await _redis.keys("inventory:*");
-        if (!keys_r.ok() || keys_r.result().empty()) {
-            cout << "No products in inventory!" << std::endl;
+    auto after = co_await redis.exec<std::string>();
+    qb::io::cout() << "[queued] ...and after EXEC the real values are in the array: " << after.result().size()
+                   << " results, the counter is now " << (co_await redis.get(K_COUNTER)).result().value_or("?") << "\n\n";
+
+    // -----------------------------------------------------------------------------------
+    // 3. DISCARD — the queue is thrown away, nothing ran
+    // -----------------------------------------------------------------------------------
+    (void) co_await redis.set(K_A, "unchanged");
+    (void) co_await redis.multi();
+    (void) co_await redis.set(K_A, "this must never land");
+    auto dropped = co_await redis.discard();
+    auto still   = co_await redis.get(K_A);
+    qb::io::cout() << "[discard] the queued SET never happened; the key still reads '" << still.result().value_or("?") << "' (DISCARD "
+                   << (dropped.ok() ? "ok" : "failed") << ", is_in_multi() " << (redis.is_in_multi() ? "yes" : "no") << ")\n\n";
+
+    // -----------------------------------------------------------------------------------
+    // 4. WATCH — the same batch, made conditional. First the ABORT.
+    // -----------------------------------------------------------------------------------
+    (void) co_await redis.set(K_GUARDED, "v1");
+    (void) co_await redis.watch(K_GUARDED);
+
+    // A SECOND connection: the interference has to come from somewhere else, or there is
+    // nothing for WATCH to notice. This is what a competing process looks like.
+    {
+        qb::redis::tcp::client other{REDIS_URI};
+        if (!co_await other.connect()) {
+            qb::io::cerr() << "second client failed to connect\n";
             co_return;
         }
-
-        cout << "\n=== Current Inventory ===" << std::endl;
-        cout << std::setw(10) << "ID" << std::setw(15) << "Name" << std::setw(10) << "Price" << std::setw(10) << "Quantity" << std::endl;
-        cout << std::string(45, '-') << std::endl;
-
-        for (const auto &key : keys_r.result()) {
-            auto data_r = co_await _redis.hgetall(key);
-            if (!data_r.ok())
-                continue;
-            const auto &m = data_r.result();
-
-            std::string id       = key.substr(key.find(':') + 1);
-            std::string name     = m.count("name") ? m.at("name") : "?";
-            std::string price    = m.count("price") ? m.at("price") : "?";
-            std::string quantity = m.count("quantity") ? m.at("quantity") : "?";
-
-            cout << std::setw(10) << id << std::setw(15) << name << std::setw(10) << price << std::setw(10) << quantity << std::endl;
-        }
-        cout << std::endl;
+        (void) co_await other.set(K_GUARDED, "changed by somebody else");
     }
 
-    // Process an order
-    void
-    on(const OrderRequestEvent &event) {
-        std::string product_id = event.product_id.c_str();
-        int         order_qty  = event.quantity;
-        qb::ActorId sender_id  = event.sender_id;
+    (void) co_await redis.multi();
+    (void) co_await redis.set(K_GUARDED, "v2");
+    auto aborted = co_await redis.exec<std::string>();
 
-        spawn([this, product_id, order_qty, sender_id](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-            auto        cout = qb::io::cout();
-            std::string key  = "inventory:" + product_id;
+    qb::io::cout() << "[watch] another client changed the key, so EXEC ABORTED and nothing was written: ok=" << (aborted.ok() ? "yes" : "no")
+                   << ", key is still '" << (co_await redis.get(K_GUARDED)).result().value_or("?") << "'\n";
 
-            // Get current quantity
-            auto qty_r = co_await _redis.hget(key, "quantity");
-            if (!qty_r.ok() || !qty_r.result().has_value()) {
-                push<OrderResultEvent>(sender_id, product_id, order_qty, false, "Product not found");
-                co_return;
-            }
+    // AND HOW TO TELL. An aborted EXEC answers RESP nil; the sequence parser then reports the
+    // same `ok() == false` it would report for a genuine type mismatch, with a message about
+    // NULL. `ok()` alone cannot distinguish "somebody else won the race" — a normal, retryable
+    // outcome — from "your code asked for the wrong type". The raw reply can.
+    qb::io::cout() << (aborted.raw() && aborted.raw()->is_null()
+                           ? "[watch] raw()->is_null() = yes — THAT is how an abort is told from a parse error\n"
+                           : "[watch] the aborted EXEC did not come back as a RESP nil\n");
+    qb::io::cout() << "        (ok() alone says only 'no'; its text was: " << aborted.error() << ")\n";
 
-            // The quantity field is read back from Redis; tolerate a malformed
-            // value instead of throwing — a bad parse yields 0 (out of stock).
-            int current_qty = qb::to_number<int>(*qty_r.result()).value_or(0);
+    // ...and now the same guarded write with nobody interfering.
+    (void) co_await redis.watch(K_GUARDED);
+    (void) co_await redis.multi();
+    (void) co_await redis.set(K_GUARDED, "v2");
+    auto committed = co_await redis.exec<std::string>();
+    qb::io::cout() << "[watch] with nobody interfering, the guarded EXEC committed: "
+                   << (committed.ok() ? committed.result()[0] : committed.error()) << ", key is now '"
+                   << (co_await redis.get(K_GUARDED)).result().value_or("?") << "'\n";
 
-            if (current_qty < order_qty) {
-                cout << "Not enough stock for " << product_id << ". Available: " << current_qty << ", Requested: " << order_qty << std::endl;
+    // UNWATCH drops every watch this connection holds. EXEC and DISCARD also clear them, so
+    // this matters on the path where you decide NOT to open a MULTI after all.
+    auto unwatched = co_await redis.unwatch();
+    qb::io::cout() << "[watch] UNWATCH releases every key this connection was watching: " << (unwatched.ok() ? "ok" : "failed") << "\n\n";
 
-                push<OrderResultEvent>(sender_id, product_id, order_qty, false, "Not enough stock. Available: " + std::to_string(current_qty));
-                co_return;
-            }
+    // -----------------------------------------------------------------------------------
+    // 5. A HETEROGENEOUS batch, read through raw()
+    // -----------------------------------------------------------------------------------
+    // `exec<std::string>()` would fail as a whole here, because one element is an integer and
+    // one is an error. Walking the RESP array is the way to read a mixed batch — and note that
+    // an error INSIDE the array does not abort the transaction: Redis runs the rest.
+    (void) co_await redis.multi();
+    (void) co_await redis.set(K_A, "text");
+    (void) co_await redis.incr(K_COUNTER);
+    (void) co_await redis.incr(K_A); // deliberate: INCR on a non-numeric string is an error
+    auto mixed = co_await redis.exec<std::string>();
 
-            // Decrement inventory
-            [[maybe_unused]] auto dq = co_await _redis.hincrby(key, "quantity", -order_qty);
-
-            // Record the order
-            std::string           order_id = "order:" + product_id + ":" + std::to_string(std::time(nullptr));
-            [[maybe_unused]] auto oh1      = co_await _redis.hset(order_id, "product_id", product_id);
-            [[maybe_unused]] auto oh2      = co_await _redis.hset(order_id, "quantity", std::to_string(order_qty));
-            [[maybe_unused]] auto oh3      = co_await _redis.hset(order_id, "timestamp", std::to_string(std::time(nullptr)));
-
-            cout << "Order processed successfully! " << order_qty << " units of " << product_id << " ordered." << std::endl;
-
-            push<OrderResultEvent>(sender_id, product_id, order_qty, true, "Order processed successfully");
-        });
+    if (mixed.raw() && mixed.raw()->is_array()) {
+        auto const &arr   = mixed.raw()->as_array();
+        const bool  shape = arr.size() == 3 && arr[0]->is_string() && arr[1]->is_integer() && arr[2]->is_error();
+        qb::io::cout() << (shape ? "[raw] a heterogeneous EXEC read through raw(): string, integer, error — and one\n"
+                                   "      failing command does NOT roll the others back; Redis has no rollback\n"
+                                 : "[raw] the mixed EXEC array was not the expected string/integer/error shape\n");
+        if (arr[2]->is_error())
+            qb::io::cout() << "[raw] the third command's error was: " << arr[2]->get_error_message() << "\n";
+    } else {
+        qb::io::cerr() << "[raw] EXEC did not return an array\n";
     }
 
-    // Demonstrate simple Redis key-value operations
-    qb::io::async::task<void>
-    demonstrate_redis_operations() {
-        auto cout = qb::io::cout();
-        cout << "\n=== Demonstrating Redis Operations ===" << std::endl;
-
-        // Increment a counter
-        auto ctr_r = co_await _redis.incr("transaction:counter");
-        if (ctr_r.ok()) {
-            cout << "Counter incremented to: " << ctr_r.result() << std::endl;
-        }
-
-        // Set a timestamp
-        [[maybe_unused]] auto ts = co_await _redis.set("transaction:last_access", std::to_string(std::time(nullptr)));
-
-        // Add to a list
-        [[maybe_unused]] auto lp = co_await _redis.lpush("transaction:logs", "Operation executed at " + std::to_string(std::time(nullptr)));
-
-        // Display counter value
-        auto get_r = co_await _redis.get("transaction:counter");
-        if (get_r.ok() && get_r.result().has_value()) {
-            cout << "Counter value: " << *get_r.result() << std::endl;
-        }
-
-        // Display log entries
-        auto logs_r = co_await _redis.lrange("transaction:logs", 0, -1);
-        if (logs_r.ok()) {
-            cout << "Log entries:" << std::endl;
-            for (const auto &log : logs_r.result()) {
-                cout << "  " << log << std::endl;
-            }
-        }
-
-        cout << "\n=== Demonstrating Key Operations ===" << std::endl;
-
-        // Set a test key
-        [[maybe_unused]] auto stk = co_await _redis.set("transaction:test_key", "test_value");
-
-        auto test_r = co_await _redis.get("transaction:test_key");
-        if (test_r.ok() && test_r.result().has_value()) {
-            cout << "test_key value: " << *test_r.result() << std::endl;
-        }
-
-        // Delete the test key
-        [[maybe_unused]] auto dtk = co_await _redis.del("transaction:test_key");
-
-        auto after_r = co_await _redis.get("transaction:test_key");
-        if (after_r.ok() && !after_r.result().has_value()) {
-            cout << "test_key was deleted successfully" << std::endl;
-        }
-
-        // Notify coordinator
-        push<TransactionDemoCompletedEvent>(_coordinator_id);
-    }
-
-    // Cleanup all test data
-    qb::io::async::task<void>
-    cleanup() {
-        auto cout = qb::io::cout();
-
-        auto      inv_keys = co_await _redis.keys("inventory:*");
-        long long del_inv  = 0;
-        if (inv_keys.ok() && !inv_keys.result().empty()) {
-            auto r = co_await _redis.del(inv_keys.result());
-            if (r.ok())
-                del_inv = r.result();
-        }
-
-        auto      ord_keys = co_await _redis.keys("order:*");
-        long long del_ord  = 0;
-        if (ord_keys.ok() && !ord_keys.result().empty()) {
-            auto r = co_await _redis.del(ord_keys.result());
-            if (r.ok())
-                del_ord = r.result();
-        }
-
-        auto      txn_keys = co_await _redis.keys("transaction:*");
-        long long del_txn  = 0;
-        if (txn_keys.ok() && !txn_keys.result().empty()) {
-            auto r = co_await _redis.del(txn_keys.result());
-            if (r.ok())
-                del_txn = r.result();
-        }
-
-        cout << "\n=== Cleanup Complete ===" << std::endl;
-        cout << "Deleted " << del_inv << " inventory keys" << std::endl;
-        cout << "Deleted " << del_ord << " order keys" << std::endl;
-        cout << "Deleted " << del_txn << " transaction keys" << std::endl;
-    }
-
-    void
-    on(const ShutdownEvent &) {
-        auto cout = qb::io::cout();
-        cout << "InventoryManagerActor shutting down" << std::endl;
-
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-            co_await cleanup();
-            kill();
-        });
-    }
-};
-
-// Actor that simulates a client placing orders
-class OrderClientActor : public qb::Actor {
-private:
-    qb::ActorId _inventory_manager_id;
-    qb::ActorId _coordinator_id;
-    std::string _client_id;
-    int         _orders_to_place;
-    int         _orders_completed = 0;
-    int         _orders_succeeded = 0;
-
-    std::random_device _rd;
-    std::mt19937       _gen;
-
-public:
-    OrderClientActor(qb::ActorId inventory_manager, qb::ActorId coordinator, std::string id, int orders = 2)
-        : _inventory_manager_id(inventory_manager)
-        , _coordinator_id(coordinator)
-        , _client_id(std::move(id))
-        , _orders_to_place(orders)
-        , _gen(_rd()) {}
-
-    qb::io::async::task<bool>
-    onInit() override {
-        auto cout = qb::io::cout();
-        cout << "OrderClientActor [" << _client_id << "] initialized" << std::endl;
-
-        registerEvent<OrderResultEvent>(*this);
-        registerEvent<ShutdownEvent>(*this);
-        registerEvent<PlaceOrderTick>(*this);
-        registerEvent<NotifyCoordinatorTick>(*this);
-
-        co_return true;
-    }
-
-    // Start placing orders (called by CoordinatorActor directly)
-    void
-    start_ordering() {
-        auto cout = qb::io::cout();
-        cout << "Client [" << _client_id << "] starting to place " << _orders_to_place << " orders" << std::endl;
-
-        // One coroutine paces the whole batch (0 ms, 200 ms, 400 ms, ...) instead of N loop-owned
-        // timers each holding a raw `this`. `_orders_to_place` is read HERE, on the actor, and
-        // captured by value; the coroutine touches nothing but its own frame and `ctx`.
-        spawn([n = _orders_to_place](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            for (int i = 0; i < n; ++i) {
-                if (i)
-                    co_await ctx.sleep(std::chrono::milliseconds(200));
-                ctx.template push<PlaceOrderTick>();
-            }
-        });
-    }
-
-    void
-    on(const PlaceOrderTick &) {
-        place_random_order();
-    }
-
-    void
-    on(const NotifyCoordinatorTick &) {
-        push<ShutdownEvent>(_coordinator_id);
-    }
-
-    void
-    place_random_order() {
-        auto cout = qb::io::cout();
-
-        std::uniform_int_distribution<> product_dist(1, 5);
-        std::uniform_int_distribution<> quantity_dist(1, 5);
-
-        std::string product_id = "p" + std::to_string(product_dist(_gen));
-        int         quantity   = quantity_dist(_gen);
-
-        cout << "Client [" << _client_id << "] ordering " << quantity << " units of " << product_id << std::endl;
-
-        push<OrderRequestEvent>(_inventory_manager_id, product_id, quantity, id());
-    }
-
-    void
-    on(const OrderResultEvent &event) {
-        auto cout = qb::io::cout();
-        cout << "Client [" << _client_id << "] received order result for " << event.quantity << " units of " << event.product_id << ": "
-             << (event.success ? "SUCCESS" : "FAILED") << " - " << event.message << std::endl;
-
-        _orders_completed++;
-        if (event.success)
-            _orders_succeeded++;
-
-        if (_orders_completed >= _orders_to_place) {
-            cout << "Client [" << _client_id << "] completed all orders. " << _orders_succeeded << " succeeded, "
-                 << (_orders_completed - _orders_succeeded) << " failed." << std::endl;
-
-            // THIS is the site AddressSanitizer convicted, three runs of three: the lambda's
-            // `push<ShutdownEvent>(_coordinator_id)` read `this` and `_coordinator_id` half a
-            // second after the coordinator had already killed this client. `heap-use-after-free`
-            // at `example6_transaction_example.cpp` (this file, before the move), in
-            // `qb::Actor::push`, reading 4 bytes 76
-            // bytes into the freed actor. The wait now belongs to the actor's cancellation scope
-            // and the `push` happens in `on(NotifyCoordinatorTick&)`, on a live actor or not at all.
-            spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-                co_await ctx.sleep(std::chrono::milliseconds(500));
-                ctx.template push<NotifyCoordinatorTick>();
-            });
-        }
-    }
-
-    void
-    on(const ShutdownEvent &) {
-        auto cout = qb::io::cout();
-        cout << "OrderClientActor [" << _client_id << "] shutting down" << std::endl;
-        kill();
-    }
-};
-
-// Coordinator actor that manages the example
-class CoordinatorActor : public qb::Actor {
-private:
-    qb::ActorId              _inventory_manager_id;
-    std::vector<qb::ActorId> _client_ids;
-
-    bool _setup_completed             = false;
-    bool _transactions_demo_completed = false;
-    bool _shutdown_initiated          = false;
-
-    int _clients_to_create = 3;
-
-    // Keep handles alive (ActorHandle<T> is copyable/movable but not a raw ptr)
-    std::vector<qb::ActorHandle<OrderClientActor>> _client_handles;
-    qb::ActorHandle<InventoryManagerActor>         _inventory_manager_handle;
-
-public:
-    qb::io::async::task<bool>
-    onInit() override {
-        auto cout = qb::io::cout();
-        cout << "CoordinatorActor initialized" << std::endl;
-
-        registerEvent<SetupCompletedEvent>(*this);
-        registerEvent<TransactionDemoCompletedEvent>(*this);
-        registerEvent<ShutdownEvent>(*this);
-        registerEvent<qb::KillEvent>(*this);
-        registerEvent<CoordinatorShutdownTick>(*this);
-
-        // Create inventory manager actor
-        _inventory_manager_handle = addRefActor<InventoryManagerActor>(id());
-        if (!_inventory_manager_handle.valid()) {
-            qb::io::cerr() << "Failed to create inventory manager actor" << std::endl;
-            co_return false;
-        }
-        _inventory_manager_id = _inventory_manager_handle.id();
-        cout << "Created InventoryManager: " << _inventory_manager_id << std::endl;
-
-        co_return true;
-    }
-
-    void
-    on(const SetupCompletedEvent &) {
-        auto cout = qb::io::cout();
-        cout << "Inventory setup completed" << std::endl;
-
-        _setup_completed = true;
-
-        if (_transactions_demo_completed) {
-            create_clients();
-        }
-    }
-
-    void
-    on(const TransactionDemoCompletedEvent &) {
-        auto cout = qb::io::cout();
-        cout << "Transaction demos completed" << std::endl;
-
-        _transactions_demo_completed = true;
-
-        if (_setup_completed) {
-            create_clients();
-        }
-    }
-
-    void
-    create_clients() {
-        auto cout = qb::io::cout();
-        cout << "\n=== Starting Concurrent Orders Simulation ===" << std::endl;
-
-        for (int i = 1; i <= _clients_to_create; ++i) {
-            std::string client_id = "client-" + std::to_string(i);
-            int         orders    = 2 + i % 3; // 2-4 orders per client
-
-            auto h = addRefActor<OrderClientActor>(_inventory_manager_id, id(), client_id, orders);
-
-            if (h.valid()) {
-                _client_ids.push_back(h.id());
-                _client_handles.push_back(h);
-                cout << "Created Client " << client_id << ": " << h.id() << std::endl;
-            } else {
-                qb::io::cerr() << "Failed to create client: " << client_id << std::endl;
-            }
-        }
-
-        // Start clients placing orders
-        for (auto &h : _client_handles) {
-            if (auto *p = h.get())
-                p->start_ordering();
-        }
-    }
-
-    void
-    on(const ShutdownEvent &) {
-        if (_shutdown_initiated)
-            return;
-
-        auto cout = qb::io::cout();
-        cout << "CoordinatorActor received shutdown request" << std::endl;
-
-        _shutdown_initiated = true;
-
-        // Display final inventory state through the handle
-        if (_inventory_manager_handle.get()) {
-            // Spawn display in the manager's context via a message instead
-            // (display_inventory is a coroutine on the manager side)
-        }
-
-        // Send shutdown to all actors
-        for (auto &client_id : _client_ids) {
-            push<ShutdownEvent>(client_id);
-        }
-        push<ShutdownEvent>(_inventory_manager_id);
-
-        // Give everyone a second to finish, then leave. `kill()` runs on the actor, so the wait
-        // has to come back as an event rather than as a timer holding `this`.
-        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            co_await ctx.sleep(std::chrono::seconds(1));
-            ctx.template push<CoordinatorShutdownTick>();
-        });
-    }
-
-    void
-    on(const CoordinatorShutdownTick &) {
-        auto cout = qb::io::cout();
-        cout << "CoordinatorActor shutting down" << std::endl;
-        kill();
-
-        // This one MUST stay a bare `qb::io::async::callback(fn, d)`: it captures NOTHING, it
-        // stops the engine rather than touching an actor, and it is supposed to outlive every
-        // actor including this one. A `spawn(...)` here would be cancelled by the `kill()` above
-        // and the engine would never stop.
-        qb::io::async::callback(
-            []() {
-                auto cout = qb::io::cout();
-                cout << "Stopping engine..." << std::endl;
-                qb::Main::stop();
-            },
-            std::chrono::milliseconds(500));
-    }
-
-    void
-    on(const qb::KillEvent &) {
-        auto cout = qb::io::cout();
-        cout << "CoordinatorActor received kill event" << std::endl;
-        kill();
-    }
-};
+    (void) co_await redis.del(K_A, K_B, K_GUARDED, K_COUNTER);
+    qb::io::cout() << "\n=== transactions complete: MULTI, EXEC, DISCARD, WATCH, UNWATCH all exercised ===\n";
+    co_return;
+}
 
 int
 main() {
     qb::io::async::init();
-    auto cout = qb::io::cout();
 
-    cout << "Starting Redis Transaction Example with Actor Model" << std::endl;
-
-    qb::Main engine;
-
-    auto coordinator_id = engine.addActor<CoordinatorActor>(0);
-    if (coordinator_id == 0) {
-        qb::io::cerr() << "Failed to create coordinator actor" << std::endl;
-        return 1;
-    }
-
-    engine.start(true);
-    cout << "Engine started, actors running..." << std::endl;
-
-    engine.join();
-
-    cout << "Engine stopped, all actors terminated" << std::endl;
-    cout << "Redis Transaction Example completed successfully" << std::endl;
+    bool running = true;
+    qb::io::async::coro_scheduler().spawn(run_transactions(running));
+    qb::io::async::run_until(running);
 
     return 0;
 }

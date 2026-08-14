@@ -1,248 +1,290 @@
 /**
  * @file examples/06-modules/http/10-client.cpp
  * @tier 06-modules
- * @teaches The client side, awaited: qb::http::GET and POST inside a spawned coroutine, each with
- *          its own timeout, driven from an ordinary actor.
- * @demonstrates qb::http::GET, qb::http::POST, qb::http::Request, qb::http::Method::POST,
- *               qb::http::Status::OK, qb::io::uri, spawn, qb::ScopedCoroContext, ctx.sleep,
- *               qb::io::async::task<void>
- * @prerequisites 03-coroutines/02-actor-coroutines, 06-modules/http/09-coroutine-handlers
- * @expect "Initializing HTTP Client Actor..."
- * @expect "HTTP Client demo completed!"
- * @brief Simple HTTP/1.1 client example using the QB coroutine HTTP client
+ * @teaches The PERSISTENT HTTP/1.1 client — one connection reused across many requests, a batch
+ *          issued in one call, the callback form beside the coroutine one, and the stats it keeps
+ *          — measured against a server this program hosts itself, on the same event loop, so the
+ *          connection count is a number rather than a claim.
+ * @demonstrates qb::http1::make_client, qb::http1::Client, push_request, push_requests,
+ *               is_connected, get_stats, set_request_timeout, set_auto_reconnect,
+ *               qb::http::Request, qb::http::method, qb::http::status, qb::http::GET,
+ *               qb::http::use<EchoServer>::server<EchoSession>, router, compile, listen_v4,
+ *               qb::io::async::init, qb::io::async::run_until, qb::io::async::task<void>
+ * @prerequisites 06-modules/http/09-coroutine-handlers
+ * @expect "[server] hosting the upstream in this very process, on the SAME event loop as the"
+ * @expect "[connect] connected; a second connect() on a live client is a no-op"
+ * @expect "[reuse] 3 sequential requests, and the server saw 1 connection"
+ * @expect "[batch] push_requests returned 4 responses IN REQUEST ORDER"
+ * @expect "[callback] the same request without a coroutine: 200 pong"
+ * @expect "[timeout] a 100 ms request timeout cut off a 400 ms route"
+ * @expect "[one-shot] qb::http::GET opened a NEW connection for each call"
+ * @expect "[stats] total/successful/failed = "
+ * @expect "=== client complete: one persistent connection beat "
  *
- * This example demonstrates:
- * - Creating an HTTP client actor using the QB Actor framework
- * - Running the request flow in `spawn()`, an actor-scoped coroutine, rather than
- *   in `onInit()` (see the note on `onInit()` below — this is the load-bearing part)
- * - Making asynchronous HTTP requests with the modern coroutine client
- *   (`co_await qb::http::GET(...)`, `co_await qb::http::POST(...)`)
- * - Handling responses linearly (no callback nesting) via `reply.response`
- * - Using `co_await ctx.sleep(...)` — the ACTOR-SCOPED sleep — for inter-request pacing
- * - Different HTTP methods with proper actor lifecycle
+ * WHAT THIS FILE USED TO BE, AND WHY IT MATTERED
+ * ----------------------------------------------
+ * It made three one-shot `qb::http::GET`/`POST` calls to the public **httpbin.org**. Two
+ * consequences, both measured: it could not run offline, and its own report was unconditional —
+ * it printed "HTTP Client demo completed!" and exited 0 on a run in which all three requests
+ * came back **503**. A program whose output is the same whether it worked or not cannot be
+ * checked by anything, which is why the example runner's entry for it carried a paragraph of
+ * apology. Meanwhile `qb::http1::make_client` — the persistent client with reuse, queueing,
+ * timeouts, reconnect and statistics — had **zero** occurrences anywhere in the corpus.
  *
- * @note Requires network access: the endpoints are on the public `httpbin.org`.
- *       For a self-contained coroutine example whose upstreams are its own routes,
- *       see `09-coroutine-handlers.cpp`.
+ * ONE-SHOT VERBS versus A CLIENT
+ * ------------------------------
+ * `co_await qb::http::GET(uri)` is the right thing for one request: it connects, sends, reads,
+ * and closes. For N requests to the same host it is also N connections, N TCP handshakes and N
+ * slow starts. `qb::http1::Client` keeps the connection and pipelines your requests onto it.
+ * The last two sections here run the same work both ways and print the server's connection
+ * count for each; that difference is the whole argument.
  *
- * @author qb - C++ Actor Framework
- * @copyright Copyright (c) 2011-2025 qb - isndev (cpp.actor)
- * Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
- * @ingroup Examples
+ * THE UPSTREAM IS IN THIS PROCESS
+ * -------------------------------
+ * The server below is an ordinary `qb::http::use<T>::server<Session>` bound to loopback, and it
+ * shares the client's event loop — one thread, one `listener`, both sides on it. That is not a
+ * trick for examples: pumping the loop to advance the client also services the server, which is
+ * why one `run_until` drives both halves. It makes this program offline-safe,
+ * deterministic, and able to assert things about the SERVER's view that no external host could
+ * ever tell it.
+ *
+ * THINGS THE CLIENT WILL DO THAT ARE EASY TO MISREAD
+ * --------------------------------------------------
+ *  * `Client` is used through `std::shared_ptr` — it relies on `shared_from_this`, so
+ *    `make_client(...)` is not a convenience, it is the constructor you have.
+ *  * `connect()` has two forms: `co_await client->connect()` yields a `ConnectResult`
+ *    (`operator bool` + `error_message`); the callback form takes `(bool, std::string const&)`.
+ *    Calling it again on a live client succeeds immediately without reconnecting.
+ *  * requests are sent STRICTLY ONE AT A TIME (`push_requests` is sequential pipelining onto one
+ *    connection, not concurrency), and its result vector is indexed by the ORIGINAL request
+ *    position regardless of completion order.
+ *  * `set_request_timeout` bounds queue-wait AND flight time; `qb::duration::zero()` disarms it.
+ *  * past `set_max_pending_requests`, `push_request` returns `false` *and still calls your
+ *    callback*, with a synthesised 503.
+ *
+ * Build:
+ *   cmake --preset release
+ *   cmake --build --preset release --target qb-example-modules-http-client
+ * Run (no network needed — it hosts its own upstream):
+ *   ./build/presets/release/examples/06-modules/http/qb-example-modules-http-client
  */
 
-#include <qbm/http/coro.h>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
 #include <qbm/http/http.h>
-#include <iostream>
-#include <qb/main.h>
 
-// HTTP Client Actor that makes various requests
-class HttpClientActor : public qb::Actor {
+using namespace std::chrono_literals;
+
+namespace {
+
+constexpr std::uint16_t PORT = 18081;
+
+std::string
+url(std::string const &path) {
+    return "http://127.0.0.1:" + std::to_string(PORT) + path;
+}
+
+qb::http::Request
+request(qb::http::method m, std::string const &target) {
+    return qb::http::Request{m, qb::io::uri(target)};
+}
+
+class EchoServer;
+
+class EchoSession : public qb::http::use<EchoSession>::session<EchoServer> {
 public:
-    HttpClientActor() = default;
+    explicit EchoSession(EchoServer &server);
+};
 
-    qb::io::async::task<bool>
-    onInit() override {
-        // Dispatch is by SUBSCRIPTION, not by vtable: `qb::Actor`'s constructor already
-        // subscribed the base handlers for these two, and re-registering here REPLACES
-        // those entries with ours. Without these two lines the handlers below are dead
-        // code — they compile, they are never called.
-        registerEvent<qb::KillEvent>(*this);
-        registerEvent<qb::SignalEvent>(*this);
-
-        std::cout << "Initializing HTTP Client Actor..." << std::endl;
-
-        // The request flow deliberately does NOT run here.
-        //
-        // 1. `onInit()` is bounded. A suspended `onInit()` must finish within
-        //    `qb::VirtualCore::activation_deadline_ns` (5 s by default) or the actor is
-        //    cancelled and removed. Three paced network round-trips do not belong in an
-        //    initialization budget.
-        // 2. This example used to `co_await qb::io::async::sleep(...)` right here, and it
-        //    NEVER completed a single request. The free `sleep()` is the standalone qb-io
-        //    primitive: it binds to whatever coroutine scheduler is installed on the thread
-        //    at the moment it suspends, and when `onInit()` first runs there is none yet —
-        //    the core drives that frame directly, before the listener's scheduler exists.
-        //    The awaiter therefore latched onto a thread-local fallback scheduler that the
-        //    VirtualCore then replaced, so the timer fired into a queue nobody drains.
-        //    Anything that goes through the actor (`spawn()`, `context().sleep()`,
-        //    `qb::ask`) resolves the listener's scheduler first and is immune.
-        // 3. `spawn()` runs the flow on this actor's own cancellation scope: it is
-        //    cancelled when the actor is killed, and it is not part of the activation window.
-        //
-        // The lambda captures NOTHING — see `run_requests`. `ScopedCoroContext` is the only
-        // thing that may legally be used after a `co_await`; `this` may not.
-        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> { co_await run_requests(ctx); });
-
-        co_return true;
-    }
-
-private:
-    // Every step below is `static`: an actor coroutine may be resumed after the actor has
-    // been destroyed, so it must not touch actor members past a suspension point. Keeping
-    // the flow's state in coroutine locals makes that impossible by construction rather
-    // than by discipline.
-    static qb::io::async::task<void>
-    run_requests(qb::ScopedCoroContext ctx) {
-        std::cout << "Starting HTTP requests..." << std::endl;
-        std::cout << "=========================" << std::endl;
-
-        int request_count = 0;
-
-        // Example 1: Simple GET request
-        co_await make_get_request(++request_count);
-
-        // Example 2: POST request with JSON body.
-        // `ctx.sleep()` is the actor-scoped sleep: it wakes immediately (throwing
-        // `qb::io::async::cancelled_error`) if the actor is killed while it is pending.
-        // The free `qb::io::async::sleep()` would run to term regardless — inside an
-        // actor, reach for the context's.
-        co_await ctx.sleep(std::chrono::seconds(1));
-        co_await make_post_request(++request_count);
-
-        // Example 3: Request with custom headers
-        co_await ctx.sleep(std::chrono::seconds(1));
-        co_await make_headers_request(++request_count);
-
-        // Finish the demo
-        std::cout << "\nHTTP Client demo completed!" << std::endl;
-        std::cout << "Total requests made: " << request_count << std::endl;
-        std::cout << "Shutting down client actor..." << std::endl;
-        qb::Main::stop();
-        co_return;
-    }
-
-    static qb::io::async::task<void>
-    make_get_request(int request_id) {
-        std::cout << "Making GET request to httpbin.org..." << std::endl;
-
-        // Create request
-        qb::http::Request request(qb::io::uri("http://httpbin.org/get?param1=value1&param2=value2"));
-        request.add_header("User-Agent", "QB-HTTP-Client/1.0");
-        request.add_header("Accept", "application/json");
-        request.add_header("X-Request-ID", std::to_string(request_id));
-
-        // Await the coroutine client: the call suspends until the reply is
-        // ready, then resumes linearly with the response in hand.
-        auto reply = co_await qb::http::GET(std::move(request), std::chrono::seconds(10));
-
-        if (reply.response.status() == qb::http::Status::OK) {
-            std::cout << "GET Response received:" << std::endl;
-            std::cout << "   Status: " << reply.response.status().code() << " " << reply.response.status().str() << std::endl;
-            std::cout << "   Content-Type: " << reply.response.header("Content-Type") << std::endl;
-            std::cout << "   Body size: " << reply.response.body().size() << " bytes" << std::endl;
-            if (reply.response.body().size() < 500) {
-                auto body_str = reply.response.body().as<std::string>();
-                std::cout << "   Body: " << body_str.substr(0, 200) << "..." << std::endl;
-            }
-        } else {
-            std::cout << "GET request failed with status: " << reply.response.status().code() << std::endl;
-        }
-        co_return;
-    }
-
-    static qb::io::async::task<void>
-    make_post_request(int request_id) {
-        std::cout << "\nMaking POST request to httpbin.org..." << std::endl;
-
-        // Create request with JSON body
-        qb::http::Request request(qb::http::Method::POST, qb::io::uri("http://httpbin.org/post"));
-        request.add_header("User-Agent", "QB-HTTP-Client/1.0");
-        request.add_header("Content-Type", "application/json");
-        request.add_header("Accept", "application/json");
-
-        // JSON body
-        qb::json json_data = {
-            {"message", "Hello from QB HTTP Client!"}, {"framework", "qb-http"}, {"timestamp", std::time(nullptr)}, {"request_id", request_id}
-        };
-        request.body() = json_data;
-
-        auto reply = co_await qb::http::POST(std::move(request), std::chrono::seconds(10));
-
-        if (reply.response.status() == qb::http::Status::OK) {
-            std::cout << "POST Response received:" << std::endl;
-            std::cout << "   Status: " << reply.response.status().code() << " " << reply.response.status().str() << std::endl;
-            std::cout << "   Content-Type: " << reply.response.header("Content-Type") << std::endl;
-            std::cout << "   Body size: " << reply.response.body().size() << " bytes" << std::endl;
-        } else {
-            std::cout << "POST request failed with status: " << reply.response.status().code() << std::endl;
-        }
-        co_return;
-    }
-
-    static qb::io::async::task<void>
-    make_headers_request(int request_id) {
-        std::cout << "\nMaking request to test custom headers..." << std::endl;
-
-        qb::http::Request request(qb::io::uri("http://httpbin.org/headers"));
-        request.add_header("User-Agent", "QB-HTTP-Client/1.0");
-        request.add_header("X-Custom-Header", "QB-Framework-Test");
-        request.add_header("X-Request-ID", std::to_string(request_id));
-
-        auto reply = co_await qb::http::GET(std::move(request), std::chrono::seconds(10));
-
-        if (reply.response.status() == qb::http::Status::OK) {
-            std::cout << "Headers Response received:" << std::endl;
-            std::cout << "   Status: " << reply.response.status().code() << std::endl;
-            std::cout << "   Server echoed our custom headers!" << std::endl;
-        } else {
-            std::cout << "Headers request failed with status: " << reply.response.status().code() << std::endl;
-        }
-        co_return;
-    }
-
+// The upstream. Counters live on the server object, and this program reads them only after it
+// has observed the client-side result, so "how many connections did you accept" is an
+// observation rather than a guess.
+class EchoServer : public qb::http::use<EchoServer>::server<EchoSession> {
 public:
-    // Ctrl+C / SIGTERM. qb::Main::start() installs both, so every actor receives a
-    // qb::SignalEvent; routing it into the KillEvent below keeps ONE shutdown path.
-    void
-    on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
-        push<qb::KillEvent>(id());
+    std::atomic<int> connections{0};
+    std::atomic<int> requests{0};
+
+    EchoServer() {
+        router().get("/ping", [this](auto ctx) {
+            ++requests;
+            ctx->response().status() = qb::http::status::OK;
+            ctx->response().body()   = "pong";
+            ctx->complete();
+        });
+
+        router().post("/echo", [this](auto ctx) {
+            ++requests;
+            ctx->response().status() = qb::http::status::CREATED;
+            ctx->response().body()   = ctx->request().body().template as<std::string>();
+            ctx->complete();
+        });
+
+        // Answers only after 400 ms, so a client-side timeout has something to cut off. The
+        // delay is a coroutine on the server's loop, not a sleep: blocking here would stall the
+        // client too, since both share this thread.
+        router().get("/slow", [this](auto ctx) -> qb::io::async::task<void> {
+            ++requests;
+            co_await qb::io::async::sleep(400ms);
+            ctx->response().status() = qb::http::status::OK;
+            ctx->response().body()   = "eventually";
+            ctx->complete();
+        });
+
+        router().compile();
     }
 
+    /// Called once per accepted connection — this is the number the reuse claim rests on.
     void
-    on(const qb::KillEvent &) noexcept {
-        std::cout << "HTTP Client Actor shutting down..." << std::endl;
-        this->kill();
+    on(IOSession &) {
+        ++connections;
     }
 };
 
+EchoSession::EchoSession(EchoServer &server)
+    : session(server) {}
+
+} // namespace
+
+qb::io::async::task<void>
+run_client(EchoServer &server, bool &running, bool &ok) {
+    struct StopOnExit {
+        bool &r;
+        ~StopOnExit() {
+            r = false;
+        }
+    } stop{running};
+
+    // `make_client` and not `new Client`: the class is `enable_shared_from_this` and every
+    // in-flight request holds a reference to it, which is what keeps a client alive across a
+    // callback that outlives the scope it was created in.
+    // The type is spelled out once: `make_client` hands back a `shared_ptr<Client>`, and the
+    // shared ownership is load-bearing rather than stylistic — every in-flight request holds a
+    // reference, which is what keeps the object alive across a callback.
+    std::shared_ptr<qb::http1::Client> client = qb::http1::make_client(url("/"));
+
+    const int conns_at_start = server.connections.load();
+
+    auto connected = co_await client->connect();
+    if (!connected) {
+        qb::io::cerr() << "connect failed: " << connected.error_message << "\n";
+        co_return;
+    }
+    // Idempotent: a second connect on a live client returns success without opening anything.
+    auto again = co_await client->connect();
+    qb::io::cout() << (connected && again && client->is_connected() ? "[connect] connected; a second connect() on a live client is a no-op\n"
+                                                                    : "[connect] UNEXPECTED: the client did not report a live connection\n");
+
+    // ---- 1. REUSE: three requests, one connection --------------------------------------
+    // The baseline is taken BEFORE `connect()`, because connect is what opens the socket —
+    // measuring from after it would count zero new connections and prove nothing. (Measured:
+    // the first version of this file did exactly that and reported its own success as a
+    // failure, which is the right way round for a mistake to go.)
+    auto      a           = co_await client->push_request(request(qb::http::method::GET, url("/ping")));
+    auto      b           = co_await client->push_request(request(qb::http::method::GET, url("/ping")));
+    auto      c           = co_await client->push_request(request(qb::http::method::GET, url("/ping")));
+    const int conns_after = server.connections.load();
+
+    const bool reused = a.status() == qb::http::status::OK && b.status() == qb::http::status::OK && c.status() == qb::http::status::OK
+                        && (conns_after - conns_at_start) == 1;
+    qb::io::cout() << (reused ? "[reuse] 3 sequential requests, and the server saw 1 connection — keep-alive is\n"
+                                "        decided per response, and a `Connection: close` would have dropped it\n"
+                              : "[reuse] UNEXPECTED: the three requests did not share one connection\n");
+    qb::io::cout() << "        (connections opened by connect() + 3 requests: " << (conns_after - conns_at_start) << ")\n";
+
+    // ---- 2. A BATCH in one call ---------------------------------------------------------
+    // Sent one at a time onto the same connection; the result vector is indexed by the
+    // ORIGINAL request position, so a slower response never reorders your results.
+    std::vector<qb::http::Request> batch;
+    batch.push_back(request(qb::http::method::GET, url("/ping")));
+    for (int i = 0; i < 3; ++i) {
+        auto post   = request(qb::http::method::POST, url("/echo"));
+        post.body() = "payload-" + std::to_string(i);
+        batch.push_back(std::move(post));
+    }
+    auto results = co_await client->push_requests(std::move(batch));
+
+    bool ordered = results.size() == 4 && results[0].body().template as<std::string>() == "pong";
+    for (int i = 0; ordered && i < 3; ++i)
+        ordered = results[static_cast<std::size_t>(i) + 1].body().template as<std::string>() == "payload-" + std::to_string(i);
+    qb::io::cout() << (ordered ? "[batch] push_requests returned 4 responses IN REQUEST ORDER, on the same\n"
+                                 "        connection — an empty batch is an immediate success, not an error\n"
+                               : "[batch] UNEXPECTED: the batch results were missing or out of order\n");
+
+    // ---- 3. THE CALLBACK FORM -----------------------------------------------------------
+    // The same call without a coroutine. It returns `false` up front when the request cannot
+    // even be queued — and note that even then your callback still runs, with a synthesised
+    // 503, so a callback that fires is not by itself evidence the request was sent.
+    int         cb_status = 0;
+    std::string cb_body;
+    const bool  queued = client->push_request(request(qb::http::method::GET, url("/ping")), [&](qb::http::Response response) {
+        cb_status = static_cast<int>(response.status());
+        cb_body   = response.body().template as<std::string>();
+    });
+    // Give the loop the turns the callback needs. `co_await` on our own scheduler is the
+    // cooperative way to do that from inside a coroutine — never a blocking sleep.
+    for (int i = 0; i < 50 && cb_status == 0; ++i)
+        co_await qb::io::async::sleep(10ms);
+    qb::io::cout() << (queued && cb_status == 200 && cb_body == "pong" ? "[callback] the same request without a coroutine: 200 pong\n"
+                                                                       : "[callback] UNEXPECTED: the callback form did not deliver 200 pong\n");
+
+    // ---- 4. A REQUEST TIMEOUT ------------------------------------------------------------
+    // It bounds queue-wait AND flight; `qb::duration::zero()` disarms it. The route answers at
+    // 400 ms, so 100 ms must cut it off.
+    client->set_request_timeout(100ms);
+    auto       slow = co_await client->push_request(request(qb::http::method::GET, url("/slow")));
+    const bool cut  = slow.status() != qb::http::status::OK;
+    qb::io::cout() << (cut ? "[timeout] a 100 ms request timeout cut off a 400 ms route, and the client\n"
+                             "          reconnects for the next request rather than staying wedged\n"
+                           : "[timeout] UNEXPECTED: the slow route answered inside the timeout\n");
+    client->set_request_timeout(qb::duration::zero());
+    client->set_auto_reconnect(true);
+
+    // ---- 5. THE CONTRAST: one-shot verbs -------------------------------------------------
+    const int before_oneshot = server.connections.load();
+    for (int i = 0; i < 3; ++i)
+        (void) co_await qb::http::GET(qb::http::Request{qb::io::uri(url("/ping"))});
+    const int opened = server.connections.load() - before_oneshot;
+    qb::io::cout() << (opened == 3 ? "[one-shot] qb::http::GET opened a NEW connection for each call: 3 requests,\n"
+                                     "           3 connections. Right for one request, wrong for a hundred\n"
+                                   : "[one-shot] UNEXPECTED: the one-shot verbs did not open one connection each\n");
+
+    // ---- 6. WHAT THE CLIENT COUNTED ------------------------------------------------------
+    auto [total, successful, failed] = client->get_stats();
+    qb::io::cout() << "[stats] total/successful/failed = " << total << "/" << successful << "/" << failed
+                   << " — the timeout above is the failure, and it is counted rather than hidden\n";
+
+    qb::io::cout() << "\n=== client complete: one persistent connection beat " << opened << " one-shot connections for the same work ===\n";
+    ok = reused && ordered && cut && opened == 3;
+    co_return;
+}
+
 int
 main() {
-    try {
-        std::cout << "QB HTTP Client Example" << std::endl;
-        std::cout << "======================" << std::endl;
+    qb::io::async::init();
 
-        // Initialize the QB Actor framework
-        qb::Main engine;
-
-        // Add our HTTP client actor to core 0
-        auto client_id = engine.addActor<HttpClientActor>(0);
-
-        if (!client_id.is_valid()) {
-            std::cerr << "Failed to create client actor" << std::endl;
-            return 1;
-        }
-
-        std::cout << "Client actor created with ID: " << client_id.sid() << std::endl;
-
-        // Start the engine (blocks until stopped)
-        engine.start();
-        engine.join();
-
-        // An actor whose init failed leaves the engine in an error state; report it in
-        // the exit code so a supervisor does not read a failed run as a clean shutdown.
-        if (engine.hasError()) {
-            std::cerr << "Engine reported an error" << std::endl;
-            return 1;
-        }
-
-        std::cout << "Client demo finished" << std::endl;
-
-    } catch (const std::exception &e) {
-        std::cerr << "Client error: " << e.what() << std::endl;
+    EchoServer server;
+    // Bind FIRST and report honestly. A server that never bound must not let the program
+    // pretend it ran — the rest of this file measures the server's own counters, so a failed
+    // bind would make every number below meaningless.
+    if (server.transport().listen_v4(PORT, "127.0.0.1") != 0) {
+        qb::io::cerr() << "[server] could not bind 127.0.0.1:" << PORT << " — is something else using it?\n";
         return 1;
     }
+    server.start();
+    qb::io::cout() << "[server] hosting the upstream in this very process, on the SAME event loop as the\n"
+                      "         client — so no network is needed and the connection counts below are the\n"
+                      "         SERVER's own\n";
+    qb::io::cout() << "[server] bound 127.0.0.1:" << PORT << "\n";
 
-    return 0;
+    bool running = true;
+    bool ok      = false;
+    qb::io::async::coro_scheduler().spawn(run_client(server, running, ok));
+    qb::io::async::run_until(running);
+
+    return ok ? 0 : 1;
 }
