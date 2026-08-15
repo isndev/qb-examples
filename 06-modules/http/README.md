@@ -127,29 +127,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /api/products`, `POST /api/products`, etc. (CRUD for products)
     * `GET /`: API information.
 
-### 6. `06_async_handlers.cpp`
-
-* **Description**: Illustrates implementing asynchronous route handlers as **coroutines**.
-* **Features**:
-    * Simulating long-running operations (e.g., database queries, external API calls) without blocking the server
-      thread.
-    * A handler that returns `qb::io::async::task<void>` is a coroutine; the router detects it and drives it
-      (`06_async_handlers.cpp:114-125`). There is **no** `qb::io::async::callback` anywhere in this file — nor in any
-      of the other 13 `.cpp` files here.
-    * `co_await qb::io::async::sleep(...)` suspends the handler and frees the listener thread for other requests
-      (`:174-176`); execution then resumes linearly and fills in the response.
-    * The `std::shared_ptr<Context>` is taken **by value** into the coroutine frame, so it stays alive across the
-      suspension; `ctx->complete()` at the end sends the response (`:191`).
-    * Handling potential errors in async operations (`/async/error-prone`, `:290-332`).
-* **Key Endpoints**:
-    * `GET /async/simple`: Simple delayed response.
-    * `GET /async/database`: Simulates a DB query.
-    * `GET /async/external-api`: Simulates an external API call.
-    * `GET /async/multiple-operations`: Simulates multiple chained async steps.
-    * `GET /async/error-prone`: Simulates an async operation that might fail.
-    * `POST /async/process-data`: Simulates async data processing.
-
-### 7. `05-rest-api-json.cpp`
+### 6. `05-rest-api-json.cpp`
 
 * **Description**: A more complete REST API example using JSON for a "Book" resource.
 * **Features**:
@@ -167,7 +145,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /api/v1/stats`
     * `GET /health`
 
-### 8. `08-static-files.cpp`
+### 7. `08-static-files.cpp`
 
 * **Description**: Demonstrates serving static files and handling file uploads.
 * **Features**:
@@ -186,7 +164,7 @@ Below is a list of the available examples and the key features they showcase:
     * `POST /api/upload`
     * `PUT /api/files/:filename/metadata`
 
-### 9. `07-auth-jwt.cpp`
+### 8. `07-auth-jwt.cpp`
 
 * **Description**: Implements JWT-based authentication and role-based authorization.
 * **Features**:
@@ -204,7 +182,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:242-244`)
     * `GET /api/manager/reports` (requires manager or admin role — `:262`)
 
-### 10. `06-validation.cpp`
+### 9. `06-validation.cpp`
 
 * **Description**: The `qb::http::validation` namespace. **Rewritten**: the previous version was
   1008 lines, included five `validation/` headers, and contained the string `validation::`
@@ -232,7 +210,7 @@ Below is a list of the available examples and the key features they showcase:
     * `POST /api/users` (body schema + query `page` + header `X-Api-Version`, with sanitizers)
     * `GET /api/users/:id` (path parameter, typed and range-checked)
 
-### 11. `11-https.cpp`
+### 10. `11-https.cpp`
 
 * **Description**: Sets up an HTTPS server and an HTTP server that redirects to HTTPS.
 * **Features**:
@@ -249,7 +227,7 @@ Below is a list of the available examples and the key features they showcase:
     * HTTPS server on `https://localhost:8443`
     * HTTP redirect server on `http://localhost:8080`
 
-### 12. `12-http2.cpp`
+### 11. `12-http2.cpp`
 
 * **Description**: An HTTP/2 server demonstrating various HTTP/2 features using a static frontend.
 * **Features**:
@@ -267,7 +245,12 @@ Below is a list of the available examples and the key features they showcase:
     * HTTP/2 server on `https://localhost:8443`
 * **Static Resources**: `examples/06-modules/http/resources/http2/` contains the frontend HTML, JS, CSS for the demo.
 
-### 13. `09-coroutine-handlers.cpp`
+### 12. `09-coroutine-handlers.cpp`
+
+> This section absorbed the pre-3.0 `06_async_handlers.cpp`, which has been retired. Its subject
+> was response TIMING and it reported 0 ms for a 1.2 s handler, because `next()` returns at the
+> first suspension — the timing middleware in `04-middleware.cpp` measures it correctly, and the
+> coroutine-handler material is here.
 
 * **Description**: The coroutine routing API — a route handler may simply return `qb::io::async::task<void>` and
   `co_await` its asynchronous work. The router auto-detects a coroutine handler; no wrapper and no callbacks.
@@ -287,7 +270,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /aggregate`: fetches `/hello` and `/delay/50` concurrently, reports both status codes.
     * `GET /member`: member-function coroutine handler.
 
-### 14. `13-http3.cpp`
+### 13. `13-http3.cpp`
 
 * **Description**: A browser-testable **HTTP/3** demo, served as a **dual stack** (HTTP/2 over
   TCP + HTTP/3 over QUIC on the same port) so a browser can actually reach it. Same routing

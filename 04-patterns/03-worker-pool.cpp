@@ -15,8 +15,8 @@
  *
  * WHAT THIS REPLACES
  * ------------------
- * The load balancer inside `examples/core/example10_distributed_computing.cpp` (1320 lines),
- * which the example audit measured assigning **half the fleet no work at all**. A round-robin
+ * The load balancer inside the pre-3.0 `example10_distributed_computing.cpp` (1320 lines, since
+ * retired), which the example audit measured assigning **half the fleet no work at all**. A round-robin
  * cursor is four lines and it is very easy to write four wrong lines; `qb::WorkerPool` is the
  * four right ones, already tested.
  *

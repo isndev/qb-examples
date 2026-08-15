@@ -152,6 +152,15 @@ struct Reading : qb::Event {
     // UNBOUNDED data goes in a box. The control block and the buffer are on the heap; the
     // event carries only the two words of the shared_ptr, and the refcount survives the
     // relocation because nothing about it points into the event.
+    //
+    // RELOCATABLE IS NOT THE SAME AS OWNED, and this is the half of the shared_ptr rule that
+    // costs people a week. Boxing settles whether the EVENT can be memcpy'd; it says nothing
+    // about who may touch the POINTEE. If the sender keeps its own copy of this handle and
+    // then writes through it while the recipient — on another core, on another thread — reads
+    // through it, that is an ordinary data race, and the box is what made it convenient. A
+    // shared_ptr in an event means "here, take it", not "here, we both have it": send a
+    // snapshot per recipient, or do not keep a copy. ThreadSanitizer is the instrument that
+    // sees this one; a release build will not.
     std::shared_ptr<std::vector<double>> samples;
 
     // A member named `id`, `dest`, `source`, `bucket_size` or `state` HIDES a private routing

@@ -47,9 +47,9 @@
  *       sites. That overload is a real timer, but it is not bound to any actor's lifetime: it
  *       captures a raw `this`, and if the actor dies before the timer fires the callback runs
  *       anyway and dereferences freed memory. Nothing here ever killed an actor with a timer
- *       outstanding, so the defect was latent -- the SAME shape in
- *       `example9_trading_system.cpp` is a heap-use-after-free that AddressSanitizer reports on
- *       3 runs out of 3. `spawn(...)` + `co_await ctx.sleep(d)` is the lifetime-bound form and
+ *       outstanding, so the defect was latent -- the SAME shape in a pre-3.0 example, since
+ *       retired, was a heap-use-after-free that AddressSanitizer reported on 3 runs out of 3.
+ *       `spawn(...)` + `co_await ctx.sleep(d)` is the lifetime-bound form and
  *       is what `qb/src/qb/core/Actor.h` tells you to prefer. See `scheduleAction()`.
  *
  * QB Features Demonstrated:

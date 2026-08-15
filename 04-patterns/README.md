@@ -83,11 +83,11 @@ core-local map lookup that will report a live remote actor as gone.
 
 ## What each program replaces
 
-The architecture requires a named replacement before anything is retired. These three are now
-unblocked:
+The architecture requires a named replacement before anything is retired. The first two have
+since BEEN retired, with the whole pre-3.0 holding tree; the third is a half-file and stays:
 
 | Retire | Lines | Replaced by | Why the hand-rolled version was worse |
 |---|---|---|---|
-| `examples/core/example7_pub_sub.cpp` | 969 | `01-pubsub` | keeps its own subscriber map, cannot notice a dead subscriber, and names `qb::PubSub` in a comment at `:64` without using it |
-| the balancer in `examples/core/example10_distributed_computing.cpp` | 1320 (whole file) | `03-worker-pool` + `04-scatter-gather` | measured assigning half the fleet no work at all; its fan-out half is `ask_all` |
+| the pre-3.0 `example7_pub_sub.cpp` (RETIRED) | 969 | `01-pubsub` | kept its own subscriber map, could not notice a dead subscriber, and named `qb::PubSub` in a comment without using it |
+| the balancer in the pre-3.0 `example10_distributed_computing.cpp` (RETIRED) | 1320 (whole file) | `03-worker-pool` + `04-scatter-gather` | measured assigning half the fleet no work at all; its fan-out half is `ask_all` |
 | the supervisor half of `examples/01-actors/05-lifecycle.cpp` | — | `02-supervisor` | polls its workers for status and has no answer to either supervision question. Only that half is superseded: the file keeps its `kill` / `KillEvent` / ordered-teardown lesson |
