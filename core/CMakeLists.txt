@@ -38,10 +38,10 @@
 #   example9_trading_system.cpp        -> to be replaced by 07-applications/03-market-data-hub
 #   example10_distributed_computing.cpp-> the two things it hand-rolls are replaced by
 #                                         04-patterns/03-worker-pool and
-#                                         04-patterns/04-scatter-gather, which BOTH LANDED.
-#                                         Its monitoring half still has no home; that is
-#                                         02-io/11-logging-and-metrics, and it is what this
-#                                         file is now waiting for
+#                                         04-patterns/04-scatter-gather, and its monitoring
+#                                         half by 02-io/11-logging-and-metrics. ALL THREE
+#                                         LANDED, so this retirement is unblocked too and is
+#                                         a step of its own
 #
 # They keep their pre-3.0 hand-written target names on purpose: a derived name would put
 # them in a tier, and they are not in one. When each replacement lands, this directory
