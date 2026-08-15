@@ -5,6 +5,11 @@ transport extraction, and real-time communication patterns.
 
 - **`01-chat-server.cpp`** - Chat server with HTTP/WebSocket separation
 - **`02-chat-client.cpp`** - Command-line WebSocket chat client
+- **`03-coro-session.cpp`** - The same server side written as ONE coroutine (`coro_session`) — see below
+- **`04-coro-client.cpp`** - The client as a coroutine (`coro_client` / `coro_client_secure`) — see below
+
+All four declare `REQUIRES ssl` and are **not created at all** in an SSL-off build: `ws/ws.h` `#error`s
+without OpenSSL, because the handshake needs SHA-1 + base64.
 
 ## 🎯 Key Concepts Demonstrated
 
@@ -267,18 +272,22 @@ public:
 ### 1. Build the Examples
 
 ```bash
-# From the root of the qb-dev repository
-mkdir build && cd build
-cmake ..
-make qb-example-modules-ws-chat-server qb-example-modules-ws-chat-client
+# From the superproject root, which force-enables QB_BUILD_EXAMPLES
+cmake --preset release
+cmake --build --preset release --target qb-example-modules-ws-chat-server
+cmake --build --preset release --target qb-example-modules-ws-chat-client
 ```
 
 ### 2. Run the Server
 
 ```bash
-# From the build directory
-./examples/06-modules/ws/qb-example-modules-ws-chat-server --port 8080 --static-root ../examples/06-modules/ws/resources/chat
+./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-chat-server --port 8080
 ```
+
+No `--static-root` is needed: the build stages `resources/chat/` next to the binary and the server
+resolves its default `./resources/chat` against the executable's own directory
+(`qb::io::sys::resolve_resource`, `01-chat-server.cpp:744`), so it runs from any working directory.
+An explicit `--static-root` is honoured and resolved the same way.
 
 * **Web Chat**: `http://localhost:8080/`
 * **WebSocket Endpoint**: `ws://localhost:8080/ws`
@@ -286,8 +295,7 @@ make qb-example-modules-ws-chat-server qb-example-modules-ws-chat-client
 ### 3. Run the Command-Line Client
 
 ```bash
-# From the build directory
-./examples/06-modules/ws/qb-example-modules-ws-chat-client
+./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-chat-client
 ```
 
 Then, inside the client:
@@ -383,7 +391,7 @@ This architecture demonstrates **real-world patterns** for building scalable, ma
   no-linkage type (`-Werror=subobject-linkage` on g++-14, and only for some instances).
   `qb/scripts/check-coro-fixture-linkage.py` is the guard for it — note that its scope today is the
   four TEST trees and NOT `examples/`, so these two files obey it by hand.
-* **Run**: `./build/examples/06-modules/ws/qb-example-modules-ws-coro-session`
+* **Run**: `./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-coro-session`
 
 ---
 
@@ -401,4 +409,4 @@ This architecture demonstrates **real-world patterns** for building scalable, ma
 * **Two API notes**: `connect(std::string)` is AMBIGUOUS (`uri const&` and `string_view` overloads are
   both reachable by a user-defined conversion) — build the `qb::io::uri`. And `coro_client` is a class
   template with a defaulted transport, so a function PARAMETER of that type needs the `<>`.
-* **Run**: `./build/examples/06-modules/ws/qb-example-modules-ws-coro-client`
+* **Run**: `./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-coro-client`

@@ -1,4 +1,4 @@
-# Example: TCP Chat System (`chat_tcp`)
+# Example: TCP Chat System (`qb-example-services-tcp-chat-server` / `-client`)
 
 This example implements a multi-client, multi-core TCP chat application using the QB C++ Actor Framework, demonstrating
 a robust architecture for networked applications.
@@ -12,7 +12,7 @@ in a common chat room.
 
 * **`AcceptActor`**: Runs on a dedicated core (Core 0). Each instance holds **one** `qb::io::uri` and therefore listens
   on exactly one port (`server/AcceptActor.h:65`); the example creates **two** of them, on `tcp://0.0.0.0:3001` and
-  `tcp://0.0.0.0:3002` (`server/main.cpp:66-69`). Upon accepting a new connection, an `AcceptActor` distributes it to
+  `tcp://0.0.0.0:3002` (`server/main.cpp:77-78`). Upon accepting a new connection, an `AcceptActor` distributes it to
   one of the `ServerActor`s in a round-robin fashion.
 * **`ServerActor`** (Pool): Runs on one or more dedicated cores (e.g., Core 1). Each `ServerActor` instance manages
   multiple client sessions (`ChatSession`). It handles I/O for its clients, relays messages between the clients and the
@@ -23,7 +23,7 @@ in a common chat room.
 * **`ChatRoomActor`**: Runs on a dedicated core (e.g., Core 3). This is the central hub for chat logic. It manages user
   authentication (ensuring unique usernames), keeps track of all connected sessions, and broadcasts chat messages
   received from one client to **every** connected session — the sender included. `broadcastMessage()` iterates the
-  whole `_sessions` map with no exclusion (`server/ChatRoomActor.cpp:182-190`), so a client sees its own message come
+  whole `_sessions` map with no exclusion (`server/ChatRoomActor.cpp:183-191`), so a client sees its own message come
   back from the server. Add a sender check there if you want the usual "everyone else" semantics.
 
 **Client-Side Architecture:**
@@ -85,8 +85,8 @@ This example showcases a wide range of QB framework features:
     * Specializing `qb::allocator::pipe<char>::put<CustomMessage>()` for serialization.
     * Using `switch_protocol<Protocol>()` to activate the protocol on a connection.
 * **Stream-Based Sending**: `*this << message_object;` — for example `*this << auth;`
-  (`client/ClientActor.cpp:213`) and `*this << msg;` (`:242`). **There is no `Protocol::end` here**: `ChatProtocol`
-  (`shared/Protocol.h:167-265`) declares none, because the frame is self-delimiting — its fixed `MessageHeader`
+  (`client/ClientActor.cpp:238`) and `*this << msg;` (`:267`). **There is no `Protocol::end` here**: `ChatProtocol`
+  (`shared/Protocol.h:168-265`) declares none, because the frame is self-delimiting — its fixed `MessageHeader`
   (`shared/Protocol.h:78-83`: magic, version, type, **length**) carries the payload length, and the
   `qb::allocator::pipe<char>::put<Message>` specialization writes header and payload in one go. `Protocol::end` is a real idiom, but only for qb's **text** protocols (`qb::protocol::text::command`), where it
   is the delimiter byte that terminates a message.
@@ -101,16 +101,15 @@ This example showcases a wide range of QB framework features:
 
 ## How to Build and Run
 
-1. **Build**:
-   Navigate to the main `build` directory of your QB framework checkout.
-   Ensure CMake has been run from the root.
-   Build the server and client targets:
+1. **Build** — from the superproject root, which force-enables `QB_BUILD_EXAMPLES`. Both binaries come from this one
+   directory: they are told apart by the project's two `ROLE` keywords (`server`, `client`), which is where the last
+   component of each target name comes from.
    ```bash
-   cmake --build . --target qb-example-services-tcp-chat-server
-   cmake --build . --target qb-example-services-tcp-chat-client
+   cmake --preset release
+   cmake --build --preset release --target qb-example-services-tcp-chat-server
+   cmake --build --preset release --target qb-example-services-tcp-chat-client
    ```
-   The executables will be found in `build/examples/05-services/01-tcp-chat/` and
-   `build/examples/05-services/01-tcp-chat/`.
+   Both executables land in `build/presets/release/examples/05-services/01-tcp-chat/`.
 
 2. **Run the Server**:
    Open a terminal and navigate to the server executable's directory.

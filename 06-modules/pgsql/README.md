@@ -14,9 +14,12 @@ PostgreSQL client integrated with the QB Actor Framework. All five use the **cor
 - [Example Descriptions](#example-descriptions)
     - [`01-connect-and-query.cpp`](#01-connect-and-querycpp)
     - [`02-parameters.cpp`](#02-parameterscpp)
-    - [`03-transactions.cpp`](#03-transactionscpp)
+    - [`03-transactions.cpp`](#03-transactionscpp--rewritten)
     - [`04-types.cpp`](#04-typescpp)
     - [`05-errors.cpp`](#05-errorscpp)
+    - [`06-typed-rows.cpp`](#6-typed-rows-06-typed-rowscpp--new)
+    - [`07-listen-notify.cpp`](#7-listen--notify-07-listen-notifycpp--new)
+    - [`08-tls-and-limits.cpp`](#8-tls-and-limits-08-tls-and-limitscpp--new)
 
 ## Overview
 
@@ -101,46 +104,31 @@ The format is `schema://[user[:password]@]host[:port][database_name]`.
 
 ## Building the Examples
 
-The provided `CMakeLists.txt` file is configured to build all examples.
-
-1. **Navigate to the QB build directory**: This is the directory where you've built the main QB framework.
-2. **Ensure examples are enabled in your main QB CMake configuration**: If you built QB with `QB_BUILD_EXAMPLES=ON` (or
-   a similar option that includes module examples), these should be buildable.
-3. **Build a specific example**:
-   ```bash
-   cmake --build . --target <example_name>
-   # e.g.,
-   cmake --build . --target qb-example-modules-pgsql-connect-and-query
-   ```
-4. **Build all qbm-pgsql examples**: If your CMake setup for `qbm-pgsql` is part of a larger QB build, they might be
-   built automatically when building the `qbm-pgsql` target or all examples. Refer to your main QB build system if
-   unsure.
-
-If you are building these examples standalone (assuming `qbm-pgsql` is installed as a package):
+Build from the **superproject root**, which force-enables `QB_BUILD_EXAMPLES`:
 
 ```bash
-cd examples/06-modules/pgsql
-mkdir build
-cd build
-cmake .. 
-make qb-example-modules-pgsql-connect-and-query # or any other example, or just 'make' for all
+cmake --preset release
+cmake --build --preset release --target qb-example-modules-pgsql-connect-and-query
 ```
 
-The executables will be placed in your CMake build system's binary output directory (e.g., `your_qb_build_dir/bin/` or
-`examples/06-modules/pgsql/build/`).
+There is **no standalone build**. This directory's `CMakeLists.txt` has no `cmake_minimum_required`
+and calls `qb_example()`, which only qb defines — `cmake -S examples/06-modules/pgsql` fails before it
+compiles anything. The same is true of the whole `isndev/qb-examples` repository; see
+[`examples/README.md`](../../README.md).
+
+The executables land in `build/presets/<preset>/examples/06-modules/pgsql/`.
 
 ## Running the Examples
 
-Once built, you can run each example directly from its location in the build output directory:
+Once built, run each example from the build output directory:
 
 ```bash
-./<example_name>
-# e.g.,
-./qb-example-modules-pgsql-connect-and-query
+./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-connect-and-query
 ```
 
 Make sure your PostgreSQL server is running and accessible with the connection string you've configured in the source
-file.
+file. **All eight need a live server**: `dev/agent/run-examples.py` records `needs = postgres` for every
+target here and reports a SKIP, never a pass, when nothing answers.
 
 ## Example Descriptions
 
@@ -197,29 +185,28 @@ exception contract (`transaction_abort` → rollback + failed `Reply`; anything 
 fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release_savepoint`, not
 `rollback_to` and `release`.
 
-#### The original notes
-
-
-* **Purpose**: Shows how to manage database transactions, including a simulated fund transfer scenario.
+* **Purpose**: every shape the word "transaction" covers in this client, each proved against a live
+  server rather than described. The worked scenario is still a fund transfer, but between two rows of
+  a table the program creates and drops itself.
 * **Key Features**:
-    * **Explicit, manual** transaction control — there is no chain and no automatic commit/rollback. You write
-      `co_await db.begin()` (`03-transactions.cpp:156`), then the statements, then
-      `co_await db.commit()` (`:181`) or `co_await db.rollback()` (`:163`, `:174`) yourself, on the branch you decide.
-    * Sequencing is ordinary control flow: check `reply.ok()` after each `co_await` and `rollback()` on the first
-      failure (`:160-176`).
-    * Ensuring accounts exist before updating them (insert, tolerate the unique violation).
-    * A successful fund transfer: two `UPDATE`s inside one BEGIN/COMMIT (`:160`, `:171`).
-    * A transfer that is **meant** to fail — a duplicate insert of `'Eve'` inside the transaction — followed by an
-      explicit `ROLLBACK` (`:203-222`).
-    * Reading and displaying account balances.
-    * Data type: `DOUBLE PRECISION` for account balances.
-* **Database Operations**:
-    * `CREATE TABLE IF NOT EXISTS accounts (...)`
-    * `INSERT INTO accounts (name, balance) VALUES ($1, $2) RETURNING id, name, balance;`
-    * `UPDATE accounts SET balance = balance + $1 WHERE name = $2;`
-    * `SELECT id, name, balance FROM accounts WHERE name = $1;`
-    * `DELETE FROM accounts WHERE name = $1;` (Prepared, but not used in main flow)
-    * `DROP TABLE IF EXISTS accounts;`
+    * **Manual** control — `co_await db.begin()`, the statements, then `commit()` or `rollback()`
+      yourself, on the branch you decide. Ordinary control flow: check `reply.ok()` after each
+      `co_await`. The example prints the trap that makes this shape dangerous — a `BEGIN` whose
+      `UPDATE` failed will happily `COMMIT`, because nothing checked.
+    * **`qb::pg::with_transaction`** and its exact exception contract: `transaction_abort` → rollback
+      plus a failed `Reply`; any other exception → rollback then **rethrow**; a nested call is refused
+      before a `BEGIN` is even sent.
+    * **SAVEPOINT** for partial rollback — note the spellings, `rollback_savepoint` and
+      `release_savepoint`, not `rollback_to` and `release`.
+    * **`transaction_mode`** for isolation level and READ ONLY.
+    * **`set_timeout`** for a `statement_timeout` that fails with SQLSTATE 57014.
+* **Database Operations** — one table, created and dropped by the program:
+    * `CREATE TABLE IF NOT EXISTS qb_tx_accounts (...)`
+    * `INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2), ($3, $4)`
+    * `UPDATE qb_tx_accounts SET balance = balance ± $1 WHERE name = $2`
+    * `SELECT balance FROM qb_tx_accounts WHERE name = $1` and `SELECT SUM(balance) FROM qb_tx_accounts`
+    * `DROP TABLE IF EXISTS qb_tx_accounts;`
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-transactions`
 
 ### `04-types.cpp`
 
@@ -292,7 +279,7 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
 * **Two things measured while writing it**: the tuple is POSITIONAL over the SELECT list with no name
   matching, so a mismatch throws at RUN time; and `resultset::json()` renders every scalar as a JSON
   STRING (only NULL is typed), because it emits the text-format wire bytes rather than re-typing them.
-* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-typed-rows`
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-typed-rows`
 
 ---
 
@@ -316,7 +303,7 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   inside a coroutine re-enters `CoroutineScheduler::run_ready`, whose assert catches exactly that
   (SIGABRT under the `sanitize` preset; silent re-entrancy under `release`). This example drops the
   link with `pg_terminate_backend` from the publisher instead — which is also what a failover does.
-* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-listen-notify`
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-listen-notify`
 
 ---
 
@@ -335,4 +322,4 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
 * **It MEASURES the server rather than asserting about it**: whether TLS is available is the
   operator's decision (`ssl = on`), so sections 1 and 2 print what they found in either direction. The
   proof is `pg_stat_ssl` — the server's own view of the connection, not the client's opinion.
-* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-tls-and-limits`
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-tls-and-limits`
