@@ -22,13 +22,18 @@
 # not, because the architecture does not move it: it RETIRES it into three different
 # homes, and a retirement only lands with its replacements.
 #
-#   file_monitor/watcher.*   -> 02-io/08-timeouts-and-watchers, where "ev::stat polls one
-#                               path and cannot name the changed file" is the LESSON rather
-#                               than the disappointment
+#   file_monitor/watcher.*   -> 02-io/08-timeouts-and-watchers, which LANDED: "ev::stat polls
+#                               one path and cannot name the changed file" is the LESSON there
+#                               rather than the disappointment, and the program asserts the
+#                               with_timeout re-arming contract on top of it
 #   file_monitor/events.h    -> its relocation comment is the text 01-actors/03-event-payloads
-#                               is to be written around
-#   file_monitor/processor.*  -> 05-services/03-file-pipeline, which is where a processor
-#                               that currently receives zero events belongs
+#                               was written around, which LANDED
+#   file_monitor/processor.*  -> 05-services/03-file-pipeline, which LANDED, and which is where
+#                               a processor that currently receives zero events belongs
+#
+# ALL THREE replacements have now landed, so this retirement is unblocked. It is still a step
+# of its own — a deletion is never a side effect of writing the replacement — and it takes
+# `qb/readme/5_core_io_integration/examples/file_monitor_*.md` with it.
 #
 # It keeps its pre-3.0 hand-written target name on purpose: a derived name would put it in
 # a tier, and it is not in one.

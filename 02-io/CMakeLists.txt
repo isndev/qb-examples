@@ -57,3 +57,26 @@ endif ()
 qb_example(SOURCE 03-tcp.cpp DEPENDS qb-io)
 qb_example(SOURCE 04-udp.cpp DEPENDS qb-io)
 qb_example(SOURCE 05-custom-protocol.cpp DEPENDS qb-io)
+qb_example(SOURCE 06-framing-toolbox.cpp DEPENDS qb-io)
+
+# 07-tls needs a certificate. `REQUIRES ssl` means the target is NOT CREATED in an SSL-off build
+# (the roster records it as gated so the runner reports a SKIP with the capability named, rather
+# than a program that has gone missing), and TARGET_VAR hands the derived name back so the resource
+# staging below never has to retype it.
+qb_example(SOURCE 07-tls.cpp DEPENDS qb-io REQUIRES ssl TARGET_VAR QB_EXAMPLE_IO_TLS)
+
+qb_example(SOURCE 08-timeouts-and-watchers.cpp DEPENDS qb-io)
+qb_example(SOURCE 09-graceful-drain.cpp DEPENDS qb-io)
+
+qb_example(SOURCE 10-crypto-and-compression.cpp DEPENDS qb-io REQUIRES ssl compression)
+qb_example(SOURCE 11-logging-and-metrics.cpp DEPENDS qb-io)
+
+# Stage resources/ next to the tier's binaries so 07-tls opens "resources/ssl/cert.pem" with a
+# plain relative path. `if (TARGET ...)` and not an unconditional call: in an SSL-off build the
+# gate above returned before add_executable() and the target genuinely does not exist.
+if (TARGET ${QB_EXAMPLE_IO_TLS})
+    qb_stage_example_resources(
+            STAGE_NAME qb-example-io-resources
+            TARGETS ${QB_EXAMPLE_IO_TLS}
+    )
+endif ()

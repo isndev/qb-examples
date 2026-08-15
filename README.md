@@ -27,10 +27,10 @@ that the wording did.
 | Tier | What it teaches | Prerequisite |
 |---|---|---|
 | [`01-actors/`](./01-actors/README.md) | The actor model: actors, events, cores, lifetime, state machines, service actors, actor trees, signals and the hot path. Eleven programs, no gaps. | none |
-| [`02-io/`](./02-io/README.md) | `qb-io` **standalone** — an event loop, files, TCP, UDP and a hand-written wire protocol, with no actor and no `qb::Main`. | none, deliberately |
+| [`02-io/`](./02-io/README.md) | `qb-io` **standalone** — an event loop, files, TCP, UDP, a hand-written wire protocol, the shipped framing toolbox, TLS, the timer/watcher contracts, the drain vocabulary, crypto and compression, and the logger. Eleven programs, no gaps. | none, deliberately |
 | [`03-coroutines/`](./03-coroutines/README.md) | The 3.0 concurrency model: `task<T>`, `run_sync`, coroutines spawned from inside an actor, an `onInit` that really awaits, `qb::ask`, the combinators and cancellation. | 01, 02/01 |
 | [`04-patterns/`](./04-patterns/README.md) | The eleven shipped `qb/core/patterns/` headers — pub/sub, supervisor, worker pool, `qb::ask` + scatter/gather, resilience, streaming, saga, batching + idempotency, discovery. Nine programs; before them the whole directory had **zero** demonstrators and `qb::ask` had zero call sites. | 01, 03 |
-| [`05-services/`](./05-services/) | Actors **plus** `qb-io`: the architecture of a real server — a TCP chat, a pub/sub broker, a file pipeline. | 01–04 |
+| [`05-services/`](./05-services/) | Actors **plus** `qb-io`: the architecture of a real server — a TCP chat, a pub/sub broker, a file pipeline, and a shutdown that stops accepting, drains, flushes and exits with an honest code. Four projects, no gaps. | 01–04 |
 | [`06-modules/`](./06-modules/README.md) | The qbm modules: [`http/`](./06-modules/http/README.md), [`ws/`](./06-modules/ws/README.md), [`pgsql/`](./06-modules/pgsql/README.md), [`redis/`](./06-modules/redis/README.md). | 01, 03 (+ 02 for the protocol tiers) |
 | [`07-applications/`](./07-applications/) | Full-stack projects: [taskmanager](./07-applications/01-taskmanager/README.md), [auction-house](./07-applications/02-auction-house/README.md). | everything |
 
@@ -50,8 +50,8 @@ names which replacement it is waiting for; the last one to arrive takes the dire
 | `core/example6_shared_queue.cpp` | `01-actors/03-event-payloads` — **landed**; the retirement is unblocked and is its own step |
 | `core/example7_pub_sub.cpp` | `04-patterns/01-pubsub` — **landed**; the retirement is unblocked and is its own step |
 | `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` |
-| `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` — **both landed**; what remains before it can go is a home for its monitoring half (`02-io/11-logging-and-metrics`) |
-| `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` (**landed**) + `05-services/03-file-pipeline` (**landed**) |
+| `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` + `02-io/11-logging-and-metrics` — **all three landed**; the retirement is unblocked and is its own step |
+| `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` + `05-services/03-file-pipeline` — **all three landed**; the retirement is unblocked and is its own step |
 | `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` |
 | `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` |
 | `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` |
