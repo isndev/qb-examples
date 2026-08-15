@@ -23,10 +23,13 @@
 #     03-transactions.cpp       ->  qb-example-modules-pgsql-transactions
 #     04-types.cpp              ->  qb-example-modules-pgsql-types
 #     05-errors.cpp             ->  qb-example-modules-pgsql-errors
+#     06-typed-rows.cpp         ->  qb-example-modules-pgsql-typed-rows
+#     07-listen-notify.cpp      ->  qb-example-modules-pgsql-listen-notify
+#     08-tls-and-limits.cpp     ->  qb-example-modules-pgsql-tls-and-limits
 #
-# 06-typed-rows, 07-listen-notify and 08-tls-and-limits are not written yet:
-# row::as<tuple>, views<>, resultset::json(), LISTEN/NOTIFY and ssl::database have no
-# demonstrator.
+# All eight are written. Two names in the architecture document do not exist in the tree and
+# 06-typed-rows is written against the header instead: `first_as` and `views<Ts...>` are shipped
+# as `one<Ts...>` and `rows<Ts...>` (qbm/pgsql/src/qbm/pgsql/resultset.h:214/230/248).
 # -----------------------------------------------------------------------------
 
 project(qb_examples_06_pgsql
@@ -42,3 +45,6 @@ qb_example(SOURCE 02-parameters.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 03-transactions.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 04-types.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 05-errors.cpp DEPENDS qbm-pgsql)
+qb_example(SOURCE 06-typed-rows.cpp DEPENDS qbm-pgsql)
+qb_example(SOURCE 07-listen-notify.cpp DEPENDS qbm-pgsql)
+qb_example(SOURCE 08-tls-and-limits.cpp DEPENDS qbm-pgsql)
