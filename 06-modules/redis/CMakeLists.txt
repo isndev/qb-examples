@@ -30,13 +30,16 @@
 #     10-cache-actor.cpp                 ->  qb-example-modules-redis-cache-actor
 #
 # All ten are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
-# which had no demonstrator anywhere; the originals still sit in examples/qbm/redis/ until the
-# retirement step removes them. 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
+# which had no demonstrator anywhere; those originals have since been RETIRED, and 02-data-types
+# picked up the five commands (HKEYS, HVALS, LINDEX, LSET, BLPOP) the merge had otherwise dropped.
+# 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
 #
-# Every one of the four new programs deletes the keys it wrote, on the failure path as well as the
-# success one. That is not tidiness: 06-streams writes ~1,000,000 stream entries per run and leaves
-# them (measured: XLEN 1,000,546 and ~240 MB after one run from a clean key), and a program whose
-# cost depends on how many times it has been run cannot be judged by a timeout.
+# EVERY program here deletes the keys it wrote, on the failure path as well as the success one.
+# That is not tidiness, and 06-streams is why the rule exists: it used to write ~1,000,000 stream
+# entries per run and leave them behind (measured: XLEN 1,000,546 and ~240 MB from a clean key),
+# and a program whose cost depends on how many times it has been run cannot be judged by a
+# timeout — measured at 43 s, 74 s, 150 s and, from a freshly deleted key, 300 s without
+# finishing. It now writes 40 entries to a key unique to the run and deletes it on the way out.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_06_redis

@@ -5,8 +5,8 @@
  *          tells them apart in this client: the C++ TYPE each command's Reply comes back as. An
  *          unordered_set is not a stylistic choice, it is what a Redis set IS.
  * @demonstrates qb::redis::tcp::client, set, get, append, strlen, incrby, mset, mget,
- *               hset, hget, hgetall, hincrby, hexists, hdel, hlen,
- *               rpush, lpush, lrange, llen, ltrim, lpop, rpop,
+ *               hset, hget, hgetall, hincrby, hexists, hdel, hlen, hkeys, hvals,
+ *               rpush, lpush, lrange, llen, ltrim, lpop, rpop, lindex, lset, blpop,
  *               sadd, smembers, sismember, scard, sinter, sunion, sdiff, srem,
  *               qb::redis::Reply<T>, ok, result, del,
  *               qb::io::async::init, qb::io::async::run_until, qb::io::async::coro_scheduler,
@@ -165,7 +165,17 @@ run_data_types(bool &running, bool &ok) {
                              "       levels here (no key, no field) and HEXISTS answers the second without a copy\n"
                            : "[hash] UNEXPECTED: field presence did not behave as documented\n");
     (void) co_await redis.hdel(K_HASH, "logins");
-    qb::io::cout() << "       (fields before HDEL: " << fields.result() << ", after: " << (co_await redis.hlen(K_HASH)).result() << ")\n\n";
+    qb::io::cout() << "       (fields before HDEL: " << fields.result() << ", after: " << (co_await redis.hlen(K_HASH)).result() << ")\n";
+
+    // HKEYS and HVALS are the two halves of HGETALL, and each comes back as a plain vector rather
+    // than a map — which is the point: ask for the half you need and the other half never crosses
+    // the wire. HKEYS on a wide hash is the cheap way to answer "which fields exist" without
+    // paying for the values.
+    auto field_names  = co_await redis.hkeys(K_HASH);
+    auto field_values = co_await redis.hvals(K_HASH);
+    qb::io::cout() << (field_names.ok() && field_values.ok() && field_names.result().size() == field_values.result().size()
+                           ? "       (HKEYS -> vector of names, HVALS -> vector of values, same length, no map built)\n\n"
+                           : "       (UNEXPECTED: HKEYS and HVALS disagreed on the field count)\n\n");
 
     // -----------------------------------------------------------------------------------
     // 3. LIST — the sequence, where position is part of the value
@@ -195,7 +205,28 @@ run_data_types(bool &running, bool &ok) {
     auto head = co_await redis.lpop(K_LIST);
     auto tail = co_await redis.rpop(K_LIST, 2);
     qb::io::cout() << "       (LPOP one -> '" << head.result().value_or("?") << "', RPOP 2 -> " << tail.result().size()
-                   << " entries, list is now " << (co_await redis.llen(K_LIST)).result() << " long)\n\n";
+                   << " entries, list is now " << (co_await redis.llen(K_LIST)).result() << " long)\n";
+
+    // Position is addressable: LINDEX reads entry i, LSET overwrites it. Both are O(i) on a
+    // linked list, so they are for the ends and for short lists — a long list you want to index
+    // randomly is a sorted set (08-sorted-sets-and-ttl) or a hash, not a list.
+    (void) co_await redis.rpush(K_LIST, "penultimate", "final");
+    (void) co_await redis.lset(K_LIST, 0, "rewritten");
+    auto at_zero      = co_await redis.lindex(K_LIST, 0);
+    auto out_of_range = co_await redis.lindex(K_LIST, 999);
+    qb::io::cout() << (at_zero.result().value_or("?") == "rewritten" && !out_of_range.result().has_value()
+                           ? "       (LSET overwrote entry 0, LINDEX read it back, and an out-of-range index is\n"
+                             "        nullopt rather than an error — the same absence-is-a-value rule as GET)\n"
+                           : "       (UNEXPECTED: LSET/LINDEX did not round-trip entry 0)\n");
+
+    // BLPOP is LPOP that waits. On a NON-empty list it returns immediately — the block only
+    // applies when there is nothing to pop — and it answers with the KEY as well as the value,
+    // because you may have handed it several to watch. Timeout is in seconds; 0 means forever,
+    // which is why a program that must make progress passes a real one.
+    auto popped = co_await redis.blpop({K_LIST}, 1);
+    qb::io::cout() << (popped.ok() && popped.result().has_value()
+                           ? "       (BLPOP returned <key, value> without waiting: the list was not empty)\n\n"
+                           : "       (UNEXPECTED: BLPOP found nothing on a non-empty list)\n\n");
 
     // -----------------------------------------------------------------------------------
     // 4. SET — membership, and algebra that never crosses the wire

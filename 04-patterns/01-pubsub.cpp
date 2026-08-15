@@ -20,11 +20,14 @@
  *
  * WHAT THIS REPLACES
  * ------------------
- * `examples/core/example7_pub_sub.cpp` is 969 lines that hand-roll this — and at line 64 it
- * names `qb::PubSub` in a comment and then does not use it. The hand-rolled version keeps its
- * own subscriber map, has no way to notice a dead subscriber, and (measured by the example
- * audit) ran its whole demo eighteen times concurrently. This file is the same lesson in a
- * fifth of the code, and the parts it does not write are the parts that were wrong.
+ * The pre-3.0 `example7_pub_sub.cpp` was 969 lines that hand-rolled this — and it named
+ * `qb::PubSub` in a comment and then did not use it. The hand-rolled version kept its own
+ * subscriber map, had no way to notice a dead subscriber, and (measured by the example audit)
+ * ran its whole demo eighteen times concurrently. It has since been retired. This file is the
+ * same lesson in a fifth of the code, and the parts it does not write are the parts that were
+ * wrong. Note the one thing the shipped bus does NOT do: `qb::PubSub<Topic>` keys on the event
+ * TYPE, not on a runtime topic string — for that, see
+ * `examples/05-services/02-pubsub-broker/server/TopicManagerActor.h`.
  *
  * THE THREE THINGS THAT ARE EASY TO GET WRONG
  * -------------------------------------------

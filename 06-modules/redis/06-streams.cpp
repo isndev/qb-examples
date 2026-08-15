@@ -1,69 +1,73 @@
 /**
  * @file examples/06-modules/redis/06-streams.cpp
  * @tier 06-modules
- * @teaches Redis Streams as a work queue: producers XADD, a consumer group reads its own share, and
- *          XTRIM keeps the stream bounded.
- * @demonstrates qb::redis::tcp::client, spawn, qb::ScopedCoroContext, ctx.sleep,
- *               qb::io::async::callback, qb::io::async::task<void>, registerEvent<E>, qb::KillEvent
+ * @teaches Redis Streams as a work queue and as a log: producers XADD; a consumer group SPLITS the
+ *          entries between its competing consumers while a SECOND group gets its own independent
+ *          copy; XACK empties the pending list; a plain XREAD needs no group at all; XTRIM bounds
+ *          the stream.
+ * @demonstrates qb::redis::tcp::client, xadd, xgroup_create, xreadgroup, xack, xpending, xread,
+ *               xlen, xtrim, expire, del, spawn, qb::ScopedCoroContext, ctx.sleep,
+ *               qb::io::async::task<void>, qb::io::async::task<bool>, registerEvent<E>,
+ *               qb::BroadcastId, qb::KillEvent
  * @prerequisites 06-modules/redis/03-coroutines-and-pipelining
- * @expect "] connected to Redis"
- * @expect "Coordinator connected to Redis"
- * @example qbm-redis: Redis Streams with Consumer Groups and Actors
+ * @expect "[setup] stream key: "
+ * @expect "[produce] both producers finished, entries written: "
+ * @expect "[workers] the 'workers' group SPLIT its entries between 2 competing consumers: "
+ * @expect "[audit] the 'audit' group received its OWN independent copy: "
+ * @expect "[ack] every delivered entry was acknowledged, so XPENDING reports "
+ * @expect "[xread] a plain XREAD needs no group and carries its own cursor: "
+ * @expect "[trim] XTRIM MAXLEN bounded the stream: "
+ * @expect "=== streams complete: two groups, competing consumers, XACK, XREAD and XTRIM ==="
  *
- * @brief This advanced example demonstrates using Redis Streams for a scalable data
- * processing pipeline. It features multiple producer actors generating sensor data
- * and multiple consumer actors processing this data in parallel using consumer groups.
+ * WHAT THIS FILE REPLACED, AND WHY IT HAD TO BE REWRITTEN RATHER THAN TUNED
+ * ------------------------------------------------------------------------
+ * The pre-3.0 version of this program was the only failing example in the corpus. It was killed
+ * on SIGKILL after 149.9 s in one full run, and measured here at 43.1 s, 73.9 s, 185 s, a 167 s
+ * timeout and — from a freshly deleted key, on an idle machine — **300.7 s without finishing**.
+ * Three defects, all measured, none of which a smaller `TARGET_READINGS` would have fixed:
  *
- * @details
- * The system architecture includes:
- * 1.  `SensorProducerActor` (multiple instances, e.g., on Core 1):
- *     -   Simulates a sensor device that periodically generates readings (temperature, humidity, pressure).
- *     -   Connects to Redis using `qb::redis::tcp::client`.
- *     -   Adds new sensor readings to a common Redis Stream (e.g., "sensor-readings")
- *         using `_redis.xadd(stream_key, field_value_pairs)`.
- *     -   Uses `_redis.xtrim()` to cap the stream length.
- *     -   Uses `qb::ICallback` for periodic data generation.
- *     -   Notifies the `CoordinatorActor` about generated readings (for progress tracking)
- *         and when its target number of readings is sent (`ProcessingCompleteEvent`).
- * 2.  `StreamConsumerActor` (multiple instances, e.g., on Cores 2 & 3, in different consumer groups):
- *     -   Represents a worker that processes data from the Redis Stream.
- *     -   Connects to Redis using `qb::redis::tcp::client`.
- *     -   Creates or joins a specific consumer group for the "sensor-readings" stream
- *         using `_redis.xgroup_create(stream_key, group_name, start_id, true)`.
- *     -   Periodically polls for new messages assigned to its consumer identity within the group
- *         using `_redis.xreadgroup(stream_key, group_name, consumer_name, ">", count, block_ms)`.
- *     -   Parses the message fields (sensor_id, temperature, etc.) from the `xreadgroup` reply.
- *         (Note: The example shows manual iteration over the `qb::json` reply structure).
- *     -   Simulates data processing, including checking for alert conditions (e.g., high temperature)
- *         and sending `AlertEvent`s to the `CoordinatorActor`.
- *     -   Acknowledges successfully processed messages using `_redis.xack(stream_key, group_name, message_id)`.
- *     -   Uses `qb::ICallback` for its polling and processing loop.
- *     -   Notifies the `CoordinatorActor` upon completion (`ProcessingCompleteEvent`).
- * 3.  `CoordinatorActor` (e.g., on Core 0):
- *     -   Initializes the system, creating producer and consumer actors on various cores.
- *     -   Its `ActorId` is made globally available (`g_coordinator_id`) for other actors.
- *     -   Receives `SensorReadingEvent`s to track the total number of generated readings.
- *     -   Receives `AlertEvent`s from consumers.
- *     -   Receives `ProcessingCompleteEvent` from both producers and consumers.
- *     -   Orchestrates a graceful shutdown of the system by calling `qb::Main::stop()` once all
- *         producers have sent their data and all consumers have indicated completion or idleness.
+ * 1. IT ACKED NOTHING, EVER. Its consumer walked the `xreadgroup` reply with a hard-coded
+ *    three-level nesting that matched no shape the server actually sends, so
+ *    `process_extracted_data()` was never reached and `xack` was never called. Measured on the
+ *    stream it left behind: `entries-read 1021020, pending 1021020` in BOTH groups — every entry
+ *    delivered, not one acknowledged — and in a 300 s run the two consumers printed 8 lines
+ *    between them, all of them startup banners. The program could therefore never reach its own
+ *    completion condition; it only ever ended through a 2 s watchdog that broadcast a shutdown.
+ *    That is why this file walks the reply STRUCTURALLY (`collect_entries` below) instead of
+ *    assuming a nesting: the shape differs between RESP2 and RESP3, and the entry id is the one
+ *    invariant both share.
  *
- * This example showcases a robust, distributed stream processing pattern.
+ * 2. IT SPAWNED A COROUTINE PER LOOP TURN. Both actor kinds did their Redis work from
+ *    `on(qb::LoopEvent const&)`, which fires on every turn of the core, and each turn spawned a
+ *    fresh coroutine holding one more in-flight command on the SAME connection. Nothing bounded
+ *    the concurrency, and the guard that was supposed to stop production read a counter that is
+ *    only incremented AFTER the await — so the stream overshot its own target (measured
+ *    XLEN 1,000,104 against TARGET_READINGS 1,000,000). Here each actor runs exactly ONE
+ *    long-lived coroutine with one command in flight at a time.
  *
- * QB/QBM Redis Features Demonstrated:
- * - `qb::Actor`, `qb::Main`, `qb::Event`, `qb::ICallback`, `qb::BroadcastId`.
- * - `qb::redis::tcp::client` for stream operations.
- * - Redis Stream Commands:
- *   - `client.xadd(stream, fields_values_vector)`
- *   - `client.xtrim(stream, maxlen)`
- *   - `client.xlen(stream)`
- *   - `client.xgroup_create(stream, group, id, mkstream_flag)`
- *   - `client.xreadgroup(stream, group, consumer, id_or_gt, count, block_ms)` (returns `qb::json`)
- *   - `client.xack(stream, group, message_id, ...)`
- * - Multi-core actor deployment for parallel data production and consumption.
- * - `qb::string<N>` for event data.
- * - `qb::io::cout()`.
- * - `qb::Main::stop()`.
+ * 3. ITS RUNTIME DEPENDED ON THE PREVIOUS RUN. The coordinator deleted a FIXED stream key at
+ *    startup, which is correct as far as it goes — but deleting a key holding a million entries
+ *    and ~230 MB is O(N) server-side work, charged to the next run's startup while its producers
+ *    are already writing. That, and not any logical accumulation, is why the same program timed
+ *    itself differently on every attempt. This version uses a key unique to the run, so a second
+ *    run measures exactly what the first did.
+ *
+ * WHAT IT COSTS NOW: 40 entries, and the whole program is a fraction of a second.
+ *
+ * THE TWO STREAM SEMANTICS, WHICH ARE EASY TO CONFUSE
+ * ---------------------------------------------------
+ * Both are demonstrated below, side by side, because a stream does both at once:
+ *
+ *   * WITHIN one consumer group, an entry goes to exactly ONE consumer. Two consumers in the
+ *     `workers` group therefore SPLIT the 40 entries — that is the work-queue semantic, and the
+ *     split is why adding a consumer adds throughput.
+ *   * ACROSS groups, every group gets EVERY entry. The `audit` group reads all 40 on its own
+ *     cursor, entirely unaffected by what `workers` did — that is the fan-out semantic.
+ *
+ * A group created at id "0" is delivered the stream from the beginning, so `xgroup_create` here
+ * is ORDER-INDEPENDENT with respect to the producers: it does not matter whether a consumer
+ * joins before or after the entries are written. That is what removes the startup race the
+ * previous version had between its `del` and its consumers' `xgroup_create`.
  */
 
 #include <qbm/redis/redis.h>
@@ -74,730 +78,454 @@
 #include <qb/string.h>
 #include <qb/json.h>
 #include <qb/system/parse.h>
+#include <atomic>
 #include <chrono>
+#include <random>
+#include <string>
+#include <string_view>
+#include <vector>
 
-// Redis Configuration
 #define REDIS_URI "tcp://localhost:6379"
-static constexpr char SENSOR_STREAM[] = "sensor-readings";
-static constexpr int  TARGET_READINGS = 1000000; // 500000 readings from each of 2 sensors
 
-// Global atomic counter for tracking processed messages across cores
-std::atomic<int> GLOBAL_COUNTER{0};
+static constexpr int ENTRIES_PER_PRODUCER = 20;
+static constexpr int PRODUCER_COUNT       = 2;
+static constexpr int TOTAL_ENTRIES        = ENTRIES_PER_PRODUCER * PRODUCER_COUNT;
+static constexpr int CONSUMER_COUNT       = 3; // two in `workers`, one in `audit`
+static constexpr int TRIM_MAXLEN          = 10;
 
-// Forward declaration of actor IDs for cross-core communication
-qb::ActorId g_coordinator_id;
+static constexpr char GROUP_WORKERS[] = "workers";
+static constexpr char GROUP_AUDIT[]   = "audit";
 
-// Sensor reading event for notifying coordinator only
-struct SensorReadingEvent : qb::Event {
-    qb::string<32> sensor_id;
-    double         temperature;
-    double         humidity;
-    double         pressure;
-
-    SensorReadingEvent(const std::string &id, double temp, double hum, double press)
-        : sensor_id(id)
-        , temperature(temp)
-        , humidity(hum)
-        , pressure(press) {}
-};
-
-// Alert event for anomalous readings
-struct AlertEvent : qb::Event {
-    qb::string<32>  sensor_id;
-    qb::string<32>  alert_type;
-    qb::string<128> alert_message;
-
-    AlertEvent(const std::string &id, const std::string &type, const std::string &message)
-        : sensor_id(id)
-        , alert_type(type)
-        , alert_message(message) {}
-};
-
-// Shutdown event
-struct ShutdownEvent : qb::Event {
-    explicit ShutdownEvent() {}
-};
-
-// Final stats event when processing is complete
 /**
- * @brief Self-addressed wake-ups for the two delays that end in a call on the actor.
+ * @brief The stream key, unique to this run.
  *
- * Both replace a `qb::io::async::callback([this]{ ... }, d)`, whose `Timeout` is owned by the
- * event loop rather than by the actor: nothing cancels it when the actor is killed, so it fires
- * against a destroyed object and a guard inside the lambda IS the read of freed memory. The
- * replacement is `spawn(...)` + `co_await ctx.sleep(d)`, a wait the actor's cancellation scope
- * owns, plus one of these events to do the work back on the actor.
- *
- * Note the site that deliberately did NOT change: the `qb::io::async::callback([]{
- * qb::Main::stop(); }, 1s)` in `CoordinatorActor::on(ProcessingCompleteEvent&)` captures
- * nothing, stops the engine rather than touching an actor, and is meant to outlive every actor.
+ * Namespaced like every other key in this tier, and suffixed with the process start time so that
+ * a second run neither reads nor pays for the first one's entries. The previous version shared
+ * one fixed key across every run and opened by deleting whatever it found — see defect 3 above.
+ * A run that is killed leaves at most TOTAL_ENTRIES behind, and the producers put a TTL on the
+ * key after their first write so even that expires on its own.
  */
-struct NotifyConsumersTick : qb::Event {};    ///< 2 s: nudge consumers that have not reported
-struct ConsumerFinalCountTick : qb::Event {}; ///< 500 ms: log the final count and leave
+static const std::string STREAM = "qb:example:streams:readings:" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
 
-struct ProcessingCompleteEvent : qb::Event {
-    qb::string<32> entity_id;
-    int            processed_count;
+/**
+ * @brief Set by the coordinator before it stops the engine, read by main() after join().
+ *
+ * Safe by ordering rather than by luck: `qb::Main::join()` happens-after every actor has been
+ * destroyed, so the read cannot race the write. It is an atomic so that the ordering is stated
+ * in the type rather than in a comment somebody can delete.
+ */
+static std::atomic<bool> RUN_OK{false};
 
-    ProcessingCompleteEvent(const std::string &id, int count)
-        : entity_id(id)
-        , processed_count(count) {}
+// ---------------------------------------------------------------------------------------------
+// Reading the reply.
+//
+// `xread` and `xreadgroup` are declared to return `qb::json` — "loosely structured server data"
+// (qbm/redis/readme/stream_commands.md:56) — and the nesting genuinely differs between RESP2 and
+// RESP3. Hard-coding one shape is what made the previous version ack nothing, so this walks the
+// tree instead and collects every object member whose KEY parses as a stream id ("<ms>-<seq>").
+// That is the one thing both protocol shapes agree on.
+// ---------------------------------------------------------------------------------------------
+struct StreamEntry {
+    std::string id;
+    qb::json    fields;
 };
 
-// Sensor data generator actor
-class SensorProducerActor
-    : public qb::Actor
-    , public qb::ICallback {
-private:
-    // Actor state
-    qb::string<32> _sensor_id;
-    int            _readings_sent = 0;
-    int            _target_readings;
-    // Random number generator for sensor data
-    std::mt19937                     _rng;
-    std::uniform_real_distribution<> _dist{0.0, 1.0};
+static bool
+is_stream_id(std::string_view s) {
+    const auto dash = s.find('-');
+    if (dash == std::string_view::npos || dash == 0 || dash + 1 == s.size())
+        return false;
+    for (std::size_t i = 0; i < s.size(); ++i)
+        if (i != dash && (s[i] < '0' || s[i] > '9'))
+            return false;
+    return true;
+}
 
-    // Redis client
-    qb::redis::tcp::client _redis;
-    bool                   _connected = false;
-
-    // Generate random sensor readings
-    double
-    generate_random(double min, double max) {
-        std::uniform_real_distribution<> dist(min, max);
-        return dist(_rng);
+static void
+collect_entries(const qb::json &node, std::vector<StreamEntry> &out) {
+    if (node.is_object()) {
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            if (is_stream_id(it.key()))
+                out.push_back(StreamEntry{it.key(), it.value()});
+            else
+                collect_entries(it.value(), out);
+        }
+    } else if (node.is_array()) {
+        for (const auto &child : node)
+            collect_entries(child, out);
     }
+}
+
+/// One field of an entry. RESP3 gives an object; RESP2 flattens the fields to [k, v, k, v, ...].
+static std::string
+field_of(const qb::json &fields, const std::string &name) {
+    if (fields.is_object()) {
+        const auto it = fields.find(name);
+        return (it != fields.end() && it->is_string()) ? it->get<std::string>() : std::string{};
+    }
+    if (fields.is_array())
+        for (std::size_t i = 0; i + 1 < fields.size(); i += 2)
+            if (fields[i].is_string() && fields[i].get<std::string>() == name)
+                return fields[i + 1].is_string() ? fields[i + 1].get<std::string>() : std::string{};
+    return {};
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events. Every payload is bounded (`qb::string<N>`) or a POD: the engine relocates an event with
+// memcpy and never runs the source destructor, so no member may hold a pointer into itself.
+// ---------------------------------------------------------------------------------------------
+struct ProducerDoneEvent : qb::Event {
+    qb::string<32> sensor_id;
+    int            written;
+
+    ProducerDoneEvent(const std::string &id, int n)
+        : sensor_id(id)
+        , written(n) {}
+};
+
+struct ConsumerDoneEvent : qb::Event {
+    qb::string<32> group;
+    qb::string<32> consumer;
+    int            acked;
+
+    ConsumerDoneEvent(const std::string &g, const std::string &c, int n)
+        : group(g)
+        , consumer(c)
+        , acked(n) {}
+};
+
+/// Broadcast once, after BOTH producers have reported: "no further entry will ever be written".
+/// It is what lets a consumer tell "the stream is empty for now" from "the stream is finished".
+struct ProductionDoneEvent : qb::Event {};
+
+// ---------------------------------------------------------------------------------------------
+// Producer — one actor, one coroutine, one XADD in flight at a time.
+// ---------------------------------------------------------------------------------------------
+class SensorProducerActor : public qb::Actor {
+private:
+    qb::string<32>         _sensor_id;
+    int                    _target;
+    int                    _written = 0;
+    qb::ActorId            _coordinator;
+    qb::redis::tcp::client _redis;
+    std::mt19937           _rng;
 
 public:
-    SensorProducerActor(std::string sensor_id, int target_readings = 20)
+    SensorProducerActor(std::string sensor_id, int target, qb::ActorId coordinator)
         : _sensor_id(sensor_id)
-        , _target_readings(target_readings)
-        , _rng(std::random_device{}())
-        , _redis(qb::io::uri(REDIS_URI)) {
-        // Redis client is initialized in the constructor using member initializer
-    }
+        , _target(target)
+        , _coordinator(coordinator)
+        , _redis(qb::io::uri(REDIS_URI))
+        , _rng(std::random_device{}()) {}
 
     ~SensorProducerActor() noexcept override = default;
 
     qb::io::async::task<bool>
     onInit() override {
-        qb::io::cout() << "SensorProducer [" << _sensor_id << "] initialized on core " << getIndex() << std::endl;
+        registerEvent<qb::KillEvent>(*this);
 
-        // Register for events
-        registerEvent<ShutdownEvent>(*this);
-
-        // Register for callbacks
-        registerCallback(*this);
-
-        // Connect to Redis - co_await the connection
         if (!co_await _redis.connect()) {
             qb::io::cerr() << "SensorProducer [" << _sensor_id << "] failed to connect to Redis" << std::endl;
             co_return false;
         }
-
-        _connected = true;
         qb::io::cout() << "SensorProducer [" << _sensor_id << "] connected to Redis" << std::endl;
 
-        // Initialize the stream with a special entry to make sure it exists
-        std::vector<std::pair<std::string, std::string>> init_entry = {
-            {"sensor_id", _sensor_id.c_str()}, {"type", "initialization"}, {"timestamp", std::to_string(std::time(nullptr))}
-        };
+        // ONE coroutine for the whole production run. The previous version spawned one per turn
+        // of the event loop and let them pile up on a single connection — see defect 2 above.
+        // `_redis` is a MEMBER, so the client and its pending replies die with the actor; the
+        // coroutine is safe by ownership, not by `spawn`'s cancellation scope, which a qbm
+        // command awaiter never registers with.
+        spawn([this](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            std::uniform_real_distribution<> temp(15.0, 40.0);
+            std::uniform_real_distribution<> humid(30.0, 90.0);
+            std::uniform_real_distribution<> press(980.0, 1030.0);
 
-        // Using xadd without the third parameter (auto-generated ID)
-        auto stream_id = co_await _redis.xadd(SENSOR_STREAM, init_entry);
+            while (_written < _target && is_alive()) {
+                const std::vector<std::pair<std::string, std::string>> fields = {
+                    {"sensor_id", _sensor_id.c_str()},
+                    {"temperature", std::to_string(temp(_rng))},
+                    {"humidity", std::to_string(humid(_rng))},
+                    {"pressure", std::to_string(press(_rng))}
+                };
 
-        // Trim the stream to keep it small (maximum 1000 entries)
-        [[maybe_unused]] auto trimmed = co_await _redis.xtrim(SENSOR_STREAM, 1000);
+                auto added = co_await _redis.xadd(STREAM, fields);
+                if (!added.ok()) {
+                    qb::io::cerr() << "SensorProducer [" << _sensor_id << "] XADD failed: " << added.error() << std::endl;
+                    break;
+                }
+                if (++_written == 1) {
+                    // The key exists from here on, so a TTL now covers every way this run can be
+                    // interrupted. The coordinator deletes the key outright on the normal path.
+                    (void) co_await _redis.expire(STREAM, 300);
+                }
 
-        qb::io::cout() << "SensorProducer [" << _sensor_id << "] initialized stream with ID: " << stream_id.result().to_string() << std::endl;
+                // Pace the writers so both consumers of the `workers` group get turns; without
+                // it one consumer can win every read and the split is invisible. It is also the
+                // back-pressure this program has: one command in flight, then a yield.
+                co_await ctx.sleep(std::chrono::milliseconds(2));
+            }
+
+            qb::io::cout() << "SensorProducer [" << _sensor_id << "] wrote " << _written << " entries" << std::endl;
+            push<ProducerDoneEvent>(_coordinator, _sensor_id.c_str(), _written);
+            kill();
+        });
 
         co_return true;
-    }
-
-    // Callback to produce data periodically
-    void
-    on(qb::LoopEvent const &) override {
-        if (!_connected || !is_alive() || _readings_sent >= _target_readings) {
-            if (_readings_sent >= _target_readings) {
-                qb::io::cout() << "SensorProducer [" << _sensor_id << "] completed target readings" << std::endl;
-                // Send completion notification and shutdown when done
-                push<ProcessingCompleteEvent>(g_coordinator_id, _sensor_id.c_str(), _readings_sent);
-                push<ShutdownEvent>(id());
-                unregisterCallback(*this);
-            }
-            return;
-        }
-
-        // Spawn a coroutine to perform the async stream write.
-        //
-        // `produce_single_reading()` is a member coroutine that touches members after each
-        // `co_await _redis...`. Safe by OWNERSHIP, not by `spawn`'s scope: a qbm command
-        // awaiter registers nothing with the cancellation token, so `kill()` never reaches
-        // it, but `_redis` is a MEMBER — `~Actor` destroys the client with its pending-reply
-        // queue, the reply callback is discarded UNINVOKED, and the coroutine never resumes
-        // (measured: killed while parked on a 3 s BRPOP, no resume, ASan silent). An orphaned
-        // frame, not a use-after-free. A client outliving the actor would make it one.
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await produce_single_reading(); });
-    }
-
-    // Generate and send a single data point
-    qb::io::async::task<void>
-    produce_single_reading() {
-        if (!_connected || !is_alive() || _readings_sent >= _target_readings) {
-            co_return;
-        }
-
-        // Generate random sensor data
-        double temperature = generate_random(15.0, 40.0);    // Celsius
-        double humidity    = generate_random(30.0, 90.0);    // Percent
-        double pressure    = generate_random(980.0, 1030.0); // hPa
-
-        // Create sensor data
-        std::vector<std::pair<std::string, std::string>> sensor_data = {
-            {"sensor_id", _sensor_id.c_str()},
-            {"temperature", std::to_string(temperature)},
-            {"humidity", std::to_string(humidity)},
-            {"pressure", std::to_string(pressure)},
-            {"timestamp", std::to_string(std::time(nullptr))}
-        };
-
-        // Using xadd without the third parameter (auto-generated ID)
-        auto id = co_await _redis.xadd(SENSOR_STREAM, sensor_data);
-
-        qb::io::cout() << "SensorProducer [" << _sensor_id << "] added reading " << (_readings_sent + 1) << "/" << _target_readings
-                       << " to stream with ID: " << id.result().to_string() << std::endl;
-
-        _readings_sent++;
-
-        // Notify coordinator about reading (for monitoring only)
-        push<SensorReadingEvent>(g_coordinator_id, _sensor_id.c_str(), temperature, humidity, pressure);
-    }
-
-    void
-    on(const ShutdownEvent &) {
-        qb::io::cout() << "SensorProducer [" << _sensor_id << "] shutting down after sending " << _readings_sent << " readings" << std::endl;
-
-        // Unregister callback to stop producing data
-        unregisterCallback(*this);
-
-        kill();
-    }
-};
-
-// Coordinator actor to manage the example
-class CoordinatorActor : public qb::Actor {
-private:
-    // Redis client
-    qb::redis::tcp::client _redis;
-    bool                   _connected          = false;
-    bool                   _shutdown_initiated = false;
-
-    // Statistics
-    int _total_readings  = 0;
-    int _target_readings = TARGET_READINGS;
-    int _alert_count     = 0;
-
-    // Producer/consumer stats
-    std::vector<std::pair<std::string, int>> _entity_stats;
-    int                                      _completed_entities = 0;
-    int                                      _expected_entities  = 4; // 2 producers + 2 consumers
-
-public:
-    CoordinatorActor()
-        : _redis(qb::io::uri(REDIS_URI)) {
-        // Redis client is initialized in the constructor using member initializer
-    }
-
-    ~CoordinatorActor() noexcept override = default;
-
-    qb::io::async::task<bool>
-    onInit() override {
-        qb::io::cout() << "CoordinatorActor initialized on core " << getIndex() << std::endl;
-
-        // Register for events
-        registerEvent<SensorReadingEvent>(*this);
-        registerEvent<AlertEvent>(*this);
-        registerEvent<ProcessingCompleteEvent>(*this);
-        registerEvent<ShutdownEvent>(*this);
-        registerEvent<qb::KillEvent>(*this);
-        registerEvent<NotifyConsumersTick>(*this);
-
-        // Connect to Redis
-        if (!co_await _redis.connect()) {
-            qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
-            co_return false;
-        }
-
-        _connected = true;
-        qb::io::cout() << "Coordinator connected to Redis" << std::endl;
-
-        // Clean up any existing stream data
-        [[maybe_unused]] auto del_r = co_await _redis.del(SENSOR_STREAM);
-        qb::io::cout() << "Coordinator deleted existing stream" << std::endl;
-
-        // Store our ID globally for other actors to use
-        g_coordinator_id = id();
-        qb::io::cout() << "Set global coordinator ID: " << g_coordinator_id << std::endl;
-
-        co_return true;
-    }
-
-    // Only monitoring data flow, not forwarding events
-    void
-    on(const SensorReadingEvent &event) {
-        qb::io::cout() << "Coordinator received notification for reading from " << event.sensor_id << ": temp=" << event.temperature
-                       << ", humid=" << event.humidity << ", press=" << event.pressure << " (Total: " << ++_total_readings << "/"
-                       << _target_readings << ")" << std::endl;
-
-        // Check if we've reached our target
-        if (_total_readings >= _target_readings && !_shutdown_initiated) {
-            qb::io::cout() << "Received all expected readings, waiting for processing to complete..." << std::endl;
-
-            // If consumers haven't reported completion yet, give them some time
-            if (_completed_entities < _expected_entities) {
-                // Wait 2 seconds before notifying consumers. The re-check reads
-                // `_completed_entities` and `_shutdown_initiated`, so it belongs in a handler:
-                // in a loop-owned timer's lambda those reads are the use-after-free, not a guard
-                // against it.
-                spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-                    co_await ctx.sleep(std::chrono::seconds(2));
-                    ctx.template push<NotifyConsumersTick>();
-                });
-            }
-        }
-    }
-
-    void
-    on(const NotifyConsumersTick &) {
-        // The re-check now runs on the actor, where reading these members is legal.
-        if (_completed_entities < _expected_entities && !_shutdown_initiated) {
-            qb::io::cout() << "Notifying consumers to report completion..." << std::endl;
-            // If consumers haven't completed yet, send them a signal to complete
-            // Comme getActorsByCore n'existe pas, on utilise une autre approche pour notifier les consommateurs
-            for (int i = 2; i <= 3; i++) {
-                // Alternative: Utiliser un évènement de shutdown global
-                qb::io::cout() << "Broadcasting shutdown to core " << i << std::endl;
-                push<ShutdownEvent>(qb::BroadcastId(i)); // Broadcast à tous les acteurs sur le core i
-            }
-        }
-    }
-
-    void
-    on(const AlertEvent &event) {
-        qb::io::cout() << "Coordinator received alert: " << event.alert_type << " for " << event.sensor_id << ": " << event.alert_message
-                       << std::endl;
-
-        _alert_count++;
-    }
-
-    void
-    on(const ProcessingCompleteEvent &event) {
-        qb::io::cout() << "Coordinator received completion from " << event.entity_id << " with " << event.processed_count << " messages"
-                       << std::endl;
-
-        // Add to entity stats
-        _entity_stats.emplace_back(event.entity_id.c_str(), event.processed_count);
-        _completed_entities++;
-
-        qb::io::cout() << "Completed entities: " << _completed_entities << "/" << _expected_entities << " (GLOBAL_COUNTER: " << GLOBAL_COUNTER
-                       << ")" << std::endl;
-
-        // Check if all entities have completed and we have our target readings
-        if (_completed_entities >= _expected_entities) {
-            if (!_shutdown_initiated) {
-                _shutdown_initiated = true;
-                display_statistics();
-                // Stays a bare `callback(fn, d)` on purpose: it captures NOTHING, it stops the
-                // engine rather than touching an actor, and it must outlive every actor. That is
-                // exactly the case this overload is for.
-                qb::io::async::callback([]() { qb::Main::stop(); }, std::chrono::seconds(1));
-            }
-        }
-    }
-
-    void
-    display_statistics() {
-        qb::io::cout() << "\n=== Final Statistics ===" << std::endl;
-        qb::io::cout() << "Total readings received: " << _total_readings << std::endl;
-        qb::io::cout() << "Total alerts detected: " << _alert_count << std::endl;
-        qb::io::cout() << "Total messages processed (GLOBAL_COUNTER): " << GLOBAL_COUNTER << std::endl;
-
-        qb::io::cout() << "\nEntity statistics:" << std::endl;
-        for (const auto &[entity, count] : _entity_stats) {
-            qb::io::cout() << "  " << entity << ": " << count << " messages" << std::endl;
-        }
-
-        qb::io::cout() << "\nSystem summary:" << std::endl;
-        qb::io::cout() << "  Stream operations completed successfully" << std::endl;
-
-        qb::io::cout() << "\nExample completed successfully!" << std::endl;
-    }
-
-    void
-    on(const ShutdownEvent &) {
-        if (!_shutdown_initiated) {
-            _shutdown_initiated = true;
-            qb::io::cout() << "Coordinator received shutdown request" << std::endl;
-            display_statistics();
-            qb::Main::stop();
-        }
     }
 
     void
     on(const qb::KillEvent &) {
-        qb::io::cout() << "Coordinator received kill event" << std::endl;
         kill();
     }
 };
 
-// Consumer group worker actor - processes stream data
-class StreamConsumerActor
-    : public qb::Actor
-    , public qb::ICallback {
+// ---------------------------------------------------------------------------------------------
+// Consumer — joins a group, drains it, acknowledges everything, reports what IT acked.
+// ---------------------------------------------------------------------------------------------
+class StreamConsumerActor : public qb::Actor {
 private:
-    // Redis client
     qb::redis::tcp::client _redis;
-
-    // Actor state
-    bool           _connected     = false;
-    bool           _group_created = false;
-    qb::string<32> _group_name;
-    qb::string<32> _consumer_name;
-
-    // Processing state
-    int       _processed_count     = 0;
-    bool      _shutdown_ready      = false;
-    double    _alert_threshold     = 35.0; // Temperature threshold for alerts
-    int       _empty_results_count = 0;    // Track consecutive empty results
-    const int MAX_EMPTY_RESULTS    = 5;    // Threshold for completion check
+    qb::string<32>         _group;
+    qb::string<32>         _consumer;
+    qb::ActorId            _coordinator;
+    int                    _acked           = 0;
+    int                    _alerts          = 0;
+    double                 _alert_threshold = 35.0;
+    bool                   _production_done = false;
 
 public:
-    StreamConsumerActor(std::string group_name, std::string consumer_name, double alert_threshold = 35.0)
+    StreamConsumerActor(std::string group, std::string consumer, qb::ActorId coordinator)
         : _redis(qb::io::uri(REDIS_URI))
-        , _group_name(group_name)
-        , _consumer_name(consumer_name)
-        , _alert_threshold(alert_threshold) {
-        // Redis client is initialized in the constructor using member initializer
-    }
+        , _group(group)
+        , _consumer(consumer)
+        , _coordinator(coordinator) {}
 
     ~StreamConsumerActor() noexcept override = default;
 
     qb::io::async::task<bool>
     onInit() override {
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] in group [" << _group_name << "] initialized on core " << getIndex()
-                       << std::endl;
+        // Registered BEFORE the first co_await, so no event can arrive at an actor that is not
+        // yet listening for it.
+        registerEvent<ProductionDoneEvent>(*this);
+        registerEvent<qb::KillEvent>(*this);
 
-        // Register for events from coordinator
-        registerEvent<ShutdownEvent>(*this);
-        registerEvent<ConsumerFinalCountTick>(*this);
-
-        // Register for callback
-        registerCallback(*this);
-
-        // Connect to Redis
         if (!co_await _redis.connect()) {
-            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to connect to Redis" << std::endl;
+            qb::io::cerr() << "StreamConsumer [" << _consumer << "] failed to connect to Redis" << std::endl;
             co_return false;
         }
 
-        _connected = true;
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] connected to Redis" << std::endl;
+        // id "0" + mkstream: give this group the stream FROM THE BEGINNING, creating the key if
+        // it is not there yet. That is what makes joining order-independent — a group created
+        // after the producers have finished still receives every entry. BUSYGROUP (another
+        // consumer of the same group got here first) is the expected answer for the second one.
+        auto created = co_await _redis.xgroup_create(STREAM, _group.c_str(), "0", true);
+        qb::io::cout() << "StreamConsumer [" << _consumer << "] " << (created.ok() ? "created" : "joined existing") << " group [" << _group
+                       << "]" << std::endl;
 
-        // Create the consumer group
-        if (co_await create_consumer_group()) {
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] created/joined consumer group" << std::endl;
-        } else {
-            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] failed to create consumer group" << std::endl;
-            co_return false;
-        }
+        spawn([this](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            // A wall-clock bound so that a server which stops answering ends this program with a
+            // reported shortfall instead of the hang the previous version could produce.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+
+            while (is_alive() && std::chrono::steady_clock::now() < deadline) {
+                // ">" = entries never delivered to ANY consumer of this group. Inside a group
+                // that makes the read destructive-by-delivery, which is exactly what splits the
+                // work between competing consumers.
+                auto reply = co_await _redis.xreadgroup(STREAM, _group.c_str(), _consumer.c_str(), ">", 8, 50);
+
+                std::vector<StreamEntry> entries;
+                if (reply.ok() && !reply.result().is_null())
+                    collect_entries(reply.result(), entries);
+
+                for (const auto &entry : entries) {
+                    const std::string sensor = field_of(entry.fields, "sensor_id");
+                    const std::string temp   = field_of(entry.fields, "temperature");
+                    if (!temp.empty() && qb::to_number<double>(temp).value_or(0.0) > _alert_threshold)
+                        ++_alerts;
+
+                    // The acknowledgement the previous version never reached. Until an entry is
+                    // acked it stays in this group's pending list (its PEL) and is redeliverable
+                    // to another consumer — which is how a stream survives a consumer dying
+                    // mid-entry, and why "read" and "done" have to be two separate steps.
+                    auto acked = co_await _redis.xack(STREAM, _group.c_str(), entry.id);
+                    if (acked.ok())
+                        _acked += static_cast<int>(acked.result());
+                    if (sensor.empty())
+                        qb::io::cerr() << "StreamConsumer [" << _consumer << "] entry " << entry.id << " had no sensor_id" << std::endl;
+                }
+
+                if (entries.empty()) {
+                    // Empty means "nothing undelivered right now". Only ProductionDoneEvent can
+                    // turn that into "and there never will be".
+                    if (_production_done)
+                        break;
+                    co_await ctx.sleep(std::chrono::milliseconds(5));
+                }
+            }
+
+            qb::io::cout() << "StreamConsumer [" << _consumer << "] acked " << _acked << " entries (" << _alerts << " over threshold)"
+                           << std::endl;
+            push<ConsumerDoneEvent>(_coordinator, _group.c_str(), _consumer.c_str(), _acked);
+            kill();
+        });
 
         co_return true;
     }
 
-    // Required periodic-callback implementation for ICallback
     void
-    on(qb::LoopEvent const &) override {
-        if (!_connected || !is_alive() || _shutdown_ready) {
-            return;
-        }
-
-        // Spawn a coroutine to read and process messages from the stream
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-            co_await poll_stream_for_messages();
-
-            // Log status
-            if (_processed_count > 0 && _processed_count % 10 == 0) {
-                qb::io::cout() << "StreamConsumer [" << _consumer_name << "] active, processed " << _processed_count
-                               << " messages (GLOBAL: " << GLOBAL_COUNTER << ")" << std::endl;
-            }
-        });
+    on(const ProductionDoneEvent &) {
+        _production_done = true;
     }
 
-    // Poll for new messages from Redis Stream
-    qb::io::async::task<void>
-    poll_stream_for_messages() {
-        try {
-            // Using xreadgroup with the appropriate parameters
-            auto        results_r = co_await _redis.xreadgroup(SENSOR_STREAM, _group_name.c_str(), _consumer_name.c_str(), ">", 1000, 100);
-            const auto &results   = results_r.result();
-
-            // If results are empty, increment the counter
-            if (results.empty() || results.is_null()) {
-                _empty_results_count++;
-
-                // If we've seen several empty results in a row, we might be done
-                if (_empty_results_count > MAX_EMPTY_RESULTS && GLOBAL_COUNTER >= TARGET_READINGS && !_shutdown_ready) {
-                    qb::io::cout() << "StreamConsumer [" << _consumer_name << "] no more messages, shutting down" << std::endl;
-                    push<ProcessingCompleteEvent>(g_coordinator_id, _consumer_name.c_str(), _processed_count);
-                    push<ShutdownEvent>(id());
-                }
-                co_return;
-            }
-
-            // Reset empty counter since we got messages
-            _empty_results_count = 0;
-
-            // Correct processing of the Redis Stream JSON format:
-            // [{"stream-key":[{"message-id":{"field1":"value1","field2":"value2"}}, ...]}]
-            if (results.is_array() && !results.empty()) {
-                // Loop through each element in the outer array
-                for (const auto &stream_obj : results) {
-                    // Loop through each key-value pair in the object (stream_name:messages)
-                    for (auto it = stream_obj.begin(); it != stream_obj.end(); ++it) {
-                        std::string stream_key = it.key();
-
-                        // Check if this is our stream
-                        if (stream_key.find(SENSOR_STREAM) != std::string::npos) {
-                            const auto &messages = it.value();
-
-                            // Loop through the messages
-                            for (const auto &msg_entry : messages) {
-                                // Each msg_entry is an object {"message-id":{...fields...}}
-                                for (auto msg_it = msg_entry.begin(); msg_it != msg_entry.end(); ++msg_it) {
-                                    // Extract the message ID
-                                    std::string message_id = msg_it.key();
-
-                                    // Access the message fields
-                                    auto &fields = msg_it.value();
-
-                                    // Skip entry if it's not an object (to handle irregular formats)
-                                    if (!fields.is_object())
-                                        continue;
-
-                                    // Extract data from fields (now organized as a normal JSON object)
-                                    std::string sensor_id;
-                                    double      temperature = 0.0;
-                                    double      humidity    = 0.0;
-                                    double      pressure    = 0.0;
-
-                                    // Check if this is an initialization message
-                                    if (fields.contains("type") && fields["type"] == "initialization") {
-                                        continue; // Skip initialization messages
-                                    }
-
-                                    // Extract fields directly from the JSON object
-                                    if (fields.contains("sensor_id")) {
-                                        sensor_id = fields["sensor_id"].dump();
-                                        // Remove quotes if present
-                                        if (sensor_id.front() == '"' && sensor_id.back() == '"') {
-                                            sensor_id = sensor_id.substr(1, sensor_id.size() - 2);
-                                        }
-                                    }
-
-                                    if (fields.contains("temperature")) {
-                                        std::string temp_str = fields["temperature"].dump();
-                                        // Clean string if necessary (remove quotes)
-                                        if (temp_str.front() == '"' && temp_str.back() == '"') {
-                                            temp_str = temp_str.substr(1, temp_str.size() - 2);
-                                        }
-                                        temperature = qb::to_number<double>(temp_str).value_or(0.0);
-                                    }
-
-                                    if (fields.contains("humidity")) {
-                                        std::string humid_str = fields["humidity"].dump();
-                                        // Clean string if necessary (remove quotes)
-                                        if (humid_str.front() == '"' && humid_str.back() == '"') {
-                                            humid_str = humid_str.substr(1, humid_str.size() - 2);
-                                        }
-                                        humidity = qb::to_number<double>(humid_str).value_or(0.0);
-                                    }
-
-                                    if (fields.contains("pressure")) {
-                                        std::string press_str = fields["pressure"].dump();
-                                        // Clean string if necessary (remove quotes)
-                                        if (press_str.front() == '"' && press_str.back() == '"') {
-                                            press_str = press_str.substr(1, press_str.size() - 2);
-                                        }
-                                        pressure = qb::to_number<double>(press_str).value_or(0.0);
-                                    }
-
-                                    // If we have a sensor ID, process the data
-                                    if (!sensor_id.empty()) {
-                                        // Process the extracted data
-                                        process_extracted_data(message_id, sensor_id, temperature, humidity, pressure);
-
-                                        // Acknowledge the message using xack
-                                        [[maybe_unused]] auto ack_r = co_await _redis.xack(SENSOR_STREAM, _group_name.c_str(), message_id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Check if we've reached the global target
-            if (GLOBAL_COUNTER >= TARGET_READINGS && !_shutdown_ready) {
-                qb::io::cout() << "StreamConsumer [" << _consumer_name << "] global target reached: " << GLOBAL_COUNTER << "/"
-                               << TARGET_READINGS << std::endl;
-                push<ProcessingCompleteEvent>(g_coordinator_id, _consumer_name.c_str(), _processed_count);
-            }
-        } catch (const std::exception &e) {
-            qb::io::cerr() << "StreamConsumer [" << _consumer_name << "] error polling stream: " << e.what() << std::endl;
-        }
-    }
-
-    // Process extracted data from a stream message
     void
-    process_extracted_data(const std::string &message_id, const std::string &sensor_id, double temperature, double humidity, double pressure) {
-        // Skip if it's not a sensor reading (e.g., initialization entry)
-        if (sensor_id.empty() || temperature == 0.0) {
-            return;
-        }
-
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] processing message " << message_id << " from sensor " << sensor_id
-                       << " (Temp: " << temperature << ", Humid: " << humidity << ", Press: " << pressure << ")" << std::endl;
-
-        // Check for thresholds and send alerts
-        if (temperature > _alert_threshold) {
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] ALERT: High temperature " << temperature << " from sensor "
-                           << sensor_id << std::endl;
-
-            // Send alert to coordinator
-            if (_group_name == "alerts-group") {
-                std::string alert_message = "High temperature: " + std::to_string(temperature) + "°C";
-                push<AlertEvent>(g_coordinator_id, sensor_id, "HIGH_TEMP", alert_message);
-            }
-        }
-
-        // Increment counters
-        _processed_count++;
-        GLOBAL_COUNTER++;
-
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] counter incremented to " << _processed_count
-                       << " (GLOBAL_COUNTER: " << GLOBAL_COUNTER << ")" << std::endl;
+    on(const qb::KillEvent &) {
+        kill();
     }
+};
+
+// ---------------------------------------------------------------------------------------------
+// Coordinator — owns the run: counts the reports, then measures the stream and cleans it up.
+// ---------------------------------------------------------------------------------------------
+class CoordinatorActor : public qb::Actor {
+private:
+    qb::redis::tcp::client _redis;
+    int                    _producers_done = 0;
+    int                    _consumers_done = 0;
+    int                    _written        = 0;
+    int                    _workers_acked  = 0;
+    int                    _audit_acked    = 0;
+
+public:
+    CoordinatorActor()
+        : _redis(qb::io::uri(REDIS_URI)) {}
+
+    ~CoordinatorActor() noexcept override = default;
 
     qb::io::async::task<bool>
-    create_consumer_group() {
-        if (_group_created) {
-            co_return true;
+    onInit() override {
+        registerEvent<ProducerDoneEvent>(*this);
+        registerEvent<ConsumerDoneEvent>(*this);
+        registerEvent<qb::KillEvent>(*this);
+
+        if (!co_await _redis.connect()) {
+            qb::io::cerr() << "Coordinator failed to connect to Redis" << std::endl;
+            co_return false;
         }
-
-        // Check if stream exists with xlen
-        auto stream_length_r = co_await _redis.xlen(SENSOR_STREAM);
-        bool stream_exists   = (stream_length_r.ok() && stream_length_r.result() > 0);
-
-        if (!stream_exists) {
-            // Prepare initialization entry for the stream if it doesn't exist
-            std::vector<std::pair<std::string, std::string>> init_fields = {
-                {"init", "true"},
-                {"timestamp", std::to_string(std::time(nullptr))},
-                {"source", "consumer"},
-                {"consumer_name", _consumer_name.c_str()}
-            };
-
-            // Add initialization entry to the stream using xadd
-            [[maybe_unused]] auto add_r = co_await _redis.xadd(SENSOR_STREAM, init_fields);
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] initialized stream" << std::endl;
-        }
-
-        // Create the consumer group starting from the beginning of the stream
-        // (with mkstream=true to create the stream if it doesn't exist)
-        auto group_r = co_await _redis.xgroup_create(SENSOR_STREAM, _group_name.c_str(), "0", true);
-        if (!group_r.ok()) {
-            // If group already exists (BUSYGROUP), this is fine
-            qb::io::cout() << "StreamConsumer [" << _consumer_name << "] group already exists, considering it as created" << std::endl;
-            _group_created = true;
-            co_return true;
-        }
-
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] created group " << _group_name << std::endl;
-
-        _group_created = true;
+        qb::io::cout() << "Coordinator connected to Redis" << std::endl;
+        qb::io::cout() << "[setup] stream key: " << STREAM << " (unique to this run, so a second run costs what the first did)" << std::endl;
         co_return true;
     }
 
     void
-    on(const ShutdownEvent &) {
-        _shutdown_ready = true;
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] shutting down. "
-                       << "Processed " << _processed_count << " messages" << std::endl;
+    on(const ProducerDoneEvent &event) {
+        _written += event.written;
+        if (++_producers_done < PRODUCER_COUNT)
+            return;
 
-        // Send notification about processed messages if not already sent
-        push<ProcessingCompleteEvent>(g_coordinator_id, _consumer_name.c_str(), _processed_count);
+        qb::io::cout() << "[produce] both producers finished, entries written: " << _written << std::endl;
 
-        // Stop the callback
-        unregisterCallback(*this);
-
-        // Delay to ensure last messages are processed. The body reads `_consumer_name` and
-        // `_processed_count` and then calls `kill()` — all three are actor state, so it belongs
-        // in a handler rather than in a timer the actor's death does not cancel.
-        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            co_await ctx.sleep(std::chrono::milliseconds(500));
-            ctx.template push<ConsumerFinalCountTick>();
-        });
+        // Cores 2 and 3 hold nothing but consumers, and an actor that never registered for this
+        // event simply ignores it. Broadcasting is what lets the coordinator say "production is
+        // over" without keeping a roster of consumer ids it would have to be told about first.
+        for (int core = 2; core <= 3; ++core)
+            push<ProductionDoneEvent>(qb::BroadcastId(core));
     }
 
     void
-    on(const ConsumerFinalCountTick &) {
-        qb::io::cout() << "StreamConsumer [" << _consumer_name << "] final count: " << _processed_count << " messages" << std::endl;
+    on(const ConsumerDoneEvent &event) {
+        if (event.group == GROUP_WORKERS)
+            _workers_acked += event.acked;
+        else
+            _audit_acked += event.acked;
+
+        if (++_consumers_done < CONSUMER_COUNT)
+            return;
+
+        // Spelled as one literal each, not assembled with <<, so that the @expect lines in the
+        // header block are strings this file demonstrably contains.
+        qb::io::cout() << "[workers] the 'workers' group SPLIT its entries between 2 competing consumers: " << _workers_acked << " of "
+                       << _written << " acked in total" << std::endl;
+        qb::io::cout() << "[audit] the 'audit' group received its OWN independent copy: " << _audit_acked << " of " << _written << std::endl;
+
+        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> { co_await finish(); });
+    }
+
+    /// Everything that can only be measured once every consumer has stopped reading.
+    qb::io::async::task<void>
+    finish() {
+        auto       pending_workers = co_await _redis.xpending(STREAM, GROUP_WORKERS);
+        auto       pending_audit   = co_await _redis.xpending(STREAM, GROUP_AUDIT);
+        const auto still_pending   = pending_count(pending_workers) + pending_count(pending_audit);
+        qb::io::cout() << "[ack] every delivered entry was acknowledged, so XPENDING reports " << still_pending
+                       << " entries still pending in the two groups" << std::endl;
+
+        // XREAD is the other half of the API: no group, no delivery state on the server, no
+        // acknowledgement. The cursor is the caller's — pass the last id you saw to get the next
+        // batch. It reads the same entries the groups already consumed, because a group's
+        // bookkeeping is the group's, not the stream's.
+        auto                     tail = co_await _redis.xread(STREAM, "0", 5);
+        std::vector<StreamEntry> tailed;
+        if (tail.ok() && !tail.result().is_null())
+            collect_entries(tail.result(), tailed);
+        qb::io::cout() << "[xread] a plain XREAD needs no group and carries its own cursor: " << tailed.size()
+                       << " entries read back from id 0, first id " << (tailed.empty() ? std::string("-") : tailed.front().id) << std::endl;
+
+        auto len_before = co_await _redis.xlen(STREAM);
+        (void) co_await _redis.xtrim(STREAM, TRIM_MAXLEN);
+        auto len_after = co_await _redis.xlen(STREAM);
+        qb::io::cout() << "[trim] XTRIM MAXLEN bounded the stream: " << len_before.result() << " -> " << len_after.result()
+                       << " entries (a stream grows forever until something trims it)" << std::endl;
+
+        (void) co_await _redis.del(STREAM);
+
+        const bool ok = _written == TOTAL_ENTRIES && _workers_acked == TOTAL_ENTRIES && _audit_acked == TOTAL_ENTRIES && still_pending == 0
+                        && len_after.result() == TRIM_MAXLEN;
+        if (!ok)
+            qb::io::cerr() << "FAILED: expected " << TOTAL_ENTRIES << " written and acked by each group, 0 pending, " << TRIM_MAXLEN
+                           << " left after the trim" << std::endl;
+        RUN_OK.store(ok);
+
+        qb::io::cout() << "\n=== streams complete: two groups, competing consumers, XACK, XREAD and XTRIM ===" << std::endl;
+        qb::Main::stop();
+    }
+
+    void
+    on(const qb::KillEvent &) {
         kill();
+    }
+
+private:
+    /// The extended XPENDING form answers with one element per pending entry, so the count is the
+    /// array's size. A healthy run acked everything and gets an empty reply.
+    static std::size_t
+    pending_count(const qb::redis::Reply<qb::json> &reply) {
+        if (!reply.ok() || reply.result().is_null())
+            return 0;
+        return reply.result().is_array() ? reply.result().size() : 0;
     }
 };
 
 int
 main() {
-    // Initialize the async system
     qb::io::async::init();
     qb::io::cout() << "Starting Redis Stream Processor Example" << std::endl;
 
-    // Create the engine
     qb::Main engine;
 
-    // Add coordinator actor to core 0
-    auto coordinator_id = engine.addActor<CoordinatorActor>(0);
-    qb::io::cout() << "Created coordinator actor on core 0: " << coordinator_id << std::endl;
-    // Make coordinator ID globally accessible
-    g_coordinator_id = coordinator_id;
+    const auto coordinator = engine.addActor<CoordinatorActor>(0);
 
-    // Create actor builders for the producer actors on core 1
-    auto core_1 = engine.core(1).builder();
-    // Add producers actors to core 1 using the builders
-    auto producer_ids = core_1.addActor<SensorProducerActor>("sensor001", 500000).addActor<SensorProducerActor>("sensor002", 500000).idList();
-    qb::io::cout() << "Created producer actors on core 1: " << std::endl
-                   << "  Producer 1: " << producer_ids[0] << std::endl
-                   << "  Producer 2: " << producer_ids[1] << std::endl;
+    engine.addActor<SensorProducerActor>(1, "sensor001", ENTRIES_PER_PRODUCER, coordinator);
+    engine.addActor<SensorProducerActor>(1, "sensor002", ENTRIES_PER_PRODUCER, coordinator);
 
-    // Create actors for the consumer actors on cores 2 and 3
-    auto consumer_ids = qb::actor_id_list{
-        engine.addActor<StreamConsumerActor>(2, "alerts-group", "consumer1", 35.0),
-        engine.addActor<StreamConsumerActor>(3, "analytics-group", "consumer2", 35.0)
-    };
+    // Two consumers of ONE group on core 2 — they compete, and between them they see each entry
+    // exactly once. One consumer of a SECOND group on core 3 — it sees all of them.
+    engine.addActor<StreamConsumerActor>(2, GROUP_WORKERS, "worker-a", coordinator);
+    engine.addActor<StreamConsumerActor>(2, GROUP_WORKERS, "worker-b", coordinator);
+    engine.addActor<StreamConsumerActor>(3, GROUP_AUDIT, "auditor", coordinator);
 
-    qb::io::cout() << "Created consumer actors: " << std::endl
-                   << "  Consumer 1 (alerts-group) on core 2: " << consumer_ids[0] << std::endl
-                   << "  Consumer 2 (analytics-group) on core 3: " << consumer_ids[1] << std::endl;
-
-    // Start the engine
     engine.start(true);
-    qb::io::cout() << "Engine started, actors running on multiple cores..." << std::endl;
-
-    // Wait for engine to stop (when coordinator signals completion)
     engine.join();
 
-    qb::io::cout() << "Engine stopped, all actors terminated" << std::endl;
     qb::io::cout() << "Redis Stream Processor Example completed" << std::endl;
-
-    return 0;
+    return RUN_OK.load() ? 0 : 1;
 }

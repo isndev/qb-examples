@@ -38,23 +38,35 @@ that the wording did.
 in that tier's `CMakeLists.txt`. Numbering densely now would renumber every later file — and every
 citation of it — the day one is written.
 
-## The pre-3.0 holding directories
+## The pre-3.0 holding directories, and what became of them
 
-`core/`, `core_io/` and `qbm/` are not tiers. Each holds only the programs the restructure
-**retires or merges** rather than moves, and a retirement lands *with* its replacement — never
-before it, or the corpus promises something no file delivers. Each directory's `CMakeLists.txt`
-names which replacement it is waiting for; the last one to arrive takes the directory with it.
+Every tier is converted, and the five pre-3.0 holding directories (`core/`, `core_io/`, `qbm/`,
+`coroutine/`, `all/`) have been **retired**. Every program in this tree now derives its CMake
+target and its binary name from its path; there is no second naming convention left anywhere.
 
-| Still there | Waiting for |
+A retirement only lands *with* its replacement — never before it, or the corpus promises
+something no file delivers. Each was checked one program at a time against the replacement's
+CODE, not against the claim in its `CMakeLists.txt`:
+
+| Retired | Replaced by |
 |---|---|
-| `core/example6_shared_queue.cpp` | `01-actors/03-event-payloads` — **landed**; the retirement is unblocked and is its own step |
-| `core/example7_pub_sub.cpp` | `04-patterns/01-pubsub` — **landed**; the retirement is unblocked and is its own step |
-| `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` — **landed**; the retirement is unblocked and is its own step |
-| `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` + `02-io/11-logging-and-metrics` — **all three landed**; the retirement is unblocked and is its own step |
-| `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` + `05-services/03-file-pipeline` — **all three landed**; the retirement is unblocked and is its own step |
-| `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` — **both landed**; the retirement is unblocked and is its own step |
-| `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` — **landed**; the retirement is unblocked and is its own step |
-| `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` — **both landed**; the retirement is unblocked and is its own step |
+| `core/example6_shared_queue.cpp` | `01-actors/03-event-payloads` — the same foreign-thread bridge, with a lock-free spsc ring in place of a mutex-guarded queue |
+| `core/example7_pub_sub.cpp` | `04-patterns/01-pubsub` for the shipped `qb::PubSub<Topic>` bus, and `05-services/02-pubsub-broker` for runtime *topic-keyed* routing, which the bus does not do |
+| `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` |
+| `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` + `02-io/11-logging-and-metrics` |
+| `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` + `05-services/03-file-pipeline` |
+| `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` |
+| `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` |
+| `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` |
+
+**Three lessons had no home, and were given one rather than used as a reason to keep a
+superseded file alive.** `HKEYS`/`HVALS`/`LINDEX`/`LSET`/`BLPOP` survived only in prose
+describing the two merged programs, so they went into `06-modules/redis/02-data-types`, which
+*is* the merge. A plain cursor-based `XREAD` — a stream read with no consumer group — existed
+nowhere, so it went into `06-modules/redis/06-streams`. And "relocatable is not owned" (boxing a
+`shared_ptr` into an event settles whether the EVENT can be memcpy'd and says nothing about who
+may write through the POINTEE) went into `01-actors/03-event-payloads`, beside the rule it is
+the second half of.
 
 ## Building and running
 

@@ -53,13 +53,25 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qbExample.cmake)
 
 # The tree is organised BY LEVEL (`NN-<tier>/`) — the order in which a person should
 # read it — rather than by which library a program links, which is a fact about the
-# build system and not about learning. Seven tiers are converted; `core/` is what remains
-# of the pre-3.0 layout, and it holds only the programs whose replacements are not
-# written yet (see its own CMakeLists for which replaces which).
+# build system and not about learning. Every tier is now converted: the five pre-3.0
+# holding directories (`core/`, `core_io/`, `qbm/`, `coroutine/`, `all/`) are gone, and
+# with them the last hand-written example target names. Every example in this tree now
+# derives its target and binary from its path — there is no second convention left.
 #
 # 04-patterns/ is the one tier that is entirely NEW rather than moved: the eleven shipped
 # qb/core/patterns/ headers had zero demonstrators anywhere in the corpus, and `qb::ask` —
 # the primitive six of them are built on — had zero call sites in 55 programs.
+#
+# WHAT THE RETIREMENTS COST, AND WHERE IT WENT. A retirement only lands once its replacement
+# does, or the corpus promises something no file delivers. Three lessons had no home when the
+# holding directories were checked one program at a time, and each was given one rather than
+# used as a reason to keep a superseded file alive:
+#   * HKEYS/HVALS/LINDEX/LSET/BLPOP survived only in prose describing the two merged redis
+#     programs -> added to 06-modules/redis/02-data-types, which IS the merge.
+#   * a plain cursor-based XREAD (no consumer group) -> added to 06-modules/redis/06-streams.
+#   * "relocatable is not owned": a boxed shared_ptr payload makes the EVENT memcpy-safe and
+#     says nothing about who may write through the POINTEE -> added to
+#     01-actors/03-event-payloads, next to the rule it is the second half of.
 
 add_subdirectory(01-actors)
 add_subdirectory(02-io)
@@ -68,14 +80,6 @@ add_subdirectory(04-patterns)
 add_subdirectory(05-services)
 add_subdirectory(06-modules)
 add_subdirectory(07-applications)
-
-# Pre-3.0 holding directories. Each holds only programs the architecture RETIRES or MERGES
-# rather than moves, and a retirement lands with its replacement — not before it, or the
-# corpus promises something no file delivers. Each directory's own CMakeLists names which
-# replacement it is waiting for; the last one to arrive takes the directory with it.
-add_subdirectory(core)
-add_subdirectory(core_io)
-add_subdirectory(qbm)
 
 # -----------------------------------------------------------------------------
 # The roster: which examples this build produced, where each one's SOURCE is, and where its
