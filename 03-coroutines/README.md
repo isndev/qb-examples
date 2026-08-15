@@ -23,16 +23,31 @@ The CMake target and the binary are **derived** from each file's path
 `qb::Actor`, and naming `qb-core` in their `DEPENDS` would make that claim untestable.
 
 **The holes 07–11 are the tier's to-do list**, and they are what remains of the corpus's largest
-coroutine gap: `coroutine_scope` + `parallel_map`, `channel` + `select`, `generator` /
-`async_generator` / `async_stream`, the sync primitives (`semaphore`, `async_mutex`, `barrier`,
-`shared_task`) and the retry family still have **zero** demonstrators anywhere.
+coroutine gap. Measured over all 82 programs, these still have **zero** demonstrators anywhere:
+`qb::io::async::coroutine_scope` (and `joining_scope` / `cancelling_scope` / `detaching_scope`) +
+`parallel_map`, `channel` + `select`, `generator` / `async_generator` / `async_stream`, the sync
+primitives (`semaphore`, `async_mutex`, `barrier`, `shared_task`), and the **qb-io coroutine**
+retry family in `qb/io/async/coroutine/retry.h` — `with_retry`, `with_retry_until`, `retry`,
+`make_retryable`, `retry_exhausted`.
+
+> Read that last one precisely: there are **three** unrelated things called retry in this tree, and
+> only one of them is uncovered. `qb::retry_policy` + `qb::ask_retry` (`qb/core/patterns/resilience.h`)
+> are demonstrated by [`04-patterns/05-resilience`](../04-patterns/05-resilience.cpp), and
+> `qb::redis::RetryPolicy` + `connect_with_retry` by
+> [`06-modules/redis/09-reliability`](../06-modules/redis/09-reliability.cpp). The gap is the
+> **generic** `co_await with_retry(f, policy)` over an arbitrary awaitable, which needs no actor
+> and no module and belongs in this tier.
+
+Likewise `ScopedCoroContext` — which `06-cancellation` uses throughout — is the **actor's** scope,
+not `qb::io::async::coroutine_scope`; the standalone class and its three cleanup policies are
+what has no demonstrator.
 
 ## One ownership note the filenames do not tell you
 
 `04-ask-request-response` teaches the **one-to-one exchange** only. The fan-out shapes built on it
 (`ask_all` with its bounded `max_in_flight`, `ask_any`, `ask_quorum`) and the shared-budget algebra
 (`deadline`, `deadline_in`, `remaining`, `ask_by`) live in
-[`04-patterns/04-scatter-gather`](../04-patterns/), which landed first and is their owner page.
+[`04-patterns/04-scatter-gather.cpp`](../04-patterns/04-scatter-gather.cpp), which landed first and is their owner page.
 Neither file repeats the other.
 
 ```bash

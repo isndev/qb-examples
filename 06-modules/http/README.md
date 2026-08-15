@@ -4,25 +4,25 @@ This directory contains a collection of examples demonstrating various features 
 
 ## Building the Examples
 
-To build the examples, ensure you have the QB framework built with examples enabled. From your QB build directory:
+Build from the **superproject root**, which force-enables `QB_BUILD_EXAMPLES`:
 
 ```bash
-cmake --build . --target <example_name>
-# For example:
-cmake --build . --target qb-example-modules-http-hello-server
+cmake --preset release
+cmake --build --preset release --target qb-example-modules-http-hello-server
 ```
 
-Alternatively, build all examples if your main CMake is configured to do so.
+Three of the fourteen declare `REQUIRES ssl` (`07-auth-jwt`, `11-https`, `12-http2`) and are **not
+created at all** in an SSL-off build. `13-http3` is deliberately not gated that way — "nghttp3 is
+present" is not something the `REQUIRES` vocabulary (`ssl` / `quic` / `compression`) can express, so
+it guards itself with `#ifdef QBM_HTTP_HAS_HTTP3`.
 
 ## Running the Examples
 
-Once built, each executable sits in its own example output directory (e.g.
-`build/<preset>/examples/06-modules/http/`). Run them directly:
+Once built, each executable sits in its own example output directory
+(`build/presets/<preset>/examples/06-modules/http/`). Run them directly:
 
 ```bash
-./<example_name>
-# For example:
-./qb-example-modules-http-hello-server
+./build/presets/release/examples/06-modules/http/qb-example-modules-http-hello-server
 ```
 
 The examples that serve files — `qb-example-modules-http-static-files`, `qb-example-modules-http-https`, `qb-example-modules-http-http2` —
@@ -33,7 +33,7 @@ location (`qb::io::sys::resolve_resource`). So they run from **any** working dir
 double-click, debugger, CI, or a shell anywhere — with no `cd` and no environment setup:
 
 ```bash
-build/<preset>/examples/06-modules/http/qb-example-modules-http-static-files   # works regardless of the current directory
+build/presets/<preset>/examples/06-modules/http/qb-example-modules-http-static-files   # works regardless of the current directory
 ```
 
 ## Example Descriptions
@@ -53,26 +53,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /`: `text/plain` — `"Hello, World!\nWelcome to QB HTTP Framework!"` (`01-hello-server.cpp:49-54`).
     * `GET /hello`: `application/json` — `{"message": "Hello from QB!", ...}` (`01-hello-server.cpp:56-61`).
 
-### 2. `10-client.cpp`
-
-* **Description**: The **persistent** HTTP/1.1 client, measured against an upstream this program
-  hosts itself. **Rewritten**: it used to make three one-shot calls to the public `httpbin.org`,
-  which meant it could not run offline and — measured — printed "HTTP Client demo completed!" and
-  exited 0 on a run in which all three requests came back **503**. Meanwhile `make_client` had
-  zero occurrences anywhere in the corpus.
-* **Features**:
-    * `qb::http1::make_client` / `qb::http1::Client`, the coroutine `connect()` and its
-      `ConnectResult`, and the callback form beside it.
-    * `push_request` (coroutine and callback), `push_requests` for a batch whose results are
-      indexed by the ORIGINAL request position.
-    * `set_request_timeout`, `set_auto_reconnect`, `is_connected`, `get_stats`.
-    * A `qb::http::use<T>::server<Session>` upstream on the SAME event loop, so the connection
-      counts it prints are the server's own observation.
-* **The number it exists for**: three sequential requests on the persistent client cost **one**
-  connection; the same three through the one-shot `qb::http::GET` cost **three**.
-* **Interaction**: none. It binds `127.0.0.1:18081` in-process and needs no network.
-
-### 3. `02-routing.cpp`
+### 2. `02-routing.cpp`
 
 * **Description**: Demonstrates various routing capabilities of the framework.
 * **Features**:
@@ -90,6 +71,22 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /hello/:name`
     * `GET /search`
     * `GET /files/*path`
+
+### 3. `03-controllers.cpp`
+
+* **Description**: Organizes routes and handlers using the `Controller` pattern.
+* **Features**:
+    * Defining `qb::http::Controller` subclasses (`UserController`, `ProductController`).
+    * Grouping related routes within a controller.
+    * Controller-specific middleware (`Controller::use(...)`).
+    * Using member functions as route handlers via the unified verb API (
+      `this->get(path, this, &MyController::method)`).
+    * Mounting controllers onto the router (`router().controller<C>(...)`).
+* **Key Endpoints** (the controllers are mounted at `/api/users` and `/api/products` — there is no `/v1` segment,
+  `03-controllers.cpp:471-472`):
+    * `GET /api/users`, `POST /api/users`, etc. (CRUD for users)
+    * `GET /api/products`, `POST /api/products`, etc. (CRUD for products)
+    * `GET /`: API information.
 
 ### 4. `04-middleware.cpp`
 
@@ -111,23 +108,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /limited/`: Demonstrates rate limiting concept — the group is mounted at `/limited` (`:169`).
     * Reaching a protected route: `curl -H 'Authorization: Bearer secret-token-123' http://localhost:8080/api/profile`
 
-### 5. `03-controllers.cpp`
-
-* **Description**: Organizes routes and handlers using the `Controller` pattern.
-* **Features**:
-    * Defining `qb::http::Controller` subclasses (`UserController`, `ProductController`).
-    * Grouping related routes within a controller.
-    * Controller-specific middleware (`Controller::use(...)`).
-    * Using member functions as route handlers via the unified verb API (
-      `this->get(path, this, &MyController::method)`).
-    * Mounting controllers onto the router (`router().controller<C>(...)`).
-* **Key Endpoints** (the controllers are mounted at `/api/users` and `/api/products` — there is no `/v1` segment,
-  `03-controllers.cpp:471-472`):
-    * `GET /api/users`, `POST /api/users`, etc. (CRUD for users)
-    * `GET /api/products`, `POST /api/products`, etc. (CRUD for products)
-    * `GET /`: API information.
-
-### 6. `05-rest-api-json.cpp`
+### 5. `05-rest-api-json.cpp`
 
 * **Description**: A more complete REST API example using JSON for a "Book" resource.
 * **Features**:
@@ -145,44 +126,7 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /api/v1/stats`
     * `GET /health`
 
-### 7. `08-static-files.cpp`
-
-* **Description**: Demonstrates serving static files and handling file uploads.
-* **Features**:
-    * `qb::http::StaticFilesMiddleware` for serving files from a directory (`./resources/static`).
-    * Serving uploaded files from a separate directory (`./uploads`).
-    * Directory browsing (`/browse`).
-    * File upload API (`POST /api/upload`) handling `multipart/form-data`.
-    * API for listing, retrieving metadata, and deleting files.
-    * MIME type detection, ETag, Last-Modified headers.
-    * Interaction with static HTML/JS/CSS frontend (`index.html`, `upload.html`, etc. in `resources/static`).
-* **Key Endpoints**:
-    * `GET /static/*path`: Serves files from `resources/static`.
-    * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
-    * `GET /browse`, `GET /browse/*path`: Directory listing for uploads.
-    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`
-    * `POST /api/upload`
-    * `PUT /api/files/:filename/metadata`
-
-### 8. `07-auth-jwt.cpp`
-
-* **Description**: Implements JWT-based authentication and role-based authorization.
-* **Features**:
-    * `qb::http::auth::Manager` for token generation and verification.
-    * `qb::http::AuthMiddleware` for protecting routes.
-    * Login (`/auth/login`) and registration (`/auth/register`) endpoints.
-    * Storing user data in `Context` after successful authentication.
-    * Role-based access control (e.g., admin-only routes) via nested groups (`07-auth-jwt.cpp:226`, `:237`, `:256`).
-    * Token refresh mechanism (conceptual).
-    * Secure password handling (conceptual, uses plain text for demo simplicity).
-* **Key Endpoints** (the authenticated group is `/api` — there is no `/v1` segment, `07-auth-jwt.cpp:226`):
-    * `POST /auth/login`, `POST /auth/register`
-    * `GET /api/profile`, `PUT /api/profile` (requires auth — `:223-225`)
-    * `POST /api/auth/logout`, `POST /api/auth/refresh` (requires auth — `:265`, `:268`)
-    * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:242-244`)
-    * `GET /api/manager/reports` (requires manager or admin role — `:262`)
-
-### 9. `06-validation.cpp`
+### 6. `06-validation.cpp`
 
 * **Description**: The `qb::http::validation` namespace. **Rewritten**: the previous version was
   1008 lines, included five `validation/` headers, and contained the string `validation::`
@@ -210,42 +154,44 @@ Below is a list of the available examples and the key features they showcase:
     * `POST /api/users` (body schema + query `page` + header `X-Api-Version`, with sanitizers)
     * `GET /api/users/:id` (path parameter, typed and range-checked)
 
-### 10. `11-https.cpp`
+### 7. `07-auth-jwt.cpp`
 
-* **Description**: Sets up an HTTPS server and an HTTP server that redirects to HTTPS.
+* **Description**: Implements JWT-based authentication and role-based authorization.
 * **Features**:
-    * `qb::http::ssl::Server<>` for HTTPS.
-    * Uses the **bundled** self-signed dev certificate — it does not generate one. `_cert_file` /`_key_file` are
-      hard-coded to `resources/ssl/cert.pem` and `resources/ssl/key.pem` (`11-https.cpp:48-49`), resolved next
-      to the executable with `qb::io::sys::resolve_resource` (`:90-91`). If either file is missing the example prints
-      `SSL certificate not found (...)` and refuses to start (`:92-98`, `:146-149`) — there is no `openssl`
-      invocation and no `system()` call anywhere in this directory.
-    * Configuring the server with certificate and private key files (`listen(uri, cert, key)`, `:156`).
-    * Setting up a separate HTTP server on port 8080 that issues 301 redirects to the HTTPS server on port 8443.
-    * Security-related headers (HSTS, CSP - conceptual).
-* **Servers**:
-    * HTTPS server on `https://localhost:8443`
-    * HTTP redirect server on `http://localhost:8080`
+    * `qb::http::auth::Manager` for token generation and verification.
+    * `qb::http::AuthMiddleware` for protecting routes.
+    * Login (`/auth/login`) and registration (`/auth/register`) endpoints.
+    * Storing user data in `Context` after successful authentication.
+    * Role-based access control (e.g., admin-only routes) via nested groups (`07-auth-jwt.cpp:226`, `:237`, `:256`).
+    * Token refresh mechanism (conceptual).
+    * Secure password handling (conceptual, uses plain text for demo simplicity).
+* **Key Endpoints** (the authenticated group is `/api` — there is no `/v1` segment, `07-auth-jwt.cpp:226`):
+    * `POST /auth/login`, `POST /auth/register`
+    * `GET /api/profile`, `PUT /api/profile` (requires auth — `:223-225`)
+    * `POST /api/auth/logout`, `POST /api/auth/refresh` (requires auth — `:265`, `:268`)
+    * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:242-244`)
+    * `GET /api/manager/reports` (requires manager or admin role — `:262`)
 
-### 11. `12-http2.cpp`
+### 8. `08-static-files.cpp`
 
-* **Description**: An HTTP/2 server demonstrating various HTTP/2 features using a static frontend.
+* **Description**: Demonstrates serving static files and handling file uploads.
 * **Features**:
-    * Built on the CRTP server form: `class Http2StaticServer : public qb::Actor, public
-      qb::http2::use<Http2StaticServer>::server<Http2StaticSession>` (`12-http2.cpp:90-92`).
-    * Serves static files from `./resources/http2` to an interactive demo page (`index.html`).
-    * ALPN for protocol negotiation (HTTP/2 over TLS).
-    * Endpoints to simulate/demonstrate:
-        * Request Multiplexing (`/api/multiplexing-demo`)
-        * Stream Prioritization (`/api/stream-priority/:level`)
-        * Server Push concept (`/api/server-push-demo` - backend provides info, frontend simulates)
-        * Performance characteristics (`/api/performance/:iterations`)
-    * Uses self-signed certificates (similar to `11-https.cpp`).
-* **Server**:
-    * HTTP/2 server on `https://localhost:8443`
-* **Static Resources**: `examples/06-modules/http/resources/http2/` contains the frontend HTML, JS, CSS for the demo.
+    * `qb::http::StaticFilesMiddleware` for serving files from a directory (`./resources/static`).
+    * Serving uploaded files from a separate directory (`./uploads`).
+    * Directory browsing (`/browse`).
+    * File upload API (`POST /api/upload`) handling `multipart/form-data`.
+    * API for listing, retrieving metadata, and deleting files.
+    * MIME type detection, ETag, Last-Modified headers.
+    * Interaction with static HTML/JS/CSS frontend (`index.html`, `upload.html`, etc. in `resources/static`).
+* **Key Endpoints**:
+    * `GET /static/*path`: Serves files from `resources/static`.
+    * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
+    * `GET /browse`, `GET /browse/*path`: Directory listing for uploads.
+    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`
+    * `POST /api/upload`
+    * `PUT /api/files/:filename/metadata`
 
-### 12. `09-coroutine-handlers.cpp`
+### 9. `09-coroutine-handlers.cpp`
 
 > This section absorbed the pre-3.0 `06_async_handlers.cpp`, which has been retired. Its subject
 > was response TIMING and it reported 0 ms for a 1.2 s handler, because `next()` returns at the
@@ -269,6 +215,60 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /proxy`: fetches `/hello` from itself and relays status + body.
     * `GET /aggregate`: fetches `/hello` and `/delay/50` concurrently, reports both status codes.
     * `GET /member`: member-function coroutine handler.
+
+### 10. `10-client.cpp`
+
+* **Description**: The **persistent** HTTP/1.1 client, measured against an upstream this program
+  hosts itself. **Rewritten**: it used to make three one-shot calls to the public `httpbin.org`,
+  which meant it could not run offline and — measured — printed "HTTP Client demo completed!" and
+  exited 0 on a run in which all three requests came back **503**. Meanwhile `make_client` had
+  zero occurrences anywhere in the corpus.
+* **Features**:
+    * `qb::http1::make_client` / `qb::http1::Client`, the coroutine `connect()` and its
+      `ConnectResult`, and the callback form beside it.
+    * `push_request` (coroutine and callback), `push_requests` for a batch whose results are
+      indexed by the ORIGINAL request position.
+    * `set_request_timeout`, `set_auto_reconnect`, `is_connected`, `get_stats`.
+    * A `qb::http::use<T>::server<Session>` upstream on the SAME event loop, so the connection
+      counts it prints are the server's own observation.
+* **The number it exists for**: three sequential requests on the persistent client cost **one**
+  connection; the same three through the one-shot `qb::http::GET` cost **three**.
+* **Interaction**: none. It binds `127.0.0.1:18081` in-process and needs no network.
+
+### 11. `11-https.cpp`
+
+* **Description**: Sets up an HTTPS server and an HTTP server that redirects to HTTPS.
+* **Features**:
+    * `qb::http::ssl::Server<>` for HTTPS.
+    * Uses the **bundled** self-signed dev certificate — it does not generate one. `_cert_file` /`_key_file` are
+      hard-coded to `resources/ssl/cert.pem` and `resources/ssl/key.pem` (`11-https.cpp:48-49`), resolved next
+      to the executable with `qb::io::sys::resolve_resource` (`:90-91`). If either file is missing the example prints
+      `SSL certificate not found (...)` and refuses to start (`:92-98`, `:146-149`) — there is no `openssl`
+      invocation and no `system()` call anywhere in this directory.
+    * Configuring the server with certificate and private key files (`listen(uri, cert, key)`, `:156`).
+    * Setting up a separate HTTP server on port 8080 that issues 301 redirects to the HTTPS server on port 8443.
+    * Security-related headers (HSTS, CSP - conceptual).
+* **Servers**:
+    * HTTPS server on `https://localhost:8443`
+    * HTTP redirect server on `http://localhost:8080`
+
+### 12. `12-http2.cpp`
+
+* **Description**: An HTTP/2 server demonstrating various HTTP/2 features using a static frontend.
+* **Features**:
+    * Built on the CRTP server form: `class Http2StaticServer : public qb::Actor, public
+      qb::http2::use<Http2StaticServer>::server<Http2StaticSession>` (`12-http2.cpp:90-92`).
+    * Serves static files from `./resources/http2` to an interactive demo page (`index.html`).
+    * ALPN for protocol negotiation (HTTP/2 over TLS).
+    * Endpoints to simulate/demonstrate:
+        * Request Multiplexing (`/api/multiplexing-demo`)
+        * Stream Prioritization (`/api/stream-priority/:level`)
+        * Server Push concept (`/api/server-push-demo` - backend provides info, frontend simulates)
+        * Performance characteristics (`/api/performance/:iterations`)
+    * Uses self-signed certificates (similar to `11-https.cpp`).
+* **Server**:
+    * HTTP/2 server on `https://localhost:8443`
+* **Static Resources**: `examples/06-modules/http/resources/http2/` contains the frontend HTML, JS, CSS for the demo.
 
 ### 13. `13-http3.cpp`
 
@@ -329,4 +329,4 @@ The `resources` directory contains static assets used by some examples.
   when `Content-Encoding` is set. Calling `compress()` as well encodes twice — measured, 9000 bytes →
   108 gzip → 109 on the wire, and the peer's single `uncompress()` hands back 108 bytes of gzip that
   look like a corrupt payload. There is no diagnostic.
-* **Run**: `./build/examples/06-modules/http/qb-example-modules-http-streaming-and-cookies`
+* **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-streaming-and-cookies`

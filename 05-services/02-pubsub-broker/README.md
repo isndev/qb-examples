@@ -1,4 +1,4 @@
-# Example: TCP Message Broker (`message_broker`)
+# Example: TCP Message Broker (`qb-example-services-pubsub-broker-server` / `-client`)
 
 This example implements a topic-based publish-subscribe message broker using the QB C++ Actor Framework. It demonstrates
 a scalable server architecture with a custom binary protocol for efficient client-server communication and zero-copy
@@ -91,14 +91,15 @@ minimizing data copies and improving performance.
 
 ## How to Build and Run
 
-1. **Build**:
-   In your QB framework `build` directory:
+1. **Build** — from the superproject root, which force-enables `QB_BUILD_EXAMPLES`. Both binaries come from this one
+   directory: they are told apart by the project's two `ROLE` keywords (`server`, `client`), which is where the last
+   component of each target name comes from.
    ```bash
-   cmake --build . --target qb-example-services-pubsub-broker-server
-   cmake --build . --target qb-example-services-pubsub-broker-client
+   cmake --preset release
+   cmake --build --preset release --target qb-example-services-pubsub-broker-server
+   cmake --build --preset release --target qb-example-services-pubsub-broker-client
    ```
-   Executables will be in `build/examples/05-services/02-pubsub-broker/` and
-   `build/examples/05-services/02-pubsub-broker/`.
+   Both executables land in `build/presets/release/examples/05-services/02-pubsub-broker/`.
 
 2. **Run Server**:
    ```bash

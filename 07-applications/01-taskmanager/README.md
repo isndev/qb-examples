@@ -83,7 +83,7 @@ Core 2   TaskManager #1
 Core 3   TaskManager #2
 ```
 
-`src/main.cpp:49` sets `NUM_TASK_MANAGERS = 3` and `:102` places worker `i` on core `1 + (i % 4)`, so the three
+`src/main.cpp:59` sets `NUM_TASK_MANAGERS = 3` and `:101` places worker `i` on core `1 + (i % 4)`, so the three
 managers land on cores 1, 2 and 3 — one each, no core reused. The `% 4` is the wrap-around rule and only bites at
 five or more managers (`#4` would return to core 1).
 
@@ -243,7 +243,7 @@ co_await _redis.publish("tasks:events", event_json.dump()); // notify WS clients
 
 ## Build
 
-There is no opt-in flag. `examples/07-applications/CMakeLists.txt:12` adds this directory unconditionally, so the target exists in
+There is no opt-in flag. `examples/07-applications/CMakeLists.txt:43` adds this directory unconditionally, so the target exists in
 any configuration of the superproject (which force-enables `QB_BUILD_EXAMPLES`). Build it by name:
 
 ```bash
@@ -252,13 +252,13 @@ cmake --preset dev
 cmake --build build/presets/dev --target qb-example-applications-taskmanager -j4
 ```
 
-One real gate, and it is not a flag you pass: `qb_add_executable(... REQUIRES ssl)` (`CMakeLists.txt:56-64`). In an
+One real gate, and it is not a flag you pass: `qb_example(... REQUIRES ssl)` (`CMakeLists.txt:56-65`). In an
 SSL-off build the `qb-example-applications-taskmanager` target is **not created at all** — the WebSocket handshake needs `qb::io::crypto`
 for SHA-1 + base64, so `ws/ws.h` `#error`s without it. `--target qb-example-applications-taskmanager` will then fail with "no rule to make
 target", which is the symptom of an SSL-off configure, not of a missing option.
 
 The binary is placed in `build/presets/dev/examples/07-applications/01-taskmanager/qb-example-applications-taskmanager`.
-The static files are copied to `build/presets/dev/bin/taskmanager/resources/static/` — the
+The static files are copied to `build/presets/dev/bin/qb-example-applications-taskmanager/resources/static/` — the
 per-example destination `CMakeLists.txt` passes to `qb_copy_resources`, so two examples
 building in parallel never stage into the same directory. (This line used to name the shared
 `bin/resources/static/`, which the build stopped using when that workaround was added.)
@@ -267,7 +267,8 @@ building in parallel never stage into the same directory. (This line used to nam
 
 - PostgreSQL running on `localhost:5432`
 - Redis running on `localhost:6379`
-- Database `qb-example-applications-taskmanager` with user `test` / password `test`
+- Database `taskmanager` with user `test` / password `test` — the connection URI is
+  `tcp://test:test@localhost:5432[taskmanager]` (`src/main.cpp:63`)
 
 ---
 

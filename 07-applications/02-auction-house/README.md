@@ -42,7 +42,7 @@ coroutines**.
 
 ### Prerequisites
 
-- PostgreSQL running with `qb-example-applications-auction-house` database
+- PostgreSQL running with an `auction_house` database
 - Redis running on localhost:6379
 - QB Framework built
 
@@ -50,12 +50,12 @@ coroutines**.
 
 ```bash
 # Create database and user
-psql -U postgres -c "CREATE DATABASE qb-example-applications-auction-house;"
+psql -U postgres -c "CREATE DATABASE auction_house;"
 psql -U postgres -c "CREATE USER auction_user WITH PASSWORD 'auction_pass';"
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE qb-example-applications-auction-house TO auction_user;"
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE auction_house TO auction_user;"
 
 # Initialize schema (optional - server can auto-initialize)
-psql -U auction_user -d qb-example-applications-auction-house -f resources/init_db.sql
+psql -U auction_user -d auction_house -f resources/init_db.sql
 ```
 
 ### Build and Run
@@ -65,11 +65,11 @@ psql -U auction_user -d qb-example-applications-auction-house -f resources/init_
 cmake --preset dev
 cmake --build build/presets/dev --target qb-example-applications-auction-house -j
 
-# Run (defaults: auction_user / auction_pass / qb-example-applications-auction-house @ localhost:5432)
+# Run (defaults: auction_user / auction_pass / auction_house @ localhost:5432 — src/main.cpp:91-94)
 ./build/presets/dev/examples/07-applications/02-auction-house/qb-example-applications-auction-house
 
 # Or override the DB via env
-PG_HOST=localhost PG_USER=auction_user PG_PASS=auction_pass PG_DB=qb-example-applications-auction-house \
+PG_HOST=localhost PG_USER=auction_user PG_PASS=auction_pass PG_DB=auction_house \
     ./build/presets/dev/examples/07-applications/02-auction-house/qb-example-applications-auction-house
 ```
 

@@ -48,8 +48,9 @@ the file's code.
   `push`, `kill`, `qb::ICallback`, `registerCallback`, `on(qb::LoopEvent const&)`, `qb::io::cout`.
 
 > `qb::ICallback` is the **every-turn** hook, not a timer. For work that must happen after a delay, use
-> `spawn(...)` + `co_await ctx.sleep(d)` (examples 2-10) and never `std::this_thread::sleep_for`, which freezes
-> every actor on the core.
+> `spawn(...)` + `co_await ctx.sleep(d)` — nine of this tier's eleven programs do, and
+> [`06-doing-things-later.cpp`](./06-doing-things-later.cpp) is the one whose whole subject is choosing
+> between the four mechanisms. Never `std::this_thread::sleep_for`, which freezes every actor on the core.
 
 ### `02-messaging.cpp`
 
@@ -60,6 +61,17 @@ the file's code.
     * `SenderActor` (Alice, Bob): Pace their `MessageEvent`s with a coroutine timer, listen for `ResponseEvent`s.
 * **QB Features**: `event.getSource()`, `spawn(...)` + `co_await ctx.sleep(...)` for a non-blocking delay,
   `ctx.push<T>()` to return to actor context, state tracking for termination.
+
+### `03-event-payloads.cpp`
+
+* **Focus**: the one rule about event payloads a Mac cannot show you — an event is RELOCATED with
+  `memcpy` and its source destructor never runs, so no member may STORE a pointer into itself.
+* **Actors**: `Producer`/`Consumer` on two cores (the payload really crosses), and a `Bridge` that
+  drains a lock-free ring fed by an ordinary `std::thread`.
+* **QB Features**: `qb::string<N>`, `qb::ActorId`, a `shared_ptr`-boxed body, `qb::FillEvent<int>`,
+  `qb::lockfree::spsc::ringbuffer<T, N>`, `qb::ICallback` + `on(qb::LoopEvent const&)`,
+  `unregisterCallback`. It opens with a measurement — printed, not asserted — of which candidate
+  payload types keep a pointer inside themselves on YOUR standard library.
 
 ### `04-cores-and-placement.cpp`
 
@@ -94,17 +106,6 @@ the file's code.
 * **QB Features**: `spawn(...)` + `co_await ctx.sleep(...)`, `event.getSource()`, `broadcast<qb::KillEvent>()`. The
   file header contrasts all four ways to do something later: `ctx.sleep`, `qb::io::async::callback(f, d)`,
   `qb::io::async::defer(f)` and `qb::ICallback`.
-
-### `03-event-payloads.cpp`
-
-* **Focus**: the one rule about event payloads a Mac cannot show you — an event is RELOCATED with
-  `memcpy` and its source destructor never runs, so no member may STORE a pointer into itself.
-* **Actors**: `Producer`/`Consumer` on two cores (the payload really crosses), and a `Bridge` that
-  drains a lock-free ring fed by an ordinary `std::thread`.
-* **QB Features**: `qb::string<N>`, `qb::ActorId`, a `shared_ptr`-boxed body, `qb::FillEvent<int>`,
-  `qb::lockfree::spsc::ringbuffer<T, N>`, `qb::ICallback` + `on(qb::LoopEvent const&)`,
-  `unregisterCallback`. It opens with a measurement — printed, not asserted — of which candidate
-  payload types keep a pointer inside themselves on YOUR standard library.
 
 ### `07-service-actor.cpp`
 

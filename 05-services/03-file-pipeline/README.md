@@ -19,13 +19,15 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
       both queues are empty (`:157-181`).
 * **`FileWorker` Actor (`file_worker.h`)** — four instances, on cores `1 + (i % 3)`, i.e. 1, 2, 3, 1.
     * Performs the actual `open`/`read`/`write`/`close` with `qb::io::sys::file`.
-    * Pushes the `ReadFileResponse` / `WriteFileResponse` **straight to `request.requestor`** (`:140`, `:189`), then
+    * Pushes the `ReadFileResponse` / `WriteFileResponse` **straight to `request.requestor`** (`:150`, `:199`), then
       clears `_is_busy` and sends `WorkerAvailable` back to the manager.
 * **`ClientActor` (`main.cpp`)** — core 0.
-    * 500 ms after init, writes five files into `./test_files` with increasing sizes (`main.cpp:150-167`).
-    * Each `WriteFileResponse` triggers a read of the file just written (`main.cpp:133`), so the run is 5 writes then
+    * 500 ms after init (`main.cpp:120`) it writes five files into `./test_files` with increasing sizes
+      (`main.cpp:212-229`).
+    * Each `WriteFileResponse` triggers a read of the file just written (`main.cpp:172`), so the run is 5 writes then
       5 reads.
-    * When `_pending_requests` reaches 0 it waits 1 s and then `broadcast<qb::KillEvent>()` (`main.cpp:194-208`).
+    * When `_pending_requests` reaches 0 it waits 1 s (`main.cpp:257-265`) and then `broadcast<qb::KillEvent>()` from
+      the `ShutdownTick` handler (`main.cpp:131-133`).
 * **Shared Events (`messages.h`)** — `ReadFileRequest`, `ReadFileResponse`, `WriteFileRequest`, `WriteFileResponse`,
   `WorkerAvailable`.
 
@@ -34,7 +36,7 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
 * **The manager's response-forwarding handlers are dead as wired.** `FileManager` registers and implements
   `on(ReadFileResponse&)` / `on(WriteFileResponse&)` (`file_manager.h:187`, `:200`), but no one ever sends it one:
   the worker pushes the response directly to `request.requestor`, which is the `ClientActor` (`file_worker.h:150`,
-  `:199`), because `ClientActor` already fills that field when it creates the request (`main.cpp:229`, `:251`). The
+  `:199`), because `ClientActor` already fills that field when it creates the request (`main.cpp:240`, `:251`). The
   forwarding path is there for a design where responses come back through the manager; this program does not use it.
 * **"Offload blocking I/O" is not what happens.** Both workers wrap their file work in
   `qb::io::async::callback(lambda)` with **one** argument (`file_worker.h:112`, `:168`). That overload schedules
@@ -46,10 +48,10 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
   `qb::io::async::callback(fn, duration)`.
 
 > **`ClientActor`'s two delays are coroutines, not timers — and that is the point.**
-> `main.cpp:109` (`startTests` after 500 ms) and `main.cpp:252` (broadcast the kill after 1 s) used to be
+> `main.cpp:120` (`startTests` after 500 ms) and `main.cpp:263` (broadcast the kill after 1 s) used to be
 > `qb::io::async::callback([this]..., delay)`, which heap-allocates a `Timeout` owned by the **event loop**, not by the
 > actor (`qb/src/qb/io/async/io.h:389`). Nothing cancels it if the actor dies first, and the lambda then dereferences
-> freed memory. Both now go through one lifetime-bound helper (`ClientActor::scheduleTick<T>`, `main.cpp:203-217`):
+> freed memory. Both now go through one lifetime-bound helper (`ClientActor::scheduleTick<T>`, `main.cpp:202-209`):
 >
 > ```cpp
 > template <typename TickEvent>
@@ -63,16 +65,17 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
 >
 > `spawn` is `qb/src/qb/core/Actor.h:1238-1239`; `Actor::kill()` cancels its scope at
 > `qb/src/qb/core/Actor.cpp:283-289`. Never capture `this` in the coroutine — the work moves into
-> `on(StartTestsTick&)` / `on(ShutdownTick&)`, which only run on a live actor. Note the contrast with the workers
+> `on(StartTestsTick&)` (`main.cpp:126-128`) / `on(ShutdownTick&)` (`main.cpp:131-133`), which only run on a live
+> actor. Note the contrast with the workers
 > above: their `callback(fn)` is the one-argument overload and runs inline, so capturing `this` there is fine.
 
 ## QB Features Demonstrated
 
 * **Core (`qb-core`)**:
     * `qb::Actor` for all three roles; `qb::Main` for engine setup and lifecycle.
-    * Multi-core deployment with `engine.addActor<T>(core_id, ...)` (`main.cpp:269-286`).
+    * Multi-core deployment with `engine.addActor<T>(core_id, ...)` (`main.cpp:280`, `:286-294`).
     * Coroutine initialisation: `qb::io::async::task<bool> onInit()` with `co_return true`
-      (`file_manager.h:83-87`, `file_worker.h:80-88`, `main.cpp:99-112`).
+      (`file_manager.h:83-87`, `file_worker.h:82-88`, `main.cpp:110-123`).
     * Custom `qb::Event` types carrying a `std::shared_ptr<std::vector<char>>` payload, so file contents cross cores
       without being copied into the event.
     * `push<Event>(dest, ...)` for every interaction; `broadcast<qb::KillEvent>()` for shutdown.
@@ -97,7 +100,7 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
    ./build/presets/dev/examples/05-services/03-file-pipeline/qb-example-services-file-pipeline
    ```
    The target directory is hard-coded to `./test_files`, relative to the **current working directory**
-   (`main.cpp:216`); it is created if missing. There is no command-line argument.
+   (`main.cpp:273`); it is created if missing (`main.cpp:115-117`). There is no command-line argument.
 
    Expect, in order: the manager and four workers announcing their cores, five write requests dispatched, five write
    responses each followed by a read request, five read responses printing the first 50 bytes of each file, then
