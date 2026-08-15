@@ -23,10 +23,13 @@
 #
 #     07-applications/01-taskmanager/    ->  qb-example-applications-taskmanager
 #     07-applications/02-auction-house/  ->  qb-example-applications-auction-house
+#     07-applications/03-market-data-hub/->  qb-example-applications-market-data-hub
 #
-# 03-market-data-hub is not written yet, and it is the one this tier most needs: both
-# programs here are HTTP + Postgres + Redis CRUD services, so a corpus that stops at this
-# line says qb is a web framework. That program has no HTTP and no SQL.
+# 03-market-data-hub is the one this tier most needed: the other two are HTTP + Postgres +
+# Redis CRUD services, so a corpus that stopped before it said qb is a web framework. It
+# links qb-core and qb-io only — no HTTP, no SQL — and prints an end-to-end latency
+# DISTRIBUTION rather than a headline number, because a single figure would be a claim
+# about hardware it has never run on.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_07_applications
@@ -39,3 +42,4 @@ qb_status_message("Building qb examples — tier 07-applications")
 
 add_subdirectory(01-taskmanager)
 add_subdirectory(02-auction-house)
+add_subdirectory(03-market-data-hub)

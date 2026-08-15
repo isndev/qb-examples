@@ -32,7 +32,7 @@ that the wording did.
 | [`04-patterns/`](./04-patterns/README.md) | The eleven shipped `qb/core/patterns/` headers — pub/sub, supervisor, worker pool, `qb::ask` + scatter/gather, resilience, streaming, saga, batching + idempotency, discovery. Nine programs; before them the whole directory had **zero** demonstrators and `qb::ask` had zero call sites. | 01, 03 |
 | [`05-services/`](./05-services/) | Actors **plus** `qb-io`: the architecture of a real server — a TCP chat, a pub/sub broker, a file pipeline, and a shutdown that stops accepting, drains, flushes and exits with an honest code. Four projects, no gaps. | 01–04 |
 | [`06-modules/`](./06-modules/README.md) | The qbm modules: [`http/`](./06-modules/http/README.md), [`ws/`](./06-modules/ws/README.md), [`pgsql/`](./06-modules/pgsql/README.md), [`redis/`](./06-modules/redis/README.md). | 01, 03 (+ 02 for the protocol tiers) |
-| [`07-applications/`](./07-applications/) | Full-stack projects: [taskmanager](./07-applications/01-taskmanager/README.md), [auction-house](./07-applications/02-auction-house/README.md). | everything |
+| [`07-applications/`](./07-applications/) | Full-stack projects: [taskmanager](./07-applications/01-taskmanager/README.md), [auction-house](./07-applications/02-auction-house/README.md), [market-data-hub](./07-applications/03-market-data-hub/README.md) — the one with no HTTP and no SQL. | everything |
 
 **The gaps in the numbering are deliberate.** A tier's holes are its to-do list, and they are named
 in that tier's `CMakeLists.txt`. Numbering densely now would renumber every later file — and every
@@ -49,12 +49,12 @@ names which replacement it is waiting for; the last one to arrive takes the dire
 |---|---|
 | `core/example6_shared_queue.cpp` | `01-actors/03-event-payloads` — **landed**; the retirement is unblocked and is its own step |
 | `core/example7_pub_sub.cpp` | `04-patterns/01-pubsub` — **landed**; the retirement is unblocked and is its own step |
-| `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` |
+| `core/example9_trading_system.cpp` | `07-applications/03-market-data-hub` — **landed**; the retirement is unblocked and is its own step |
 | `core/example10_distributed_computing.cpp` | `04-patterns/03-worker-pool` + `04-patterns/04-scatter-gather` + `02-io/11-logging-and-metrics` — **all three landed**; the retirement is unblocked and is its own step |
 | `core_io/file_monitor/` | `02-io/08-timeouts-and-watchers` + `01-actors/03-event-payloads` + `05-services/03-file-pipeline` — **all three landed**; the retirement is unblocked and is its own step |
-| `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` |
-| `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` |
-| `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` |
+| `qbm/http/06_async_handlers.cpp` | `06-modules/http/04-middleware` + `06-modules/http/09-coroutine-handlers` — **both landed**; the retirement is unblocked and is its own step |
+| `qbm/redis/example2_hash_operations.cpp`, `example3_list_operations.cpp` | merged into `06-modules/redis/02-data-types` — **landed**; the retirement is unblocked and is its own step |
+| `qbm/redis/example8_complex_actor_system.cpp` | `06-modules/redis/07-scripting` + `10-cache-actor` — **both landed**; the retirement is unblocked and is its own step |
 
 ## Building and running
 

@@ -364,4 +364,41 @@ This architecture demonstrates **real-world patterns** for building scalable, ma
 - **`io_handler<>`** - Multi-session management
 - **`stream_if()`** - Conditional broadcasting
 - **`push<Event>()`** - Inter-actor messaging
-- **`VirtualCore`** - Automatic CPU core distribution 
+- **`VirtualCore`** - Automatic CPU core distribution
+
+---
+
+### 3. Coroutine Session (`03-coro-session.cpp`) — **new**
+
+* **Purpose**: the server side written as ONE coroutine. `01-chat-server` keeps the position in the
+  conversation in member flags because the code cannot WAIT; `coro_session<Self, Server>` can, so the
+  order becomes the control flow and the flags disappear.
+* **API**: `qb::http::ws::coro_session`, `next_frame()`, `close_async()`, `set_handshake_hook()`,
+  `set_pending_cap()`. The hook negotiates a subprotocol or REFUSES the upgrade by returning false.
+* **Three rules of the base**: `Self` must define `task<void> run()`; the base holds a `shared_ptr` for
+  the coroutine's whole life, so `run()` MUST eventually return or the session leaks; and frames that
+  arrive with nobody parked are buffered to `set_pending_cap()`, past which the OLDEST is dropped.
+* **The fixture lives in a NAMED namespace**, and that is a rule: `coro_session` spawns a lambda into a
+  frame type defined in a qb header, so an anonymous-namespace session gives that frame a field of
+  no-linkage type (`-Werror=subobject-linkage` on g++-14, and only for some instances).
+  `qb/scripts/check-coro-fixture-linkage.py` is the guard for it — note that its scope today is the
+  four TEST trees and NOT `examples/`, so these two files obey it by hand.
+* **Run**: `./build/examples/06-modules/ws/qb-example-modules-ws-coro-session`
+
+---
+
+### 4. Coroutine Client (`04-coro-client.cpp`) — **new**
+
+* **Purpose**: the client side, replacing the state machine `02-chat-client` builds by hand.
+* **API**: `qb::http::ws::coro_client` (and `coro_client_secure` for `wss://`), `connect`, `receive`,
+  `close_async`, `set_pending_cap`, `negotiated_subprotocol`.
+* **Four things that are not obvious**: `receive()` yields a TAGGED frame, and `Disconnected` is one of
+  the tags — a loop that only looks at `Message` spins for ever on a dead socket. Only ONE awaiter may
+  park at a time; a second throws `std::logic_error` rather than stealing the first one's frame. Frames
+  arriving with nobody parked are buffered, oldest-dropped past the cap. And `connect()` on the same
+  object RESETS it, so a client is reusable after a close — unlike `qb::pg::tcp::notify_co_consumer`,
+  whose `receive()` channel a disconnect closes for good.
+* **Two API notes**: `connect(std::string)` is AMBIGUOUS (`uri const&` and `string_view` overloads are
+  both reachable by a user-defined conversion) — build the `qb::io::uri`. And `coro_client` is a class
+  template with a defaulted transport, so a function PARAMETER of that type needs the `<>`.
+* **Run**: `./build/examples/06-modules/ws/qb-example-modules-ws-coro-client`

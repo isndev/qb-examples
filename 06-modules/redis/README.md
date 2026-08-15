@@ -26,8 +26,15 @@ cmake --build .
 
 The executables will be located in the `build/examples/06-modules/redis/` directory — except
 `example2_hash_operations`, `example3_list_operations` and `example8_complex_actor_system`, which
-have not moved: they are in `build/examples/qbm/redis/`, the pre-3.0 holding directory for the two
-the architecture MERGES into `02-data-types` and the one it retires.
+have not moved: they are in `build/examples/qbm/redis/`, the pre-3.0 holding directory. Their
+replacements have LANDED (`02-data-types` merges the first two and adds sets; `07-scripting` and
+`10-cache-actor` between them cover the third), so those three are retirable — the retirement is
+its own step and has not been taken.
+
+**Every program added since 3.0 deletes the keys it wrote**, on the failure path as well as the
+success one. That is not tidiness: `06-streams` writes ~1,000,000 stream entries per run and leaves
+them (measured: `XLEN` 1,000,546 and ~240 MB after one run from a clean key), and a program whose
+cost depends on what a previous run left behind cannot be judged by a timeout.
 
 ## Examples Overview
 
@@ -44,7 +51,24 @@ the architecture MERGES into `02-data-types` and the one it retires.
 
 ---
 
-### 2. Hash Operations (`example2_hash_operations.cpp`)
+### 2. Data Types (`02-data-types.cpp`) — **the merge, plus sets**
+
+* **Purpose**: string, hash, list and **set** in one program, and the question the older pair never
+  answered: which one to reach for. The organising idea is that the C++ TYPE of each command's
+  `Reply` states the semantics — `get` → `optional<string>` (may be ABSENT), `hgetall` →
+  `unordered_map` (an object, whole), `lrange` → `vector` (order is part of the value), `smembers` →
+  `unordered_set` (no order, no duplicates), `sismember` → `bool` (the question, not the set).
+* **QB/QBM Redis Features**: `set`/`get`/`append`/`strlen`/`incrby`/`mset`/`mget`;
+  `hset`/`hget`/`hgetall`/`hincrby`/`hexists`/`hdel`/`hlen`; `rpush`/`lpush`/`lrange`/`llen`/`ltrim`/
+  `lpop`/`rpop`; `sadd`/`smembers`/`sismember`/`scard`/`sinter`/`sunion`/`sdiff`/`srem`. Sets had no
+  demonstrator anywhere in the corpus before this file.
+* **One measured gotcha**: `qb::unordered_set` is the vendored ska flat hash set and predates C++20's
+  `contains` — use `count(k) == 1`.
+* **Run**: `./build/examples/06-modules/redis/qb-example-modules-redis-data-types`
+
+---
+
+### 2b. Hash Operations (`example2_hash_operations.cpp`) — *superseded, awaiting retirement*
 
 * **@example qbm-redis: Hash Data Structure Operations**
 * **Purpose**: Illustrates how to use Redis Hashes to store and retrieve structured data, such as user profiles.
@@ -55,7 +79,7 @@ the architecture MERGES into `02-data-types` and the one it retires.
 
 ---
 
-### 3. List Operations (`example3_list_operations.cpp`)
+### 3. List Operations (`example3_list_operations.cpp`) — *superseded, awaiting retirement*
 
 * **@example qbm-redis: List Data Structure Operations**
 * **Purpose**: Showcases Redis List operations for implementing FIFO queues, LIFO stacks, and other list-based
@@ -144,7 +168,63 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
 
 ---
 
-### 8. Complex Actor System with Redis (`example8_complex_actor_system.cpp`)
+### 7b. Scripting (`07-scripting.cpp`) — **new**
+
+* **Purpose**: running your logic INSIDE Redis, in the three forms the server offers, and the trap
+  that decides whether an EVALSHA deployment survives a restart. It is the direct sequel to
+  `05-transactions`: a MULTI block cannot READ a value, so "write only if the version is still the
+  one I read" is not expressible as a transaction — a script has no such limit.
+* **QB/QBM Redis Features**: `eval<T>`, `evalRo<T>`, `script_load`, `script_exists`, `evalsha<T>`,
+  `function_load`, `function_list`, `function_delete`, `fcall<T>`, `fcallRo<T>`.
+* **The trap**: the script cache lives in the server's MEMORY. An unknown SHA is `NOSCRIPT`, which is
+  what every cached SHA becomes after a restart or a failover, so production code is "EVALSHA, and on
+  NOSCRIPT send the body once with EVAL and retry". Redis 7 Functions remove the case entirely — a
+  library is loaded BY NAME, persisted and replicated. Needs Redis 7.0+ and says so out loud.
+* **Deliberately absent**: `SCRIPT FLUSH` and `FUNCTION FLUSH`. Both are server-wide and would delete
+  every other client's work on a shared Redis; the NOSCRIPT case is provoked with a well-formed SHA
+  that was never loaded.
+* **Run**: `./build/examples/06-modules/redis/qb-example-modules-redis-scripting`
+
+---
+
+### 7c. Sorted Sets and Expiry (`08-sorted-sets-and-ttl.cpp`) — **new**
+
+* **Purpose**: the structure that keeps the ORDER for you (a leaderboard: "top 3" is a range read,
+  not a sort; "what rank am I" is a lookup), the same structure scored by TIME (a sliding-window rate
+  limiter in three commands and no timer), the expiry rules, and the cursor SCAN you must use instead
+  of `KEYS`.
+* **QB/QBM Redis Features**: `zadd`/`zincrby`/`zcard`/`zscore`/`zrevrange`/`zrevrank`/`zrangebyscore`/
+  `zremrangebyscore`/`zrem`, `qb::redis::score_member`, the interval types and `LimitOptions`;
+  `expire`/`ttl`/`persist`/`setex`; `scan` + `qb::redis::scan<>`.
+* **Two measured gotchas**: `LeftBoundedInterval<double>` accepts only `OPEN` and `RIGHT_OPEN` and
+  THROWS `qb::redis::Error` on `CLOSED` (`redis.cpp:127-141`) — for `[300, +inf)` the open side is the
+  right one. And a plain `SET` CLEARS a key's TTL while `INCR` keeps it; `-1` means "no expiry" and
+  `-2` means "no key", which are two different answers.
+* **Run**: `./build/examples/06-modules/redis/qb-example-modules-redis-sorted-sets-and-ttl`
+
+---
+
+### 7d. Reliability (`09-reliability.cpp`) — **new**
+
+* **Purpose**: what every other Redis example assumes away. Bounded connect retry, auto-reconnect,
+  what happens to a command that was IN FLIGHT when the link died, blocking commands that park a
+  coroutine without blocking the loop, `INFO` as a health probe, and the TLS seam.
+* **QB/QBM Redis Features**: `qb::redis::RetryPolicy` and its builders, `connect_with_retry`,
+  `enable_auto_reconnect`/`disable_auto_reconnect`, `is_connected`, `client_id`/`client_kill`,
+  `brpop`, `info`, `qb::redis::tcp::ssl::client`.
+* **Four things it measures rather than asserts**: `RetryPolicy{}` defaults to UNLIMITED attempts (a
+  startup hang waiting to happen); a dropped connection FAILS every pending reply rather than
+  stranding it, so `ok()` is false and `raw()` is `nullptr` — that null is the discriminator between
+  a dead link and a nil value; auto-reconnect restores the CONNECTION, never the request; and a
+  1 s `BRPOP` parks the coroutine while a second coroutine on the same thread keeps ticking.
+* **It also documents a silence**: `coro_scheduler().spawn(t)` never observes the task's result, so an
+  exception escaping a spawned task is discarded without a word. The `guarded()` wrapper at the
+  bottom of the file is the five lines that end it.
+* **Run**: `./build/examples/06-modules/redis/qb-example-modules-redis-reliability`
+
+---
+
+### 8. Complex Actor System with Redis (`example8_complex_actor_system.cpp`) — *superseded, awaiting retirement*
 
 * **@example qbm-redis: Complex Actor System with Diverse Redis Usage**
 * **Purpose**: An advanced example showcasing multiple Redis patterns (work queuing via Lists, caching via

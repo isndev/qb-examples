@@ -20,16 +20,20 @@
 #
 #     01-chat-server.cpp  ->  qb-example-modules-ws-chat-server
 #     02-chat-client.cpp  ->  qb-example-modules-ws-chat-client
+#     03-coro-session.cpp ->  qb-example-modules-ws-coro-session
+#     04-coro-client.cpp  ->  qb-example-modules-ws-coro-client
 #
 # BOTH REQUIRE ssl — not for TLS (these speak plaintext ws://) but at LINK level:
 # ws/ws.h #errors with "websocket protocol requires OpenSSL crypto library" because the
 # Sec-WebSocket-Accept handshake is SHA-1 + base64 from qb::io::crypto. Same crypto-link
 # reasoning as the REQUIRES ssl on the ws unit tests in qbm/http/tests/CMakeLists.txt.
 #
-# 03-coro-session and 04-coro-client are not written yet: ws::coro_session and
-# ws::coro_client have no demonstrator, and 02 hand-rolls the state machine coro_client
-# replaces. When 03 is written, ITS FIXTURES MUST LIVE IN A NAMED NAMESPACE
-# (qb/scripts/check-coro-fixture-linkage.py).
+# 03 and 04 are the coroutine pair. BOTH declare their session type in a NAMED namespace, which
+# `coro_session` requires: it spawns a lambda into a frame type defined in a qb header, so an
+# anonymous-namespace session gives that frame a field of no-linkage type
+# (-Werror=subobject-linkage on g++-14). qb/scripts/check-coro-fixture-linkage.py is the guard for
+# that rule, but its scope today is the four TEST trees and not examples/ — these two obey it by
+# hand, and extending the guard's spec list to examples/ would close the gap.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_06_ws
@@ -42,6 +46,8 @@ qb_status_message("Building qb examples — 06-modules/ws")
 
 qb_example(SOURCE 01-chat-server.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_ws_server)
 qb_example(SOURCE 02-chat-client.cpp DEPENDS qbm-http REQUIRES ssl)
+qb_example(SOURCE 03-coro-session.cpp DEPENDS qbm-http REQUIRES ssl)
+qb_example(SOURCE 04-coro-client.cpp DEPENDS qbm-http REQUIRES ssl)
 
 # Stage the chat web assets next to the built executable so the example loads them with a
 # plain "resources/chat/..." relative path. Skipped entirely when the server was gated out —

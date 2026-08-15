@@ -323,4 +323,27 @@ Below is a list of the available examples and the key features they showcase:
 ---
 
 See the individual `.cpp` files for detailed code and comments.
-The `resources` directory contains static assets used by some examples. 
+The `resources` directory contains static assets used by some examples.
+
+---
+
+### 14. Streaming and Cookies (`14-streaming-and-cookies.cpp`) — **new**
+
+* **Purpose**: the message-level surface the other thirteen never touch. Every other HTTP example here
+  is about ROUTING or about the CONNECTION; these six subjects are about what is in the bytes, and each
+  of them had zero demonstrators.
+* **API**: `qb::http::Chunk` + `Body::add_chunk`/`add_final_chunk`; `qb::http::Cookie` /`CookieJar` /
+  `SameSite` / `parse_set_cookie` / `Response::add_cookie` / `Request::cookie_value`;
+  `qb::http::Form` (a MULTI-map: `get()` returns a vector, `get_first()` is the common case);
+  `qb::http::Multipart` BUILT with `create_part()`; `Body::compress`/`uncompress`;
+  `qb::http::date::format_http_date` / `parse_http_date` driving a conditional GET to a 304.
+* **The two halves of chunked, which are easy to conflate**: setting `Transfer-Encoding: chunked` makes
+  the SERIALISER emit the chunked wire form for whatever body you assigned — neither side's `body()`
+  ever holds chunk headers. `Chunk` + `add_chunk` is the other half: it appends the chunk-encoded BYTES
+  yourself. Doing both encodes twice.
+* **One measured trap, and it is the reason the body below is assigned PLAIN**: the one-shot verbs
+  (`1.1/http.h:726-731`) and `qb::http1::Client` (`1.1/client.cpp:122`) COMPRESS the body themselves
+  when `Content-Encoding` is set. Calling `compress()` as well encodes twice — measured, 9000 bytes →
+  108 gzip → 109 on the wire, and the peer's single `uncompress()` hands back 108 bytes of gzip that
+  look like a corrupt payload. There is no diagnostic.
+* **Run**: `./build/examples/06-modules/http/qb-example-modules-http-streaming-and-cookies`

@@ -19,14 +19,24 @@
 # 06-modules/redis — Redis with qbm-redis
 #
 #     01-connect.cpp                     ->  qb-example-modules-redis-connect
+#     02-data-types.cpp                  ->  qb-example-modules-redis-data-types
 #     03-coroutines-and-pipelining.cpp   ->  qb-example-modules-redis-coroutines-and-pipelining
 #     04-pubsub.cpp                      ->  qb-example-modules-redis-pubsub
 #     05-transactions.cpp                ->  qb-example-modules-redis-transactions
 #     06-streams.cpp                     ->  qb-example-modules-redis-streams
+#     07-scripting.cpp                   ->  qb-example-modules-redis-scripting
+#     08-sorted-sets-and-ttl.cpp         ->  qb-example-modules-redis-sorted-sets-and-ttl
+#     09-reliability.cpp                 ->  qb-example-modules-redis-reliability
 #     10-cache-actor.cpp                 ->  qb-example-modules-redis-cache-actor
 #
-# 02-data-types is a MERGE of two programs that have not been merged yet (they are still in
-# examples/qbm/redis/); 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
+# All ten are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
+# which had no demonstrator anywhere; the originals still sit in examples/qbm/redis/ until the
+# retirement step removes them. 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
+#
+# Every one of the four new programs deletes the keys it wrote, on the failure path as well as the
+# success one. That is not tidiness: 06-streams writes ~1,000,000 stream entries per run and leaves
+# them (measured: XLEN 1,000,546 and ~240 MB after one run from a clean key), and a program whose
+# cost depends on how many times it has been run cannot be judged by a timeout.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_06_redis
@@ -38,8 +48,12 @@ project(qb_examples_06_redis
 qb_status_message("Building qb examples — 06-modules/redis")
 
 qb_example(SOURCE 01-connect.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 02-data-types.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 03-coroutines-and-pipelining.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 04-pubsub.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 05-transactions.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 06-streams.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 07-scripting.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 08-sorted-sets-and-ttl.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 09-reliability.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis)

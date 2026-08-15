@@ -274,4 +274,65 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
 ---
 
 These examples provide a solid foundation for understanding and utilizing the `qbm-pgsql` module in your C++
-applications. Remember to adapt the connection settings and SQL schemas to your specific needs. 
+applications. Remember to adapt the connection settings and SQL schemas to your specific needs.
+
+---
+
+### 6. Typed Rows (`06-typed-rows.cpp`) — **new**
+
+* **Purpose**: reading a result set without writing a loop, and the two runtime failures the by-name
+  loop invites (a misspelled column name is a string that compiles; `as<T>()` on a NULL throws unless
+  `T` is a `std::optional`). Both move into ONE place — the tuple you declare.
+* **API**: `row::as<std::tuple<...>>()`, `resultset::one<Ts...>()` (the single-row query, as an
+  `optional<tuple>`), `all<Ts...>()` (an eager vector you own) versus `rows<Ts...>()` (a lazy view
+  that BORROWS the result set), `field::text()` / `field::view()` for a read with no copy, and
+  `resultset::json()` for the whole set at once.
+* **Names**: the architecture document called these `first_as` and `views<Ts...>`. Neither exists;
+  the shipped names are `one` / `all` / `rows` (`qbm/pgsql/src/qbm/pgsql/resultset.h:214/230/248`).
+* **Two things measured while writing it**: the tuple is POSITIONAL over the SELECT list with no name
+  matching, so a mismatch throws at RUN time; and `resultset::json()` renders every scalar as a JSON
+  STRING (only NULL is typed), because it emits the text-format wire bytes rather than re-typing them.
+* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-typed-rows`
+
+---
+
+### 7. LISTEN / NOTIFY (`07-listen-notify.cpp`) — **new**
+
+* **Purpose**: PostgreSQL as an event bus — the replacement for a `SELECT ... WHERE updated_at > $1`
+  poll. A `notify_co_consumer` you `co_await`, and a TRIGGER that calls `pg_notify()` so the writer
+  does not have to know a listener exists.
+* **API**: `qb::pg::tcp::notify_co_consumer`, `listen`/`unlisten`/`unlisten_all`, `notify`,
+  `on_notify` + `on_notify_dropped`, `receive()`, `notify_channel_capacity()`.
+* **The four rules it measures**: delivery is TRANSACTIONAL (a NOTIFY inside a transaction arrives at
+  COMMIT, never after a rollback); it is NOT a queue (one sent while nobody listens is gone); the
+  payload is capped at 8000 bytes, so send an identifier and let the reader fetch the row; and the
+  subscription belongs to the CONNECTION, so a reconnect subscribes you to nothing.
+* **And a limit worth knowing**: after ANY disconnect this consumer's `co_await receive()` is DEAD.
+  `on_pg_notify_consumer_disconnected` closes its internal channel and `qb::io::async::channel::close()`
+  is terminal, so `receive()` answers `nullopt` for ever while `on_notify()` keeps firing and every
+  later notification is handed to the drop handler. Build a NEW consumer after a drop.
+* **Do not call `disconnect()` from a coroutine**: it ends with
+  `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (`pgsql.h:2530`), and pumping the loop from
+  inside a coroutine re-enters `CoroutineScheduler::run_ready`, whose assert catches exactly that
+  (SIGABRT under the `sanitize` preset; silent re-entrancy under `release`). This example drops the
+  link with `pg_terminate_backend` from the publisher instead — which is also what a failover does.
+* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-listen-notify`
+
+---
+
+### 8. TLS and Limits (`08-tls-and-limits.cpp`) — **new**
+
+* **Purpose**: PostgreSQL has NO TLS port. A client connects in cleartext, sends an 8-byte SSLRequest
+  and reads one byte back; only then is the socket upgraded. So the DSN stays `tcp://` and the only
+  change is the client TYPE — `qb::pg::tcp::ssl::database`, which selects the `stcp` transport and
+  hands it to `starttls_connect` with `postgres_ssl_negotiator`.
+* **API**: `qb::pg::connection_options` + `ssl_verify_mode`, `connect(options)`, `application_name`,
+  `set_timeout`/`get_timeout`, `qb::pg::sqlstate::query_canceled`.
+* **What it says out loud**: the default `ssl_verify_mode::none` is ENCRYPTED BUT UNAUTHENTICATED
+  (libpq's `sslmode=require`) — it defeats a passive listener and nothing else. And `set_timeout` is
+  TRANSACTION-scoped: it rides with the next `BEGIN` as `SET LOCAL statement_timeout`, so it must be
+  called BEFORE `begin()`, and a query it cancels is SQLSTATE 57014 rather than a dropped connection.
+* **It MEASURES the server rather than asserting about it**: whether TLS is available is the
+  operator's decision (`ssl = on`), so sections 1 and 2 print what they found in either direction. The
+  proof is `pg_stat_ssl` — the server's own view of the connection, not the client's opinion.
+* **Run**: `./build/examples/06-modules/pgsql/qb-example-modules-pgsql-tls-and-limits`

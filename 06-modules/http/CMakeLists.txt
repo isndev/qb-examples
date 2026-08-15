@@ -34,6 +34,7 @@
 #     11-https.cpp               ->  qb-example-modules-http-https
 #     12-http2.cpp               ->  qb-example-modules-http-http2
 #     13-http3.cpp               ->  qb-example-modules-http-http3
+#     14-streaming-and-cookies.cpp -> qb-example-modules-http-streaming-and-cookies
 #
 # Examples that cannot even COMPILE without OpenSSL are gated out of an SSL-off build
 # instead of breaking it (REQUIRES — same vocabulary and same resolver as the test suite's):
@@ -45,9 +46,11 @@
 # needs nghttp3 — a condition the REQUIRES vocabulary (ssl/quic/compression) cannot
 # express, so a gate here would be wrong wherever ngtcp2 is present but nghttp3 is not.
 #
-# 14-streaming-and-cookies is not written yet: Chunk/chunked transfer, Form,
-# Cookie/CookieJar, multipart BUILD, Body::compress and the HTTP date helpers have no
-# demonstrator anywhere.
+# 14-streaming-and-cookies is NOT gated on `compression` even though it demonstrates
+# Body::compress: that section is guarded with #ifdef QB_HAS_COMPRESSION and states which
+# branch it took, so the other five subjects (chunked framing, cookies, Form, multipart BUILD
+# and the HTTP date helpers) stay available in a build without zlib. A REQUIRES here would
+# remove all six.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_06_http
@@ -71,6 +74,7 @@ qb_example(SOURCE 10-client.cpp DEPENDS qbm-http)
 qb_example(SOURCE 11-https.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_https)
 qb_example(SOURCE 12-http2.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_http2)
 qb_example(SOURCE 13-http3.cpp DEPENDS qbm-http TARGET_VAR _tgt_http3)
+qb_example(SOURCE 14-streaming-and-cookies.cpp DEPENDS qbm-http)
 
 # Four examples read assets at runtime: the static site (08), the HTTP/2 site (12), and the
 # self-signed dev TLS certificate under resources/ssl (11, 12, and the TLS-only HTTP/3
