@@ -330,3 +330,36 @@ The `resources` directory contains static assets used by some examples.
   108 gzip → 109 on the wire, and the peer's single `uncompress()` hands back 108 bytes of gzip that
   look like a corrupt payload. There is no diagnostic.
 * **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-streaming-and-cookies`
+
+---
+
+### 15. HTTP/2 and HTTP/3 Clients (`15-http2-and-http3-clients.cpp`) — **new**
+
+* **Purpose**: `qb::http2::Client` and `qb::http3::Client` are documented and had **zero**
+  occurrences anywhere in this corpus — `12-http2` and `13-http3` are pure SERVER programs and the
+  only client examples (`10-client`, `14-streaming-and-cookies`) are HTTP/1.1.
+* **API**: `qb::http2::make_client` / `qb::http3::make_client` beside `qb::http1::make_client`;
+  `connect()`, `push_request()`, `push_requests()`, `is_connected()`, `get_stats()`,
+  `set_verify_peer()`, `set_connect_timeout()`, `set_request_timeout()`, `get_base_uri()`,
+  `disconnect()` — the same vocabulary in all three namespaces, plus `qb::http2::make_server` and
+  `qb::http3::make_server` for the upstreams it hosts.
+* **It is a MEASUREMENT, not a tour.** `10-client` states that HTTP/1.1's `push_requests` is
+  sequential pipelining and not concurrency; this file is the other half. Four requests to a route
+  that sleeps 150 ms, issued as one `push_requests()` on each client against servers in this very
+  process. Measured on this tree: **HTTP/1.1 601 ms, HTTP/2 150 ms, HTTP/3 150 ms** — head-of-line
+  blocking is a property of the FRAMING, and nothing about the client code changed to remove it.
+* **The rules http1 does not have**: both new clients throw `std::invalid_argument` from
+  `make_client` on a non-https base URI (there is no h2c path and no plaintext QUIC) and answer a
+  non-https request URI with a 400; `connect(nullptr)` is the spelling for fire-and-forget, because
+  the default argument was removed so the coroutine overload is unambiguous; and
+  `set_verify_peer(false)` is the ENTIRE client-side TLS setup — the client mints its own context
+  with the right ALPN baked in and fails the connection if the peer negotiates anything else.
+* **The return-shape trap**: `Client::push_request` yields a bare `qb::http::Response`, while the
+  one-shot verbs (`qb::http::GET` and friends, HTTP/1.1 only) yield an `async::Reply` carrying BOTH
+  the request and the response — `reply.response.body()`, not `reply.body()`.
+* **One asymmetry worth knowing, found by writing this file**: `qb::http2::Server::listen()` BINDS
+  and you must also call `start()`; `qb::http3::Server::listen()` does both. Forgetting it does not
+  fail — every client `connect()` times out at the 30 s default with nothing naming the cause.
+* **Gated**: `REQUIRES ssl`, for the same reason `12-http2` is. The HTTP/3 third guards itself with
+  `#ifdef QBM_HTTP_HAS_HTTP3` and states which branch it took.
+* **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-http2-and-http3-clients`

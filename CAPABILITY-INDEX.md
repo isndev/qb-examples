@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**90 programs, 7 tiers, 735 distinct capabilities, 1410 claims.**
+**98 programs, 7 tiers, 806 distinct capabilities, 1595 claims.**
 
 ## 1. By capability
 
@@ -31,11 +31,20 @@ can disagree.
 | `QB_LOG_INFO` | `02-io/11-logging-and-metrics.cpp` |
 | `QB_LOG_VERB` | `02-io/11-logging-and-metrics.cpp` |
 | `QB_LOG_WARN` | `02-io/11-logging-and-metrics.cpp` |
+| `acl_cat` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_deluser` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_dryrun` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_genpass` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_getuser` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_list` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_setuser` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_users` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `acl_whoami` | `06-modules/redis/14-acl-and-topology.cpp` |
 | `active_coroutine_count` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `active_count` | `03-coroutines/07-structured-concurrency.cpp` |
 | `add` | `04-patterns/03-worker-pool.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `addActor` | `05-services/04-shutdown-and-drain/main.cpp` |
-| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `addRefActor<Database>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `addRefActor<Member>` | `01-actors/08-child-actors.cpp` |
 | `addRefActor<T>` | `04-patterns/02-supervisor.cpp` |
@@ -57,13 +66,18 @@ can disagree.
 | `as<std::tuple<int, std::string, std::optional<std::string>, double>>` | `06-modules/pgsql/06-typed-rows.cpp` |
 | `attempts` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `available_permits` | `03-coroutines/12-sync-primitives.cpp` |
+| `await` | `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `backpressure` | `03-coroutines/11-async-streams.cpp` |
-| `begin` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp` |
+| `begin` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
+| `bitcount` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `bitfield` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `bitop` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `bitpos` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `blpop` | `06-modules/redis/02-data-types.cpp` |
 | `boundary` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `broadcast<E>` | `01-actors/04-cores-and-placement.cpp` |
 | `broadcast<KillEvent>` | `01-actors/09-state-machine.cpp` |
-| `broadcast<qb::KillEvent>` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `05-services/03-file-pipeline/main.cpp` |
+| `broadcast<qb::KillEvent>` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `05-services/03-file-pipeline/main.cpp` |
 | `brpop` | `06-modules/redis/09-reliability.cpp` |
 | `buffer` | `03-coroutines/11-async-streams.cpp` |
 | `build_event<Tick>` | `01-actors/11-hot-path.cpp` |
@@ -81,11 +95,15 @@ can disagree.
 | `close` | `02-io/02-files.cpp` |
 | `close_after_deliver` | `02-io/09-graceful-drain.cpp` |
 | `close_async` | `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `cluster_info` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `cluster_keyslot` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `cluster_myid` | `06-modules/redis/14-acl-and-topology.cpp` |
+| `cluster_shards` | `06-modules/redis/14-acl-and-topology.cpp` |
 | `collect` | `03-coroutines/11-async-streams.cpp` |
-| `commit` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp` |
-| `compile` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/ws/01-chat-server.cpp` |
+| `commit` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
+| `compile` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `compress` | `06-modules/http/14-streaming-and-cookies.cpp` |
-| `connect` | `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `connect` | `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `connect_with_retry` | `06-modules/redis/09-reliability.cpp` |
 | `context()` | `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `controller<T>` | `06-modules/http/03-controllers.cpp` |
@@ -110,9 +128,10 @@ can disagree.
 | `ctx.until_cancelled` | `03-coroutines/06-cancellation.cpp` |
 | `current_count` | `03-coroutines/12-sync-primitives.cpp` |
 | `debounce` | `03-coroutines/11-async-streams.cpp` |
-| `del` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `del` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `disable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
 | `discard` | `06-modules/redis/05-transactions.cpp` |
+| `disconnect` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `drain_to` | `03-coroutines/11-async-streams.cpp` |
 | `empty` | `03-coroutines/11-async-streams.cpp`, `04-patterns/03-worker-pool.cpp` |
 | `enable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
@@ -122,14 +141,15 @@ can disagree.
 | `engine.start` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.stop` | `05-services/02-pubsub-broker/server/main.cpp` |
 | `enqueue` | `07-applications/03-market-data-hub/src/main.cpp` |
-| `error` | `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `error` | `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `eval<bool>` | `06-modules/redis/07-scripting.cpp` |
 | `eval<long long>` | `06-modules/redis/07-scripting.cpp` |
 | `eval<std::string>` | `06-modules/redis/07-scripting.cpp` |
 | `evalRo<std::string>` | `06-modules/redis/07-scripting.cpp` |
 | `evalsha<bool>` | `06-modules/redis/07-scripting.cpp` |
 | `exec<std::string>` | `06-modules/redis/05-transactions.cpp` |
-| `execute` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp` |
+| `execute` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
+| `exists` | `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `expire` | `06-modules/redis/06-streams.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `extractSession` | `02-io/09-graceful-drain.cpp` |
 | `fcall<std::string>` | `06-modules/redis/07-scripting.cpp` |
@@ -137,7 +157,7 @@ can disagree.
 | `filter` | `03-coroutines/11-async-streams.cpp` |
 | `find` | `03-coroutines/11-async-streams.cpp` |
 | `first` | `03-coroutines/11-async-streams.cpp` |
-| `flush` | `04-patterns/08-batching-and-idempotency.cpp` |
+| `flush` | `04-patterns/08-batching-and-idempotency.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `for_each` | `03-coroutines/11-async-streams.cpp` |
 | `for_key` | `04-patterns/03-worker-pool.cpp` |
 | `from_channel` | `03-coroutines/11-async-streams.cpp` |
@@ -146,9 +166,16 @@ can disagree.
 | `function_delete` | `06-modules/redis/07-scripting.cpp` |
 | `function_list` | `06-modules/redis/07-scripting.cpp` |
 | `function_load` | `06-modules/redis/07-scripting.cpp` |
-| `get` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/ws/01-chat-server.cpp` |
+| `geoadd` | `06-modules/redis/13-geospatial.cpp` |
+| `geodist` | `06-modules/redis/13-geospatial.cpp` |
+| `geohash` | `06-modules/redis/13-geospatial.cpp` |
+| `geopos` | `06-modules/redis/13-geospatial.cpp` |
+| `georadius` | `06-modules/redis/13-geospatial.cpp` |
+| `georadiusbymember` | `06-modules/redis/13-geospatial.cpp` |
+| `geosearch` | `06-modules/redis/13-geospatial.cpp` |
+| `get` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `get()` | `01-actors/08-child-actors.cpp`, `03-coroutines/03-awaiting-oninit.cpp` |
-| `getIndex` | `01-actors/03-event-payloads.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/04-ask-request-response.cpp` |
+| `getIndex` | `01-actors/03-event-payloads.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/04-ask-request-response.cpp` |
 | `getIndex()` | `01-actors/04-cores-and-placement.cpp`, `04-patterns/01-pubsub.cpp` |
 | `getMessageSize` | `02-io/05-custom-protocol.cpp` |
 | `getPipe` | `01-actors/11-hot-path.cpp` |
@@ -158,11 +185,13 @@ can disagree.
 | `getSource()` | `01-actors/02-messaging.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/09-state-machine.cpp` |
 | `getTimeout` | `02-io/08-timeouts-and-watchers.cpp` |
 | `get_alpn_selected_protocol` | `02-io/07-tls.cpp` |
+| `get_base_uri` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `get_negotiated_cipher_suite` | `02-io/07-tls.cpp` |
 | `get_negotiated_tls_version` | `02-io/07-tls.cpp` |
 | `get_peer_certificate_details` | `02-io/07-tls.cpp` |
-| `get_stats` | `06-modules/http/10-client.cpp` |
+| `get_stats` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `get_timeout` | `06-modules/pgsql/08-tls-and-limits.cpp` |
+| `getbit` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `group` | `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/12-http2.cpp` |
 | `hasError` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `has_active_coroutines` | `05-services/04-shutdown-and-drain/main.cpp` |
@@ -180,7 +209,8 @@ can disagree.
 | `hvals` | `06-modules/redis/02-data-types.cpp` |
 | `id()` | `01-actors/04-cores-and-placement.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `05-services/03-file-pipeline/main.cpp` |
 | `idList()` | `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp` |
-| `incr` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `in_transaction` | `06-modules/pgsql/10-streaming-results.cpp` |
+| `incr` | `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `incrby` | `06-modules/redis/02-data-types.cpp` |
 | `index` | `04-patterns/09-discovery.cpp` |
 | `info` | `06-modules/redis/09-reliability.cpp` |
@@ -189,7 +219,7 @@ can disagree.
 | `is_actor_alive` | `01-actors/08-child-actors.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `04-patterns/09-discovery.cpp` |
 | `is_alive` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `is_closed` | `03-coroutines/09-channels.cpp` |
-| `is_connected` | `06-modules/http/10-client.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `is_connected` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
 | `is_in_multi` | `06-modules/redis/05-transactions.cpp` |
 | `is_locked` | `03-coroutines/12-sync-primitives.cpp` |
 | `is_null` | `06-modules/pgsql/06-typed-rows.cpp` |
@@ -203,17 +233,20 @@ can disagree.
 | `kill` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `kill()` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `04-patterns/01-pubsub.cpp` |
 | `lindex` | `06-modules/redis/02-data-types.cpp` |
-| `listen` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/ws/01-chat-server.cpp` |
-| `listen_v4` | `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp` |
+| `listen` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/ws/01-chat-server.cpp` |
+| `listen_v4` | `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `llen` | `06-modules/redis/02-data-types.cpp` |
 | `local_endpoint` | `02-io/06-framing-toolbox.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/ws/03-coro-session.cpp` |
+| `lock` | `01-actors/12-lockfree-bridge.cpp` |
+| `locked` | `01-actors/12-lockfree-bridge.cpp` |
 | `lpop` | `06-modules/redis/02-data-types.cpp` |
-| `lpush` | `06-modules/redis/02-data-types.cpp` |
-| `lrange` | `06-modules/redis/02-data-types.cpp` |
+| `lpush` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
+| `lrange` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `lset` | `06-modules/redis/02-data-types.cpp` |
 | `ltrim` | `06-modules/redis/02-data-types.cpp` |
 | `map` | `03-coroutines/11-async-streams.cpp` |
 | `max_age` | `06-modules/http/14-streaming-and-cookies.cpp` |
+| `memory_usage` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `messages_processed` | `02-io/09-graceful-drain.cpp` |
 | `mget` | `06-modules/redis/02-data-types.cpp` |
 | `min_version` | `02-io/07-tls.cpp` |
@@ -226,10 +259,13 @@ can disagree.
 | `not_ok` | `02-io/06-framing-toolbox.cpp` |
 | `notify` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `notify_channel_capacity` | `06-modules/pgsql/07-listen-notify.cpp` |
-| `ok` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `ok` | `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `onMessage` | `02-io/05-custom-protocol.cpp`, `02-io/06-framing-toolbox.cpp` |
 | `on_compensate` | `04-patterns/07-saga.cpp` |
+| `on_disconnected` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
+| `on_error` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_escalate` | `04-patterns/02-supervisor.cpp` |
+| `on_message` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_notify` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `on_notify_dropped` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `one<int, std::string>` | `06-modules/pgsql/06-typed-rows.cpp` |
@@ -237,48 +273,55 @@ can disagree.
 | `parts` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `path` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `pending` | `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
+| `pending_reply_count` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `persist` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `pfadd` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `pfcount` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `pfmerge` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `post` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/07-auth-jwt.cpp` |
+| `prepare` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
+| `prepare_file` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `prune_completed` | `03-coroutines/07-structured-concurrency.cpp` |
-| `publish` | `02-io/09-graceful-drain.cpp`, `04-patterns/01-pubsub.cpp` |
-| `push<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
+| `publish` | `02-io/09-graceful-drain.cpp`, `04-patterns/01-pubsub.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
+| `push<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/12-lockfree-bridge.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `push<Ping>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `push<Tick>` | `01-actors/11-hot-path.cpp` |
 | `push_back` | `02-io/11-logging-and-metrics.cpp` |
-| `push_request` | `06-modules/http/10-client.cpp` |
-| `push_requests` | `06-modules/http/10-client.cpp` |
+| `push_request` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `push_requests` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `put` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp` |
-| `query` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp` |
-| `raw` | `06-modules/redis/05-transactions.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `query` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
+| `query_stream` | `06-modules/pgsql/10-streaming-results.cpp` |
+| `raw` | `06-modules/redis/05-transactions.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/13-geospatial.cpp` |
 | `read` | `02-io/02-files.cpp` |
 | `ready()` | `01-actors/08-child-actors.cpp` |
 | `ready_async` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `receive` | `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `recv_for` | `03-coroutines/09-channels.cpp` |
 | `reduce` | `03-coroutines/11-async-streams.cpp` |
-| `registerCallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
+| `registerCallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `registerSession` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `release_savepoint` | `06-modules/pgsql/03-transactions.cpp` |
 | `remove` | `04-patterns/03-worker-pool.cpp` |
 | `resolve_ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `resolve_require` | `04-patterns/09-discovery.cpp` |
 | `restarts` | `04-patterns/02-supervisor.cpp` |
-| `result` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `result` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `rethrow_if_error` | `03-coroutines/07-structured-concurrency.cpp` |
 | `rethrow_last` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `rollback` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp` |
 | `rollback_savepoint` | `06-modules/pgsql/03-transactions.cpp` |
-| `router` | `06-modules/http/06-validation.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp` |
+| `router` | `06-modules/http/06-validation.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `router()` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `rows<int, std::string, std::optional<std::string>, double>` | `06-modules/pgsql/06-typed-rows.cpp` |
 | `rpop` | `06-modules/redis/02-data-types.cpp` |
 | `rpush` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/09-reliability.cpp` |
-| `sadd` | `06-modules/redis/02-data-types.cpp` |
+| `sadd` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `same_site` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `savepoint` | `06-modules/pgsql/03-transactions.cpp` |
 | `scan` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
-| `scard` | `06-modules/redis/02-data-types.cpp` |
+| `scard` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `scoped_acquire` | `03-coroutines/12-sync-primitives.cpp` |
 | `scoped_lock` | `03-coroutines/12-sync-primitives.cpp` |
 | `scoped_read_lock` | `03-coroutines/12-sync-primitives.cpp` |
@@ -291,18 +334,21 @@ can disagree.
 | `session_cache` | `02-io/07-tls.cpp` |
 | `session_count` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `sessions` | `05-services/04-shutdown-and-drain/main.cpp` |
-| `set` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `set` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `setAffinity` | `01-actors/11-hot-path.cpp` |
 | `setDestination` | `02-io/04-udp.cpp` |
 | `setLatency` | `01-actors/11-hot-path.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `setTimeout` | `02-io/01-event-loop.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/11-logging-and-metrics.cpp` |
 | `set_auto_reconnect` | `06-modules/http/10-client.cpp` |
+| `set_connect_timeout` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `set_error_task_chain` | `06-modules/http/05-rest-api-json.cpp` |
 | `set_handshake_hook` | `06-modules/ws/03-coro-session.cpp` |
 | `set_insecure` | `02-io/07-tls.cpp` |
 | `set_pending_cap` | `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
-| `set_request_timeout` | `06-modules/http/10-client.cpp` |
+| `set_request_timeout` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `set_timeout` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp` |
+| `set_verify_peer` | `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `setbit` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
 | `setex` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `shiftSize` | `02-io/06-framing-toolbox.cpp` |
 | `single` | `03-coroutines/11-async-streams.cpp` |
@@ -317,15 +363,17 @@ can disagree.
 | `srem` | `06-modules/redis/02-data-types.cpp` |
 | `start` | `07-applications/03-market-data-hub/src/main.cpp` |
 | `stop()` | `04-patterns/02-supervisor.cpp` |
-| `strlen` | `06-modules/redis/02-data-types.cpp` |
-| `subscribe` | `04-patterns/01-pubsub.cpp` |
+| `strlen` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
+| `subscribe` | `04-patterns/01-pubsub.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `subscriber_count` | `04-patterns/01-pubsub.cpp` |
+| `success` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `sunion` | `06-modules/redis/02-data-types.cpp` |
 | `supervisor()` | `04-patterns/02-supervisor.cpp` |
 | `switch_protocol` | `02-io/09-graceful-drain.cpp` |
 | `switch_protocol<T>` | `02-io/05-custom-protocol.cpp` |
 | `take` | `03-coroutines/11-async-streams.cpp` |
 | `text` | `06-modules/pgsql/06-typed-rows.cpp` |
+| `then` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `throttle` | `03-coroutines/11-async-streams.cpp` |
 | `to` | `01-actors/11-hot-path.cpp` |
 | `to_header` | `06-modules/http/14-streaming-and-cookies.cpp` |
@@ -342,12 +390,16 @@ can disagree.
 | `try_lock` | `03-coroutines/12-sync-primitives.cpp` |
 | `try_recv` | `03-coroutines/09-channels.cpp` |
 | `try_send` | `03-coroutines/09-channels.cpp` |
+| `trylock` | `01-actors/12-lockfree-bridge.cpp` |
+| `trylock_for` | `01-actors/12-lockfree-bridge.cpp` |
 | `ttl` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `type` | `06-modules/redis/13-geospatial.cpp` |
 | `uncompress` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `unlisten` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `unlisten_all` | `06-modules/pgsql/07-listen-notify.cpp` |
-| `unregisterCallback` | `01-actors/03-event-payloads.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `unsubscribe` | `04-patterns/01-pubsub.cpp` |
+| `unlock` | `01-actors/12-lockfree-bridge.cpp` |
+| `unregisterCallback` | `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `unsubscribe` | `04-patterns/01-pubsub.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `unwatch` | `06-modules/redis/05-transactions.cpp` |
 | `updateTimeout` | `02-io/08-timeouts-and-watchers.cpp` |
 | `use` | `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/ws/01-chat-server.cpp` |
@@ -376,14 +428,14 @@ can disagree.
 | `xtrim` | `06-modules/redis/06-streams.cpp` |
 | `yield_answer` | `04-patterns/06-streaming.cpp` |
 | `zadd` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
-| `zcard` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `zcard` | `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/13-geospatial.cpp` |
 | `zincrby` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrangebyscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrem` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zremrangebyscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrevrange` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrevrank` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
-| `zscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `zscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/13-geospatial.cpp` |
 
 ### `Protocol`
 
@@ -401,7 +453,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::Actor` | `01-actors/01-hello-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp` |
+| `qb::Actor` | `01-actors/01-hello-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp` |
 | `qb::ActorHandle<Database>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `qb::ActorHandle<Member>` | `01-actors/08-child-actors.cpp` |
 | `qb::ActorId` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/07-service-actor.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
@@ -410,13 +462,13 @@ can disagree.
 | `qb::ChildDown` | `04-patterns/02-supervisor.cpp` |
 | `qb::CircuitBreaker` | `04-patterns/05-resilience.cpp` |
 | `qb::CoreIdSet` | `01-actors/11-hot-path.cpp` |
-| `qb::Event` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/ws/02-chat-client.cpp` |
+| `qb::Event` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `qb::EventQOS0` | `01-actors/11-hot-path.cpp` |
 | `qb::FillEvent<int>` | `01-actors/03-event-payloads.cpp` |
-| `qb::ICallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `qb::KillEvent` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/02-supervisor.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
-| `qb::LoopEvent` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `qb::ICallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `qb::KillEvent` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/02-supervisor.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `qb::LoopEvent` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::Pipe` | `01-actors/11-hot-path.cpp` |
 | `qb::PubSub<PriceTick>` | `04-patterns/01-pubsub.cpp` |
 | `qb::Request<int>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
@@ -451,7 +503,7 @@ can disagree.
 | `qb::duration` | `02-io/01-event-loop.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `05-services/03-file-pipeline/main.cpp` |
 | `qb::end_stream` | `04-patterns/06-streaming.cpp` |
 | `qb::generate_random_uuid` | `02-io/10-crypto-and-compression.cpp` |
-| `qb::json` | `02-io/06-framing-toolbox.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/05-rest-api-json.cpp` |
+| `qb::json` | `02-io/06-framing-toolbox.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `qb::mono_now` | `02-io/08-timeouts-and-watchers.cpp` |
 | `qb::no_default_events` | `01-actors/11-hot-path.cpp` |
 | `qb::ping` | `04-patterns/09-discovery.cpp` |
@@ -579,13 +631,13 @@ can disagree.
 | `qb::http::CorsMiddleware<S>` | `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `qb::http::DefaultSession` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/06-validation.cpp` |
 | `qb::http::Form` | `06-modules/http/14-streaming-and-cookies.cpp` |
-| `qb::http::GET` | `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp` |
+| `qb::http::GET` | `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http::LoggingMiddleware<S>` | `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `qb::http::MiddlewareTask<S>` | `06-modules/http/05-rest-api-json.cpp` |
 | `qb::http::Multipart` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `qb::http::POST` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `qb::http::RateLimitMiddleware<S>` | `06-modules/http/05-rest-api-json.cpp` |
-| `qb::http::Request` | `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/ws/01-chat-server.cpp` |
+| `qb::http::Request` | `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `qb::http::Response` | `06-modules/ws/01-chat-server.cpp` |
 | `qb::http::SameSite` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `qb::http::SecurityHeadersMiddleware<S>` | `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp` |
@@ -595,12 +647,13 @@ can disagree.
 | `qb::http::WebSocketRequest` | `06-modules/ws/02-chat-client.cpp` |
 | `qb::http::dual_stack_server<>` | `06-modules/http/13-http3.cpp` |
 | `qb::http::make_dual_stack_server<>` | `06-modules/http/13-http3.cpp` |
-| `qb::http::method` | `06-modules/http/10-client.cpp` |
+| `qb::http::method` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http::parse_set_cookie` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `qb::http::static_files_middleware<S>` | `06-modules/http/08-static-files.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp` |
-| `qb::http::status` | `06-modules/http/10-client.cpp` |
+| `qb::http::status` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http::use<AssetServer>::server<AssetSession>` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `qb::http::use<EchoServer>::server<EchoSession>` | `06-modules/http/10-client.cpp` |
+| `qb::http::use<PlainServer>::server<PlainSession>` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http::use<T>` | `06-modules/ws/01-chat-server.cpp` |
 | `qb::http::validation_middleware` | `06-modules/http/06-validation.cpp` |
 
@@ -608,14 +661,17 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::http1::Client` | `06-modules/http/10-client.cpp` |
-| `qb::http1::make_client` | `06-modules/http/10-client.cpp` |
+| `qb::http1::Client` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `qb::http1::make_client` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 
 ### `qb::http2`
 
 | capability | demonstrated by |
 | --- | --- |
+| `qb::http2::Client` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http2::DefaultSession` | `06-modules/http/13-http3.cpp` |
+| `qb::http2::make_client` | `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `qb::http2::make_server` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http2::use<T>` | `06-modules/http/12-http2.cpp` |
 
 ### `qb::http3`
@@ -783,7 +839,7 @@ can disagree.
 | `qb::io::async::collect` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::collect_to_vector` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::concat` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::coro_scheduler` | `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `qb::io::async::coro_scheduler` | `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::coro_with_timeout` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::coroutine_scope` | `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::defer` | `02-io/09-graceful-drain.cpp` |
@@ -793,7 +849,7 @@ can disagree.
 | `qb::io::async::from_range` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::generator<int>` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::idempotent_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
-| `qb::io::async::init` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp`, `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::io::async::init` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp`, `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::async::interval` | `03-coroutines/11-async-streams.cpp` |
 | `qb::io::async::iota` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::joining_scope` | `03-coroutines/07-structured-concurrency.cpp` |
@@ -814,20 +870,21 @@ can disagree.
 | `qb::io::async::retry_exhausted` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::retry_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::run` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp` |
-| `qb::io::async::run_sync` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `07-applications/02-auction-house/src/main.cpp` |
-| `qb::io::async::run_until` | `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `qb::io::async::run_sync` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::io::async::run_until` | `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::scoped_callback` | `02-io/08-timeouts-and-watchers.cpp` |
 | `qb::io::async::select` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::select_result` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::semaphore` | `03-coroutines/12-sync-primitives.cpp` |
 | `qb::io::async::shared_task<int>` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::skip` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::sleep` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `qb::io::async::sleep` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::take` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::task<bool>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/06-cancellation.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/09-reliability.cpp` |
 | `qb::io::async::task<int>` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::task<std::string>` | `03-coroutines/08-bounded-fan-out.cpp` |
-| `qb::io::async::task<void>` | `01-actors/06-doing-things-later.cpp`, `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::io::async::task<std::uint64_t>` | `06-modules/pgsql/10-streaming-results.cpp` |
+| `qb::io::async::task<void>` | `01-actors/06-doing-things-later.cpp`, `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::async::timeout_error` | `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/05-combinators.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp` |
 | `qb::io::async::timer` | `03-coroutines/11-async-streams.cpp` |
 | `qb::io::async::transform` | `03-coroutines/09-channels.cpp` |
@@ -835,7 +892,7 @@ can disagree.
 | `qb::io::async::wait_for_io` | `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::wait_readable` | `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::wait_writable` | `03-coroutines/14-foreign-awaitables.cpp` |
-| `qb::io::async::when_all` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `04-patterns/05-resilience.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp` |
+| `qb::io::async::when_all` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `04-patterns/05-resilience.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp` |
 | `qb::io::async::when_any` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::when_any_result` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::with_deadline` | `03-coroutines/05-combinators.cpp` |
@@ -939,6 +996,19 @@ can disagree.
 | `qb::jwt::create` | `02-io/10-crypto-and-compression.cpp` |
 | `qb::jwt::verify` | `02-io/10-crypto-and-compression.cpp` |
 
+### `qb::lockfree`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::lockfree::SpinLock` | `01-actors/12-lockfree-bridge.cpp` |
+
+### `qb::lockfree::mpsc`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::lockfree::mpsc::ringbuffer<Job, RING_SLOTS, PRODUCERS>` | `01-actors/12-lockfree-bridge.cpp` |
+| `qb::lockfree::mpsc::ringbuffer<Job, TINY_SLOTS, 1>` | `01-actors/12-lockfree-bridge.cpp` |
+
 ### `qb::lockfree::spsc`
 
 | capability | demonstrated by |
@@ -950,15 +1020,20 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
+| `qb::pg::Reply<void>` | `06-modules/pgsql/10-streaming-results.cpp` |
+| `qb::pg::await` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::connection_options` | `06-modules/pgsql/08-tls-and-limits.cpp` |
+| `qb::pg::discard_error` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
+| `qb::pg::discard_prepare` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
+| `qb::pg::discard_query` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::isolation_level` | `06-modules/pgsql/03-transactions.cpp` |
 | `qb::pg::notification` | `06-modules/pgsql/07-listen-notify.cpp` |
-| `qb::pg::params` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp` |
-| `qb::pg::results` | `06-modules/pgsql/06-typed-rows.cpp` |
+| `qb::pg::params` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
+| `qb::pg::results` | `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
 | `qb::pg::ssl_verify_mode` | `06-modules/pgsql/08-tls-and-limits.cpp` |
 | `qb::pg::transaction_abort` | `06-modules/pgsql/03-transactions.cpp` |
 | `qb::pg::transaction_mode` | `06-modules/pgsql/03-transactions.cpp` |
-| `qb::pg::type_oid_sequence` | `06-modules/pgsql/02-parameters.cpp` |
+| `qb::pg::type_oid_sequence` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::with_transaction` | `06-modules/pgsql/03-transactions.cpp` |
 
 ### `qb::pg::detail`
@@ -971,7 +1046,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::pg::error::db_error` | `06-modules/pgsql/05-errors.cpp` |
+| `qb::pg::error::db_error` | `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::error::field_type_mismatch` | `06-modules/pgsql/05-errors.cpp` |
 | `qb::pg::error::value_is_null` | `06-modules/pgsql/05-errors.cpp` |
 
@@ -984,9 +1059,9 @@ can disagree.
 | `qb::pg::oid::bytea` | `06-modules/pgsql/04-types.cpp` |
 | `qb::pg::oid::date` | `06-modules/pgsql/04-types.cpp` |
 | `qb::pg::oid::float4` | `06-modules/pgsql/04-types.cpp` |
-| `qb::pg::oid::float8` | `06-modules/pgsql/04-types.cpp` |
+| `qb::pg::oid::float8` | `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::oid::int2` | `06-modules/pgsql/04-types.cpp` |
-| `qb::pg::oid::int4` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp` |
+| `qb::pg::oid::int4` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::oid::text` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/05-errors.cpp` |
 
 ### `qb::pg::sqlstate`
@@ -999,7 +1074,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::pg::tcp::database` | `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::pg::tcp::database` | `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::pg::tcp::notify_co_consumer` | `06-modules/pgsql/07-listen-notify.cpp` |
 
 ### `qb::pg::tcp::ssl`
@@ -1037,10 +1112,14 @@ can disagree.
 | capability | demonstrated by |
 | --- | --- |
 | `qb::redis::BoundedInterval<double>` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
+| `qb::redis::GeoUnit` | `06-modules/redis/13-geospatial.cpp` |
 | `qb::redis::LeftBoundedInterval<double>` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `qb::redis::LimitOptions` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
-| `qb::redis::Reply<T>` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `qb::redis::Reply<T>` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp` |
+| `qb::redis::Reply<std::string>` | `06-modules/redis/14-acl-and-topology.cpp` |
 | `qb::redis::RetryPolicy` | `06-modules/redis/09-reliability.cpp` |
+| `qb::redis::geo_pos` | `06-modules/redis/13-geospatial.cpp` |
+| `qb::redis::message` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `qb::redis::scan<>` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `qb::redis::score_member` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 
@@ -1048,8 +1127,10 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::redis::tcp::client` | `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `qb::redis::tcp::cb_consumer` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
+| `qb::redis::tcp::client` | `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `qb::redis::tcp::co_consumer` | `06-modules/redis/04-pubsub.cpp` |
+| `qb::redis::tcp::pipeline` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 
 ## 2. By example
 
@@ -1077,6 +1158,8 @@ can disagree.
   - The first thing anyone needs in order to ship a server: SIGINT and SIGTERM arriving as ordinary events, an extra signal asked for by name and handled WITHOUT dying, draining in-flight work before the process leaves — and the exit-code contract, including the measured reason `hasError()` alone is not a health check.
 - **`01-actors/11-hot-path.cpp`** — 22 capabilities
   - The knobs qb is sold on and the corpus never showed: `send` versus `push`, a variable-length event written straight into the pipe with `getPipe` + `allocated_push`, an actor that opts out of the five default event registrations, the latency/affinity settings — each one measured with `tsc_ticks` rather than asserted.
+- **`01-actors/12-lockfree-bridge.cpp`** — 21 capabilities
+  - The other half of the foreign-thread boundary: 03-event-payloads bridged ONE outside thread with an spsc ring; this bridges MANY with qb::lockfree::mpsc::ringbuffer, shows why its three enqueue overloads are not interchangeable (one of them takes a lock and two do not), why the drain must be BOUNDED per loop turn, and what qb::lockfree::SpinLock is — the primitive underneath all of it, and the one you will most often be wrong to use.
 
 ### `02-io`
 
@@ -1200,6 +1283,8 @@ can disagree.
   - One server on two transports: HTTP/2 over TCP and HTTP/3 over QUIC behind a single dual-stack object, with Alt-Svc advertising the upgrade.
 - **`06-modules/http/14-streaming-and-cookies.cpp`** — 36 capabilities
   - The parts of an HTTP message the other thirteen programs never touch: chunked framing and the `Chunk` builder, cookies with their attributes and a `CookieJar`, a url-encoded `Form`, a multipart body you BUILD rather than parse, `Body::compress`, and the HTTP date helpers that make a conditional GET answer 304.
+- **`06-modules/http/15-http2-and-http3-clients.cpp`** — 29 capabilities
+  - The two clients this corpus documented and never used: qb::http2::Client and qb::http3::Client. The API is the SAME as http1::Client — make_client, connect, push_request, push_requests, get_stats — so the file is really about the one thing that differs, MULTIPLEXING, measured here against an HTTP/1.1 client doing identical work on the same event loop; plus the rules both clients enforce that http1 does not.
 - **`06-modules/pgsql/01-connect-and-query.cpp`** — 5 capabilities
   - The pgsql seam: a database as an ordinary object, connected with co_await, queried with co_await, and a result set you iterate by name.
 - **`06-modules/pgsql/02-parameters.cpp`** — 7 capabilities
@@ -1216,6 +1301,10 @@ can disagree.
   - PostgreSQL as an event bus: LISTEN/NOTIFY, a `notify_co_consumer` you `co_await`, a TRIGGER that publishes on every INSERT — and the four rules that decide whether that is a good idea (transactional delivery, no durability, an 8000-byte payload, and a subscription that does not survive a reconnect).
 - **`06-modules/pgsql/08-tls-and-limits.cpp`** — 16 capabilities
   - Encrypting a PostgreSQL connection — which is a STARTTLS negotiation on the same port, not a second port — what the default verification level really promises, and the two limits you set per connection and per transaction: connect_timeout and statement_timeout.
+- **`06-modules/pgsql/09-callbacks-and-await.cpp`** — 19 capabilities
+  - qbm-pgsql from code that is NOT a coroutine — which is the half of this client the other eight programs never show. The fluent chain (execute/then/success/error), the three `discard_*` handlers that exist so a callback is never simply omitted, `prepare_file()` for SQL that lives in a .sql file, and `await()`, the one blocking drain that turns a queue of callbacks back into straight-line code.
+- **`06-modules/pgsql/10-streaming-results.cpp`** — 17 capabilities
+  - The result set that does not fit: `query()` buffers every row before you see the first one, `query_stream()` walks a server-side CURSOR and hands you one batch at a time. What the row handed to your callback actually IS (a view, valid only during the call), what happens to the cursor when your callback throws, and the rule that decides whether two overlapping streams on one connection work or destroy each other.
 - **`06-modules/redis/01-connect.cpp`** — 5 capabilities
   - The redis seam: a client as an ordinary object, connected with co_await, and the string commands with the Reply<T> you check before you read.
 - **`06-modules/redis/02-data-types.cpp`** — 43 capabilities
@@ -1236,6 +1325,14 @@ can disagree.
   - What every other Redis example assumes away: that the server can be unreachable, can drop your connection, and can make you wait. Bounded connect retry, auto-reconnect, what happens to a command that was IN FLIGHT when the link died, blocking commands that park a coroutine without blocking the loop, INFO as a health probe — and TLS.
 - **`06-modules/redis/10-cache-actor.cpp`** — 8 capabilities
   - Redis inside an actor rather than beside one: the client is a member, the connect happens in a coroutine onInit, and every command is awaited from a handler that never blocks.
+- **`06-modules/redis/11-callbacks-and-consumers.cpp`** — 26 capabilities
+  - The half of qbm-redis the other ten programs never touch: the CALLBACK surface. Every command has a second overload whose FIRST argument is the handler, `await()` is the drain that replaces `co_await`, `tcp::pipeline` batches without a single coroutine, and `tcp::cb_consumer` is Pub/Sub for code that has no coroutine to park.
+- **`06-modules/redis/12-cardinality-and-bitmaps.cpp`** — 24 capabilities
+  - Two families for the same question — "how many DISTINCT things?" — and the trade between them. HyperLogLog answers it in a fixed 12 KB for any cardinality, approximately, and MERGES without double counting; a bitmap answers it exactly at one bit per id, and supports server-side set algebra (AND/OR/XOR/NOT) you would otherwise write a job for.
+- **`06-modules/redis/13-geospatial.cpp`** — 24 capabilities
+  - "What is near here?" answered by the server: GEOADD builds an index that is really a SORTED SET keyed on a 52-bit geohash, GEODIST and GEOPOS read it back (lossily — that is measured, not glossed), GEOSEARCH is the modern query and GEORADIUS the one it replaced, and the typed Reply's shape is what decides which query options you can actually use.
+- **`06-modules/redis/14-acl-and-topology.cpp`** — 25 capabilities
+  - The two questions you should ask a Redis you did not configure yourself, and the two command families that answer them: ACL — who am I, what may I run, and would THIS user be allowed to run THAT (which `ACL DRYRUN` answers without you becoming them) — and CLUSTER, which tells you whether the single-node assumptions in your code still hold.
 - **`06-modules/ws/01-chat-server.cpp`** — 14 capabilities
   - A WebSocket server and an HTTP server side by side: the HTTP one serves the page, the WebSocket one owns the sockets that the page upgrades onto.
 - **`06-modules/ws/02-chat-client.cpp`** — 10 capabilities

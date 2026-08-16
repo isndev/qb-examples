@@ -212,6 +212,13 @@ public:
                 cout << "Final counter value: " << *get_r.result() << std::endl;
             }
 
+            // Delete every key this program wrote. `onInit` only ever cleared `async:counter`,
+            // so `async:data:1..5` survived every run — the corpus rule is that a program leaves
+            // the server as it found it, and a key that outlives the run is server-side state
+            // charged to whoever looks at that database next.
+            auto removed = co_await _redis.del("async:counter", "async:data:1", "async:data:2", "async:data:3", "async:data:4", "async:data:5");
+            cout << "Deleted " << (removed.ok() ? removed.result() : -1) << " key(s) written by this run" << std::endl;
+
             cout << "RedisWorkerActor shutting down" << std::endl;
             kill();
         });
