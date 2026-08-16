@@ -93,13 +93,16 @@ add_subdirectory(07-applications)
 #     free to disagree with the first. `$<TARGET_FILE:...>` is the generator's own answer.
 #   * source path — the runner reads the `@expect` lines out of the source, and a wrong
 #     mapping would assert one program's output against another program's promise.
-#   * gated out vs. missing — an SSL-off build does not FAIL to create the nine `REQUIRES ssl`
+#   * gated out vs. missing — an SSL-off build does not FAIL to create the twelve `REQUIRES ssl`
 #     examples, it silently does not create them. A runner that only saw the survivors would
-#     report nine programs as absent, or (worse) not report them at all. The `gated` records
-#     make that a stated SKIP with the capability named. (Nine, measured: io 07/10, http 07/11/12,
-#     ws 01/02, and both tier-7 applications — 02-io/10 also declares `compression`, so it is the
-#     one entry whose `requires` column carries two tokens. 13-http3 is deliberately NOT gated —
-#     it guards itself with #ifdef QBM_HTTP_HAS_HTTP3.)
+#     report twelve programs as absent, or (worse) not report them at all. The `gated` records
+#     make that a stated SKIP with the capability named. (TWELVE, measured on this tree by
+#     grepping the tier CMakeLists: io 07/10, http 07/11/12/15, ws 01/02/03/04, and both tier-7
+#     applications — 02-io/10 also declares `compression`, so it is the one entry whose
+#     `requires` column carries two tokens. This roll call said "nine" and omitted ws 03/04 for
+#     a whole wave, which is the argument for counting it rather than remembering it.
+#     13-http3 is deliberately NOT gated — it guards itself with #ifdef QBM_HTTP_HAS_HTTP3, and
+#     so does the HTTP/3 third of http 15.)
 #
 # `file(GENERATE)` and not `file(WRITE)`: only the former expands `$<TARGET_FILE:>`, and only
 # the former re-runs when the target moves. It writes at GENERATE time, which is also why this

@@ -230,3 +230,99 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
 ---
 
 These examples provide a practical starting point for leveraging Redis with the QB C++ Actor Framework. 
+
+---
+
+### 11. Callbacks and Consumers (`11-callbacks-and-consumers.cpp`) — **new**
+
+* **Purpose**: every command in `qbm-redis` is generated TWICE — an awaiter overload and a
+  handler-taking one — and only the `co_await` half had ever been demonstrated. This file is the
+  other half and contains no `co_await` at all: the shape a GUI callback, a legacy worker loop or an
+  audio buffer handler is stuck with.
+* **API**: the callback-FIRST form (`set(cb, key, value)`, `del(cb, k1, k2, k3)`), the callback
+  `connect(handler, uri)`, `await()` as the drain, `pending_reply_count()`,
+  `qb::redis::tcp::pipeline` + `flush()`, and `qb::redis::tcp::cb_consumer` with
+  `on_message` / `on_error` / `on_disconnected`.
+* **Why the handler is argument ONE**: most of these commands are variadic, and a trailing-callback
+  convention cannot coexist with a trailing parameter pack. The overloads are separated by
+  `std::is_invocable_v<Func, Reply<T>&&>`, so a non-callable first argument fails to compile rather
+  than silently picking the wrong one.
+* **`await()` is the whole story**: a callback command appends one handler and writes bytes; nothing
+  runs until the loop turns. So N commands followed by one `await()` IS a pipeline — the program
+  prints that zero handlers had fired before the drain and that four replies then arrived in command
+  order. `tcp::pipeline` only gives that pattern a name and a `flush()`.
+* **A command the CLIENT refuses still calls you** — `del()` with no keys never reaches the server
+  and still invokes the handler with `ok() == false` and a reason, because a guard that returned
+  quietly would leave a callback unfired and a coroutine parked forever: a hang, not an error.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-callbacks-and-consumers`
+
+---
+
+### 12. Cardinality and Bitmaps (`12-cardinality-and-bitmaps.cpp`) — **new**
+
+* **Purpose**: two families answering the same question — "how many DISTINCT things?" — with
+  opposite trades, neither of which had a demonstrator.
+* **API**: `pfadd` / `pfcount` / `pfmerge`; `setbit` / `getbit` / `bitcount` / `bitop` / `bitpos` /
+  `bitfield`; plus `strlen` and `memory_usage`, which is how the claim below is MEASURED rather than
+  repeated.
+* **The measurement**: 5000 ids into both a HyperLogLog and an exact set. Measured on this tree —
+  `PFCOUNT` 5016 against `SCARD` 5000 (0.32% error, against a documented ~0.81% standard error), the
+  HLL 12304 bytes and bounded there for any cardinality, the exact set 247292 bytes and growing.
+* **`PFMERGE` is the feature, not `PFCOUNT`**: three daily uniques added together count every
+  returning visitor once per day they came, and nothing in the totals can undo it because they threw
+  the identities away. The union of the registers can. That is why you keep a per-day HLL rather than
+  a per-day integer.
+* **The bitmap's precondition is the catch**: the offset IS the id, so `BITCOUNT` is exact at one bit
+  per user only if your ids are dense integers — `SETBIT` at 4,000,000,000 allocates 500 MB for one
+  user. What you buy is `BITOP`: AND is retention, OR is reach, executed server-side, result is
+  another bitmap.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cardinality-and-bitmaps`
+
+---
+
+### 13. Geospatial (`13-geospatial.cpp`) — **new**
+
+* **Purpose**: "what is near here?", answered by the server. The whole `geo_commands.h` family had
+  zero demonstrators despite shipping with its own readme page.
+* **API**: `geoadd`, `geodist`, `geopos`, `geohash`, `geosearch`, `georadius`, `georadiusbymember`,
+  `qb::redis::GeoUnit`, `qb::redis::geo_pos` — plus `type`, `zcard` and `zscore`, which is the
+  point of section 1.
+* **A geo index IS a sorted set**: `GEOADD` interleaves the coordinates into one 52-bit geohash and
+  `ZADD`s it. `TYPE` reports `zset`, `ZCARD` counts the places, `ZSCORE` hands back the raw geohash,
+  `ZREM` removes one. Knowing that makes the costs and the precision predictable.
+* **`GEOPOS` does not return what you put in** — it returns the centre of the cell your point landed
+  in. Measured here at ~0.12 m east-west and ~0.09 m north-south, which is why the program prints ten
+  decimals: at the stream's default six the coordinate looks identical and the section argues against
+  itself. Fine for "what is near me", fatal for "is this the same point I stored".
+* **The typed reply is part of the API, and it fails quietly**: `geosearch` yields
+  `Reply<std::vector<std::string>>`, which is a flat list of names. Ask for `WITHDIST` and the server
+  answers with pairs — measured, the decode SUCCEEDS and silently drops the distances. `raw()` is the
+  escape hatch and is where they still are.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-geospatial`
+
+---
+
+### 14. ACL and Topology (`14-acl-and-topology.cpp`) — **new**
+
+* **Purpose**: the two families that ask the server about ITSELF rather than about your data, and
+  the two questions whose answers decide whether the rest of your code is correct.
+* **API**: `acl_whoami`, `acl_users`, `acl_list`, `acl_cat`, `acl_getuser`, `acl_setuser`,
+  `acl_dryrun`, `acl_deluser`, `acl_genpass`; `cluster_info`, `cluster_myid`, `cluster_keyslot`,
+  `cluster_shards`.
+* **`ACL DRYRUN` is the one to remember**: it asks "would this user be permitted to run this?" from
+  the current rules — without authenticating as them, without a second connection, and without
+  running the command. The three answers are distinguishable (`OK`, a sentence naming the KEY, a
+  sentence naming the COMMAND), which is what lets a CI test say WHICH rule was wrong instead of only
+  that something was.
+* **What it deliberately does not call**: `ACL SAVE` and `ACL LOAD` are server-wide and one of them
+  would overwrite the whole ACL table of a shared developer Redis — the same reasoning `07-scripting`
+  records for `SCRIPT FLUSH`. The one server-wide object it does create is its own temporary user,
+  deleted before the cluster section so an early exit there cannot leak it, and again at startup in
+  case a killed run left one.
+* **The cluster half is short, and MEASURED**: on Redis 8.10 with `cluster-enabled no`, EVERY
+  `CLUSTER` subcommand is refused with `ERR This instance has cluster support disabled` — including
+  `CLUSTER KEYSLOT`, which is a pure function of the key (CRC16 mod 16384) and has nothing
+  node-specific in it. So 26 of the 27 cannot be demonstrated against a plain `redis-server` and the
+  program names them rather than faking them; it asks the one question that is always answerable and
+  says what each answer means for `MULTI`, `MGET`, Lua `KEYS` and hash tags.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-acl-and-topology`

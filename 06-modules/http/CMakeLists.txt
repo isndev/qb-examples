@@ -35,6 +35,14 @@
 #     12-http2.cpp               ->  qb-example-modules-http-http2
 #     13-http3.cpp               ->  qb-example-modules-http-http3
 #     14-streaming-and-cookies.cpp -> qb-example-modules-http-streaming-and-cookies
+#     15-http2-and-http3-clients.cpp -> qb-example-modules-http-http2-and-http3-clients
+#
+# 15 closes the one gap this group had: qb::http2::Client and qb::http3::Client were documented and
+# had ZERO occurrences anywhere in the corpus — 12 and 13 are pure SERVER programs, and the only
+# client examples (10, 14) are HTTP/1.1. It is gated `REQUIRES ssl` for the same reason 12 is (h2 is
+# ALPN-only, there is no h2c path), and its HTTP/3 third guards itself with #ifdef
+# QBM_HTTP_HAS_HTTP3 exactly as 13 does, because HTTP/3 also needs nghttp3 and the REQUIRES
+# vocabulary cannot express that.
 #
 # Examples that cannot even COMPILE without OpenSSL are gated out of an SSL-off build
 # instead of breaking it (REQUIRES — same vocabulary and same resolver as the test suite's):
@@ -75,6 +83,7 @@ qb_example(SOURCE 11-https.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_htt
 qb_example(SOURCE 12-http2.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_http2)
 qb_example(SOURCE 13-http3.cpp DEPENDS qbm-http TARGET_VAR _tgt_http3)
 qb_example(SOURCE 14-streaming-and-cookies.cpp DEPENDS qbm-http)
+qb_example(SOURCE 15-http2-and-http3-clients.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_h2h3_clients)
 
 # Four examples read assets at runtime: the static site (08), the HTTP/2 site (12), and the
 # self-signed dev TLS certificate under resources/ssl (11, 12, and the TLS-only HTTP/3
@@ -86,7 +95,7 @@ qb_example(SOURCE 14-streaming-and-cookies.cpp DEPENDS qbm-http)
 # its variable UNSET, so this list holds only targets that were really created — which is
 # also what keeps the helper's FATAL_ERROR on a genuinely unknown name worth having.
 set(_qb_http_resource_targets)
-foreach (_v _tgt_static _tgt_https _tgt_http2 _tgt_http3)
+foreach (_v _tgt_static _tgt_https _tgt_http2 _tgt_http3 _tgt_h2h3_clients)
     if (DEFINED ${_v})
         list(APPEND _qb_http_resource_targets "${${_v}}")
     endif ()

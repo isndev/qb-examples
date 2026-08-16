@@ -20,6 +20,8 @@ PostgreSQL client integrated with the QB Actor Framework. All five use the **cor
     - [`06-typed-rows.cpp`](#6-typed-rows-06-typed-rowscpp--new)
     - [`07-listen-notify.cpp`](#7-listen--notify-07-listen-notifycpp--new)
     - [`08-tls-and-limits.cpp`](#8-tls-and-limits-08-tls-and-limitscpp--new)
+    - [`09-callbacks-and-await.cpp`](#9-callbacks-and-await-09-callbacks-and-awaitcpp--new)
+    - [`10-streaming-results.cpp`](#10-streaming-results-10-streaming-resultscpp--new)
 
 ## Overview
 
@@ -323,3 +325,55 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   operator's decision (`ssl = on`), so sections 1 and 2 print what they found in either direction. The
   proof is `pg_stat_ssl` — the server's own view of the connection, not the client's opinion.
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-tls-and-limits`
+
+---
+
+### 9. Callbacks and Await (`09-callbacks-and-await.cpp`) — **new**
+
+* **Purpose**: `qbm-pgsql` has TWO complete APIs over one connection — every operation is declared
+  twice, once returning `pg_reply_awaiter<T>` and once taking callbacks — and only the `co_await`
+  half had ever been demonstrated. This file is the other half, and it contains no `co_await` at
+  all: it is what you write from a `main()`, a migration tool, a test fixture, or any thread that is
+  not running an event loop.
+* **API**: `execute(sql, on_success, on_error)`, `.then()` / `.success()` / `.error()`,
+  `qb::pg::discard_query` / `discard_error` / `discard_prepare`, `prepare()`, `prepare_file()`,
+  `execute(name, qb::pg::params{...}, ...)`, `Transaction::await()` and its free-function form
+  `qb::pg::await(db)`, plus the one bridge synchronous code needs — `qb::io::async::run_sync(db.connect(...))`,
+  because `connect` is the single operation with no callback overload.
+* **The chain is a QUEUE, not a sequence of calls**: `.then()` appends a node that fires only if the
+  step before it SUCCEEDED, `.error()` one that fires only if it failed, and neither runs anything.
+  `await()` turns the loop until that queue is empty. So the whole chain is built for free and
+  executes at exactly one point — which is what makes a batch of statements cost one round trip's
+  waiting instead of one per statement. The program prints that nothing had run before the drain.
+* **Why there are THREE discards and not one**: the callback overloads take the handler by value and
+  call it unconditionally, with no per-reply branch, so a handler is never absent — and `prepare()`
+  wants `(Transaction&, PreparedQuery const&)` where `execute()` wants `(Transaction&, results)`.
+  Reaching for `nullptr` is a compile error, which is the correct outcome.
+* **`prepare_file()`** reads `resources/sql/top-scores.sql` — staged next to the binary by
+  `qb_stage_example_resources()` — so the statement is reviewable, diffable and lintable AS SQL
+  instead of surviving as an escaped C++ literal. The parameter OIDs still come from the call site.
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-callbacks-and-await`
+
+---
+
+### 10. Streaming Results (`10-streaming-results.cpp`) — **new**
+
+* **Purpose**: the result set that does not fit. `co_await db.query("SELECT * FROM huge")` reads
+  every `DataRow` into memory before resuming you; `query_stream()` declares a server-side `CURSOR`
+  and `FETCH`es one batch at a time, so client memory is `batch_size` rows regardless of how many
+  the query matches. `LIMIT`/`OFFSET` paging is not the alternative — `OFFSET n` makes the server
+  walk and discard n rows every time, so a paged scan is quadratic.
+* **API**: `query_stream(sql, batch_size, on_row)` yielding `qb::pg::Reply<void>`, beside `query()`,
+  `begin()` / `commit()` / `in_transaction()` and `qb::io::async::when_all`.
+* **The row is a VIEW**: it points INTO the batch buffer, which the next `FETCH` overwrites. It is
+  valid for the duration of the call and not one instruction longer — copy out a value (`as<T>`
+  copies), never keep the row, a `field`, or a `string_view` taken from one.
+* **Cursors need a transaction, and PostgreSQL allows one per session.** Inside a transaction you
+  opened, `query_stream` declares the cursor there and closes only the cursor; outside one it opens
+  its own `BEGIN`…`COMMIT`. Two streams overlapping on one connection therefore SHARE that block —
+  the first opens it, the last to finish ends it, and it is rolled back if either failed. Each gets
+  its own cursor NAME, which is what stops them from closing each other's; the program runs two at
+  once through `when_all` and checks both answers, because without that they would both read zero.
+* **Failure is a Reply, not an exception** — the exception path belongs to YOUR callback, and one
+  that throws closes the cursor, rethrows, and leaves the connection usable.
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-streaming-results`

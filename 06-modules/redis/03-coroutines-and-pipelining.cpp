@@ -60,6 +60,11 @@ example_simple_get_set() {
     } else {
         std::cerr << "GET failed or key not found" << std::endl;
     }
+
+    // Example 3 already deleted its own keys and these two did not, which is the corpus rule
+    // ("every key a program writes is deleted on the way out") broken in the one file nobody
+    // re-read after writing it. Measured: `user:1:name` and `user:123` survived every run.
+    (void) (co_await redis.del("user:1:name"));
 }
 
 /**
@@ -94,6 +99,9 @@ example_sequential_operations() {
         std::cout << "  Email: " << email.result().value_or("N/A") << std::endl;
         std::cout << "  Age:   " << age.result().value_or("N/A") << std::endl;
     }
+
+    // As in example 1: this hash used to be left on the server after every run.
+    (void) (co_await redis.del("user:123"));
 }
 
 /**

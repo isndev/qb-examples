@@ -31,11 +31,20 @@
 #     01-actors/05-lifecycle.cpp            ->  qb-example-actors-lifecycle
 #     01-actors/06-doing-things-later.cpp   ->  qb-example-actors-doing-things-later
 #     01-actors/09-state-machine.cpp        ->  qb-example-actors-state-machine
+#     01-actors/12-lockfree-bridge.cpp      ->  qb-example-actors-lockfree-bridge
 #
-# THE GAPS IN THE NUMBERING ARE DELIBERATE and they are the tier's own to-do list:
-# 03 event-payloads, 07 service-actor, 08 child-actors, 10 signals-and-shutdown and
-# 11 hot-path have no program yet. Numbering densely now would renumber six files and
-# their citations the day one is written; a hole costs nothing and names what is missing.
+# The numbering is DENSE now: this block used to record 03, 07, 08, 10 and 11 as the tier's
+# to-do list and all five have since been written, so the note is kept only as the reason the
+# holes were left rather than closed by renumbering — a hole costs nothing and names what is
+# missing, while renumbering moves every citation into the tier on the same day.
+#
+# 12-lockfree-bridge is the tier's boundary case and belongs HERE rather than in 02-io: its
+# subject is a thread that is NOT a VirtualCore handing work to an actor, which is a fact about
+# the actor model and not about I/O. 03-event-payloads already owns the single-producer half of
+# exactly that problem (`qb::lockfree::spsc::ringbuffer` + an ICallback drain); 12 is the
+# multi-producer half, plus the SpinLock the mpsc ring is built out of. Tier 02 is sockets,
+# timers, files, framing and TLS — a lock-free queue is none of those, and filing it there would
+# be the "which library does this link" axis the tree's design explicitly rejects.
 #
 # DEPENDS is qb-core alone. qb-core links qb-io transitively — an actor's coroutine
 # sleep is qb-io's — but naming qb-io here would say this tier teaches it, and it does
@@ -61,3 +70,4 @@ qb_example(SOURCE 08-child-actors.cpp DEPENDS qb-core)
 qb_example(SOURCE 09-state-machine.cpp DEPENDS qb-core)
 qb_example(SOURCE 10-signals-and-shutdown.cpp DEPENDS qb-core)
 qb_example(SOURCE 11-hot-path.cpp DEPENDS qb-core)
+qb_example(SOURCE 12-lockfree-bridge.cpp DEPENDS qb-core)

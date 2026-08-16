@@ -28,8 +28,25 @@
 #     08-sorted-sets-and-ttl.cpp         ->  qb-example-modules-redis-sorted-sets-and-ttl
 #     09-reliability.cpp                 ->  qb-example-modules-redis-reliability
 #     10-cache-actor.cpp                 ->  qb-example-modules-redis-cache-actor
+#     11-callbacks-and-consumers.cpp     ->  qb-example-modules-redis-callbacks-and-consumers
+#     12-cardinality-and-bitmaps.cpp     ->  qb-example-modules-redis-cardinality-and-bitmaps
+#     13-geospatial.cpp                  ->  qb-example-modules-redis-geospatial
+#     14-acl-and-topology.cpp            ->  qb-example-modules-redis-acl-and-topology
 #
-# All ten are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
+# 11..14 close the four command families that shipped, were tested, had a readme page and had no
+# demonstrator anywhere: the CALLBACK surface (every command is generated twice, and only the
+# co_await half was ever shown), hyperloglog + bitmap, geo, and acl + cluster. They are grouped by
+# the PROBLEM each solves rather than one file per family — cardinality and bitmaps answer the same
+# question ("how many distinct?") with opposite trades, and acl and cluster are the two families
+# that ask the server about ITSELF rather than about your data.
+#
+# 14-acl-and-topology is deliberately short on the cluster half, and its header says why:
+# MEASURED on Redis 8.10 with `cluster-enabled no`, every CLUSTER subcommand is refused outright —
+# including CLUSTER KEYSLOT, which is a pure function of the key. 26 of the 27 therefore cannot be
+# demonstrated by a corpus that must run against a plain redis-server, and the program names them
+# rather than faking them.
+#
+# All fourteen are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
 # which had no demonstrator anywhere; those originals have since been RETIRED, and 02-data-types
 # picked up the five commands (HKEYS, HVALS, LINDEX, LSET, BLPOP) the merge had otherwise dropped.
 # 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
@@ -60,3 +77,7 @@ qb_example(SOURCE 07-scripting.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 08-sorted-sets-and-ttl.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 09-reliability.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 11-callbacks-and-consumers.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 12-cardinality-and-bitmaps.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 13-geospatial.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 14-acl-and-topology.cpp DEPENDS qbm-redis)
