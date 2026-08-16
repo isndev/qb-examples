@@ -6,7 +6,8 @@
  *          before main() runs — and a fixed-capacity rolling window of measurements taken with
  *          the raw CPU counter, so a hot loop can report its own latency without allocating.
  * @demonstrates qb::io::log::init, qb::io::log::setLevel, qb::io::log::Level, QB_LOG_DEBUG,
- *               QB_LOG_VERB, QB_LOG_INFO, QB_LOG_WARN, QB_LOG_CRIT, qb::ring_buffer,
+ *               QB_LOG_VERB, QB_LOG_INFO, QB_LOG_WARN, QB_LOG_CRIT, qb::ring_buffer, push_back,
+ *               size, capacity, full,
  *               qb::tsc_ticks, qb::CPU::Architecture, qb::CPU::LogicalCores, qb::CPU::PhysicalCores,
  *               qb::CPU::ClockSpeed, qb::CPU::HyperThreading, qb::CPU::ThreadPinningSupported,
  *               qb::io::async::init, qb::io::async::run_until, qb::io::async::with_timeout,
@@ -93,12 +94,14 @@ section(const char *title) {
     qb::io::cout() << "\n--- " << title << " ---\n";
 }
 
-// `ring_buffer` publishes `capacity()`, `empty()` and `full()` but no `size()`, so the live count
-// comes from its forward iterators. Cheap at this capacity, and worth knowing before you reach for
-// it in a hot path.
+// `ring_buffer` publishes `size()` alongside `capacity()`, `empty()` and `full()`, so the live
+// count is O(1). It did NOT until 3.0: `size_` was a private member that `empty()` and `full()`
+// both read and nothing exposed, so this function walked the forward iterators instead — O(n),
+// and the reason worth writing down is that `capacity()` was public while the occupancy it bounds
+// was not, which reads as a deliberate omission and is not one.
 std::size_t
 live_count(const LatencyWindow &w) {
-    return static_cast<std::size_t>(std::distance(w.cbegin(), w.cend()));
+    return w.size();
 }
 
 // Percentiles over the window. Copied out and sorted because the ring is in arrival order and a

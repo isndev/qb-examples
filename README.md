@@ -5,6 +5,10 @@ which library a program links. The filesystem sorts, so the reading order is vis
 opening anything; the topic is in the filename, so the tree is still greppable for someone who
 arrived with a task rather than a curriculum.
 
+
+> **Which example demonstrates what?** [Capability index](CAPABILITY-INDEX.md) is generated from every program's
+> `@demonstrates` block and gated byte-exact, so it cannot drift from the corpus it describes.
+
 An example's CMake **target** and **binary** are *derived* from its path
 (`examples/cmake/qbExample.cmake`) and never written by hand:
 
