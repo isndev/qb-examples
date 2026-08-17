@@ -114,7 +114,10 @@ h2_url(std::string const &path = "/") {
     return "https://127.0.0.1:" + std::to_string(H2_PORT) + path;
 }
 
-std::string
+// Every call site sits inside `#ifdef QBM_HTTP_HAS_HTTP3`, so an HTTP/3-less build leaves this
+// unused (gcc -Wunused-function). Marked rather than moved under the same #ifdef: the three URL
+// helpers are one trio, and splitting the odd one out reads worse than saying why it may be idle.
+[[maybe_unused]] std::string
 h3_url(std::string const &path = "/") {
     return "https://127.0.0.1:" + std::to_string(H3_PORT) + path;
 }
