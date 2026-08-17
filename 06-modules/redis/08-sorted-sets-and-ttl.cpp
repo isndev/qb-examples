@@ -129,7 +129,10 @@ run_sorted_sets_and_ttl(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     // 1. THE LEADERBOARD
     // -----------------------------------------------------------------------------------
-    auto added = co_await redis.zadd(K_BOARD, {{420.0, "ada"}, {310.0, "grace"}, {615.0, "alan"}, {180.0, "linus"}, {520.0, "edsger"}});
+    // Named, not built inside the co_await: a temporary in the operand must be promoted into
+    // the coroutine frame to survive the suspension.
+    const std::vector<qb::redis::score_member> board{{420.0, "ada"}, {310.0, "grace"}, {615.0, "alan"}, {180.0, "linus"}, {520.0, "edsger"}};
+    auto                                       added = co_await redis.zadd(K_BOARD, board);
 
     // ZINCRBY is the update: it returns the NEW score, and it creates the member if it is not
     // there — so "add points" is one command whether or not the player has played before.

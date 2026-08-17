@@ -247,10 +247,11 @@ run_cardinality(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     // 4. BITOP — set algebra, server-side.
     // -----------------------------------------------------------------------------------
-    auto and_len  = co_await redis.bitop("AND", K_BOTH, std::vector<std::string>{K_BITS_A, K_BITS_B});
-    auto or_len   = co_await redis.bitop("OR", K_EITHER, std::vector<std::string>{K_BITS_A, K_BITS_B});
-    auto retained = co_await redis.bitcount(K_BOTH);
-    auto reach    = co_await redis.bitcount(K_EITHER);
+    const std::vector<std::string> both_keys{K_BITS_A, K_BITS_B}; // named: it must outlive the suspension
+    auto                           and_len  = co_await redis.bitop("AND", K_BOTH, both_keys);
+    auto                           or_len   = co_await redis.bitop("OR", K_EITHER, both_keys);
+    auto                           retained = co_await redis.bitcount(K_BOTH);
+    auto                           reach    = co_await redis.bitcount(K_EITHER);
 
     const bool bitop_ok = and_len.ok() && or_len.ok() && retained.ok() && retained.result() == 3 && reach.ok() && reach.result() == 7;
 
@@ -281,10 +282,11 @@ run_cardinality(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     // Two unsigned 8-bit counters at positions #0 and #1 of the same key. OVERFLOW SAT clamps
     // instead of wrapping, which is what a saturating rate counter wants.
-    auto fields =
-        co_await redis.bitfield(K_FIELDS, std::vector<std::string>{"INCRBY", "u8", "#0", "10", "INCRBY", "u8", "#1", "3", "GET", "u8", "#0"});
-    auto saturated = co_await redis.bitfield(K_FIELDS, std::vector<std::string>{"OVERFLOW", "SAT", "INCRBY", "u8", "#0", "250"});
-    auto packed    = co_await redis.strlen(K_FIELDS);
+    const std::vector<std::string> two_counters{"INCRBY", "u8", "#0", "10", "INCRBY", "u8", "#1", "3", "GET", "u8", "#0"};
+    const std::vector<std::string> saturating{"OVERFLOW", "SAT", "INCRBY", "u8", "#0", "250"};
+    auto                           fields    = co_await redis.bitfield(K_FIELDS, two_counters);
+    auto                           saturated = co_await redis.bitfield(K_FIELDS, saturating);
+    auto                           packed    = co_await redis.strlen(K_FIELDS);
 
     const bool field_ok = fields.ok() && fields.result().size() == 3 && fields.result()[2].value_or(-1) == 10 && saturated.ok()
                           && saturated.result().size() == 1 && saturated.result()[0].value_or(-1) == 255 && packed.ok() && packed.result() == 2;

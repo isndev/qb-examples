@@ -289,7 +289,12 @@ demo_combine() {
 
     // `zip` walks two streams in lockstep and STOPS at the shorter one, evaluating left first
     // so a slow right-hand stream is never pulled after the left has ended.
-    auto pairs = co_await zip(range_stream(1, 5), async_stream<std::string>::from_vector(std::vector<std::string>{"a", "b"})).collect();
+    // The right-hand stream's source vector is NAMED rather than built inside the co_await:
+    // a temporary materialised in the operand has to be promoted into the coroutine frame to
+    // outlive the suspension, which is the same reason a spawned lambda must be stored first.
+    const std::vector<std::string> letters{"a", "b"};
+    auto                           right = async_stream<std::string>::from_vector(letters);
+    auto                           pairs = co_await zip(range_stream(1, 5), std::move(right)).collect();
 
     // `merge_streams` interleaves round-robin and ends when every input has ended.
     std::vector<async_stream<int>> parts;

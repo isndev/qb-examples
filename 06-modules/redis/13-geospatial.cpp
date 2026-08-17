@@ -227,9 +227,13 @@ run_geospatial(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     // No options: the reply is a flat array of names, which is exactly the declared
     // Reply<vector<string>>. ASC + COUNT keep it that shape while ordering and bounding it.
-    auto near_member = co_await redis.geosearch(K_GEO, "eiffel-tower", 3.0, qb::redis::GeoUnit::KM, std::vector<std::string>{"ASC"});
-    auto nearest_three =
-        co_await redis.georadius(K_GEO, 2.3376, 48.8606, 5.0, qb::redis::GeoUnit::KM, std::vector<std::string>{"ASC", "COUNT", "3"});
+    // Both option lists are NAMED. A container built inside a co_await operand has to be
+    // promoted into the coroutine frame to outlive the suspension; only the second of these
+    // two happened to trip gcc-14 over it, which is why the first is worth fixing too.
+    const std::vector<std::string> asc_only{"ASC"};
+    const std::vector<std::string> asc_top3{"ASC", "COUNT", "3"};
+    auto                           near_member   = co_await redis.geosearch(K_GEO, "eiffel-tower", 3.0, qb::redis::GeoUnit::KM, asc_only);
+    auto                           nearest_three = co_await redis.georadius(K_GEO, 2.3376, 48.8606, 5.0, qb::redis::GeoUnit::KM, asc_top3);
 
     const bool search_ok = near_member.ok() && !near_member.result().empty() && near_member.result().front() == "eiffel-tower"
                            && nearest_three.ok() && nearest_three.result().size() == 3;
@@ -250,7 +254,8 @@ run_geospatial(bool &running, bool &ok) {
     // Reply<vector<string>> is not that shape, so this MEASURES what the client does with it
     // rather than asserting an outcome — and shows raw(), which sees the reply as it arrived.
     // -----------------------------------------------------------------------------------
-    auto with_dist = co_await redis.geosearch(K_GEO, "eiffel-tower", 3.0, qb::redis::GeoUnit::KM, std::vector<std::string>{"WITHDIST", "ASC"});
+    const std::vector<std::string> withdist_asc{"WITHDIST", "ASC"}; // named: it must outlive the suspension
+    auto                           with_dist = co_await redis.geosearch(K_GEO, "eiffel-tower", 3.0, qb::redis::GeoUnit::KM, withdist_asc);
 
     std::size_t raw_entries = 0;
     std::string first_pair;
