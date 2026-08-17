@@ -55,7 +55,11 @@ qb_example(SOURCE 04-types.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 05-errors.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 06-typed-rows.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 07-listen-notify.cpp DEPENDS qbm-pgsql)
-qb_example(SOURCE 08-tls-and-limits.cpp DEPENDS qbm-pgsql)
+# 08 names `qb::pg::tcp::ssl::database`, a type that does not exist in an SSL-off build.
+# `REQUIRES ssl` means the target is NOT CREATED there — without it the source is compiled
+# anyway and the `feature-gates` preset fails to build on every platform (measured: MSVC
+# C3083, gcc 14.2 "'qb::pg::tcp::ssl' has not been declared").
+qb_example(SOURCE 08-tls-and-limits.cpp DEPENDS qbm-pgsql REQUIRES ssl)
 qb_example(SOURCE 09-callbacks-and-await.cpp DEPENDS qbm-pgsql TARGET_VAR _tgt_callbacks)
 qb_example(SOURCE 10-streaming-results.cpp DEPENDS qbm-pgsql)
 
