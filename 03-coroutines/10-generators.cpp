@@ -14,13 +14,13 @@
  *               qb::io::async::task<void>, qb::io::async::sleep, qb::io::async::run_sync
  * @prerequisites 03-coroutines/01-first-coroutine, 03-coroutines/09-channels
  * @expect "[generator] range(1, 6) yielded 5 values"
- * @expect "[generator] the source produced 4 values to satisfy take(gen, 3)"
+ * @expect "[generator] the source produced exactly 3 values to satisfy take(gen, 3)"
  * @expect "[generator] has_next()/next() is the same walk, spelled by hand"
  * @expect "[generator] concat / skip / repeat_n / from_range compose"
  * @expect "[async_generator] a co_await BETWEEN yields is the whole difference"
  * @expect "[async_generator] ag_take(gen, 3) pulled exactly 3"
  * @expect "[async_generator] ag_map / ag_filter / ag_reduce over one source"
- * @expect "=== generators complete: 4 pulled for a sync take of 3, 3 for an async one ==="
+ * @expect "=== generators complete: 3 pulled for a sync take of 3, 3 for an async one ==="
  *
  * WHAT A GENERATOR IS FOR
  * -----------------------
@@ -43,15 +43,17 @@
  * Reach for `generator` for a pure sequence (a parser's tokens, a range, a decoded frame list)
  * and for `async_generator` the moment producing the NEXT value requires waiting.
  *
- * ONE MEASURED SURPRISE, AND IT IS NOT A TYPO
- * -------------------------------------------
- * `take(gen, 3)` makes its source produce FOUR values, not three. It is written as a
- * range-for that pulls a value and then decides whether it is past the limit, so the fourth is
- * fetched and discarded. For `iota` that costs nothing. For a generator whose body consumes a
- * row, a token or a byte from a socket, the fourth pull is a side effect nobody asked for —
- * so this program counts, and prints the count. The async `ag_take` does NOT do this: it
- * checks the count before pulling. Both numbers are measured below and the summary is gated on
- * them.
+ * ONE MEASUREMENT WORTH KEEPING
+ * ------------------------------
+ * `take(gen, n)` pulls exactly `n` values from its source — never `n + 1` — and so does the
+ * async `ag_take`. That agreement is not free, and this program measures it rather than
+ * asserting it: an earlier `take()` was a range-for that pulled a value and *then* decided it
+ * was past the limit, so a `take(gen, 3)` fetched a fourth value and discarded it. Over
+ * `iota` that costs nothing, which is exactly why it survived; over a generator whose body
+ * consumes a row, a token or a byte from a socket, that pull is a side effect nobody asked
+ * for. Writing this program is what surfaced it. Both counts are measured below and the
+ * summary is gated on them, so the two halves of the pair can never drift apart again
+ * unnoticed.
  *
  * Build:
  *   cmake --preset release
@@ -120,22 +122,20 @@ demo_generator(int &sync_pulled) {
 
     // Now the measurement. `iota(1)` and `counting_source` are both INFINITE; taking three
     // from them terminates because the consumer stops asking, which is laziness working.
-    // NOTE the `auto three =` line. `collect_to_vector` is the one helper in this family that
-    // takes its generator by NON-CONST LVALUE REFERENCE rather than by value, so
-    // `collect_to_vector(take(...))` does not compile — the temporary has nothing to bind to.
-    // Every other combinator here (take, skip, concat, from_range) takes its source by value.
+    // The whole pipeline is one expression: every combinator in this family (take, skip,
+    // concat, from_range) takes its source BY VALUE, and `collect_to_vector` accepts a
+    // temporary too, so a chain needs no named intermediate.
     auto produced = std::make_shared<int>(0);
-    auto three    = take(counting_source(produced), 3);
-    auto first3   = collect_to_vector(three);
+    auto first3   = collect_to_vector(take(counting_source(produced), 3));
     sync_pulled   = *produced;
 
     qb::io::cout() << "    take(gen, 3) handed back " << first3.size() << " values and its source produced " << *produced << "\n";
-    if (*produced == 4 && first3.size() == 3)
-        qb::io::cout() << "[generator] the source produced 4 values to satisfy take(gen, 3) — take() pulls, THEN "
-                          "decides it is past the limit, so the fourth pull happens and is discarded\n";
+    if (*produced == 3 && first3.size() == 3)
+        qb::io::cout() << "[generator] the source produced exactly 3 values to satisfy take(gen, 3) — take() tests "
+                          "the limit BEFORE it resumes the source, so there is no discarded fourth pull\n";
     else
         qb::io::cout() << "[generator] UNEXPECTED: " << *produced << " produced for a take of 3\n";
-    qb::io::cout() << "    that extra pull is free for iota(); it is not free for a source whose body "
+    qb::io::cout() << "    an over-pull would be free for iota(); it would not be free for a source whose body "
                       "consumes a row, a token or a byte\n";
 
     // `has_next()` / `next()` is the same walk written by hand, for when a range-for does not
@@ -185,14 +185,14 @@ demo_async_generator(std::shared_ptr<int> async_pulled) {
     qb::io::cout() << "[async_generator] a co_await BETWEEN yields is the whole difference: got " << got << "after three pulls, each "
                    << "of which cost a 5 ms wait that a synchronous generator could not have taken\n";
 
-    // ag_take is the async twin of take() — and it does NOT over-pull. It compares the count
-    // BEFORE awaiting the next value, so a source with side effects sees exactly n.
+    // ag_take is the async twin of take(), and it compares the count BEFORE awaiting the next
+    // value, so a source with side effects sees exactly n. The synchronous take() agrees.
     auto strict   = std::make_shared<int>(0);
     auto taken    = co_await ag_collect(ag_take(async_counting_source(strict), 3));
     *async_pulled = *strict;
     if (*strict == 3 && taken.size() == 3)
         qb::io::cout() << "[async_generator] ag_take(gen, 3) pulled exactly 3 — the async twin compares the count "
-                          "BEFORE it pulls, so it has none of the synchronous take()'s extra fetch\n";
+                          "BEFORE it pulls, and the synchronous take() now does the same\n";
     else
         qb::io::cout() << "[async_generator] UNEXPECTED: ag_take pulled " << *strict << " for 3 values\n";
 
@@ -229,13 +229,14 @@ main() {
     auto async_pulled = std::make_shared<int>(-1);
     run_sync(demo_async_generator(async_pulled));
 
-    // Gated on the two measured pull counts rather than on reaching the last line. They are
-    // different on purpose, and if they ever became the same the sentence above would be wrong.
+    // Gated on the two measured pull counts rather than on reaching the last line. They must
+    // AGREE: two spellings of "take n" that consume different amounts of their source is the
+    // defect this program was written to measure, and the gate is what keeps them together.
     qb::io::cout() << "    measured: a synchronous take(gen, 3) pulled " << sync_pulled << ", an ag_take(gen, 3) pulled " << *async_pulled
                    << "\n";
-    if (sync_pulled == 4 && *async_pulled == 3)
-        qb::io::cout() << "=== generators complete: 4 pulled for a sync take of 3, 3 for an async one ===\n";
+    if (sync_pulled == 3 && *async_pulled == 3)
+        qb::io::cout() << "=== generators complete: 3 pulled for a sync take of 3, 3 for an async one ===\n";
     else
-        qb::io::cout() << "=== generators INCONCLUSIVE: the pull counts are not 4 and 3 ===\n";
+        qb::io::cout() << "=== generators INCONCLUSIVE: the pull counts are not 3 and 3 ===\n";
     return 0;
 }

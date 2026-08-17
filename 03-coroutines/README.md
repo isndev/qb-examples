@@ -60,7 +60,7 @@ a primitive lives:
 Each one is gated on a **measurement**, not on reaching its last line: 07 counts which workers a
 `cancel_all()` actually reached (14 of 17), 08 measures peak concurrency (12, then 3, from the same
 12 items), 09 counts sends completed with no consumer (3 through a capacity-3 channel, 0 through a
-rendezvous), 10 counts source pulls (4 for a synchronous `take(gen, 3)`, 3 for `ag_take`), 11
+rendezvous), 10 counts source pulls (3 for a synchronous `take(gen, 3)`, 3 for `ag_take`), 11
 counts map calls (8, then 3), 12 prints a lost update (balance 10, then 50), 13 counts service
 calls (5 from five callers, 1 through a `shared_task`), 14 counts what it bridged.
 
@@ -191,9 +191,10 @@ cmake --build --preset release --target qb-example-coroutines-combinators
 * **QB Features**: `generator<T>` (`co_await` inside one is a compile error — `await_transform` is
   deleted, which is exactly why `async_generator<T>` exists), `range`/`iota`/`take`/`skip`/
   `concat`/`repeat_n`/`from_range`/`collect_to_vector`, `has_next`/`next`, and the `ag_*` family.
-* One measured surprise: `take(gen, 3)` makes its source produce **4** values, because it pulls and
-  then decides it is past the limit. The async `ag_take` compares first and pulls **3**. Free for
-  `iota`; not free for a source whose body consumes a row or a byte.
+* One measurement worth keeping: `take(gen, 3)` and `ag_take(gen, 3)` each pull exactly **3**, and
+  the program is gated on the two counts AGREEING. They did not always: `take` used to pull and
+  then decide it was past the limit, fetching a fourth value and discarding it — free for `iota`,
+  not free for a source whose body consumes a row or a byte. Writing this example is what found it.
 
 ### `11-async-streams.cpp`
 
