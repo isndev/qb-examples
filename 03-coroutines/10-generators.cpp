@@ -9,8 +9,8 @@
  *               qb::io::async::range, qb::io::async::iota, qb::io::async::take,
  *               qb::io::async::skip, qb::io::async::concat, qb::io::async::repeat_n,
  *               qb::io::async::from_range, qb::io::async::collect_to_vector, has_next, next,
- *               qb::io::async::ag_collect, qb::io::async::ag_map, qb::io::async::ag_filter,
- *               qb::io::async::ag_reduce, qb::io::async::ag_take, qb::io::async::ag_for_each,
+ *               qb::io::async::map_to_vector, qb::io::async::filter_to_vector,
+ *               qb::io::async::reduce, qb::io::async::for_each,
  *               qb::io::async::task<void>, qb::io::async::sleep, qb::io::async::run_sync
  * @prerequisites 03-coroutines/01-first-coroutine, 03-coroutines/09-channels
  * @expect "[generator] range(1, 6) yielded 5 values"
@@ -18,8 +18,8 @@
  * @expect "[generator] has_next()/next() is the same walk, spelled by hand"
  * @expect "[generator] concat / skip / repeat_n / from_range compose"
  * @expect "[async_generator] a co_await BETWEEN yields is the whole difference"
- * @expect "[async_generator] ag_take(gen, 3) pulled exactly 3"
- * @expect "[async_generator] ag_map / ag_filter / ag_reduce over one source"
+ * @expect "[async_generator] take(gen, 3) pulled exactly 3"
+ * @expect "[async_generator] map_to_vector / filter_to_vector / reduce over one source"
  * @expect "=== generators complete: 3 pulled for a sync take of 3, 3 for an async one ==="
  *
  * WHAT A GENERATOR IS FOR
@@ -46,7 +46,7 @@
  * ONE MEASUREMENT WORTH KEEPING
  * ------------------------------
  * `take(gen, n)` pulls exactly `n` values from its source — never `n + 1` — and so does the
- * async `ag_take`. That agreement is not free, and this program measures it rather than
+ * async `take`. That agreement is not free, and this program measures it rather than
  * asserting it: an earlier `take()` was a range-for that pulled a value and *then* decided it
  * was past the limit, so a `take(gen, 3)` fetched a fourth value and discarded it. Over
  * `iota` that costs nothing, which is exactly why it survived; over a generator whose body
@@ -185,34 +185,34 @@ demo_async_generator(std::shared_ptr<int> async_pulled) {
     qb::io::cout() << "[async_generator] a co_await BETWEEN yields is the whole difference: got " << got << "after three pulls, each "
                    << "of which cost a 5 ms wait that a synchronous generator could not have taken\n";
 
-    // ag_take is the async twin of take(), and it compares the count BEFORE awaiting the next
+    // take is the async twin of take(), and it compares the count BEFORE awaiting the next
     // value, so a source with side effects sees exactly n. The synchronous take() agrees.
     auto strict   = std::make_shared<int>(0);
-    auto taken    = co_await ag_collect(ag_take(async_counting_source(strict), 3));
+    auto taken    = co_await collect_to_vector(take(async_counting_source(strict), 3));
     *async_pulled = *strict;
     if (*strict == 3 && taken.size() == 3)
-        qb::io::cout() << "[async_generator] ag_take(gen, 3) pulled exactly 3 — the async twin compares the count "
+        qb::io::cout() << "[async_generator] take(gen, 3) pulled exactly 3 — the async twin compares the count "
                           "BEFORE it pulls, and the synchronous take() now does the same\n";
     else
-        qb::io::cout() << "[async_generator] UNEXPECTED: ag_take pulled " << *strict << " for 3 values\n";
+        qb::io::cout() << "[async_generator] UNEXPECTED: take pulled " << *strict << " for 3 values\n";
 
     // The ag_* family are terminals: each drains a generator and hands back a value. They take
     // the generator BY VALUE, so a generator can feed exactly one of them.
     auto bounded = [](std::shared_ptr<int> t) {
-        return ag_take(async_counting_source(std::move(t)), 4);
+        return take(async_counting_source(std::move(t)), 4);
     };
     auto sink = std::make_shared<int>(0);
 
-    auto doubled = co_await ag_map(bounded(sink), [](int v) { return v * 2; });
-    auto evens   = co_await ag_filter(bounded(sink), [](int v) { return v % 2 == 0; });
-    auto total   = co_await ag_reduce(bounded(sink), 0, std::plus<int>{});
+    auto doubled = co_await map_to_vector(bounded(sink), [](int v) { return v * 2; });
+    auto evens   = co_await filter_to_vector(bounded(sink), [](int v) { return v % 2 == 0; });
+    auto total   = co_await reduce(bounded(sink), 0, std::plus<int>{});
 
-    qb::io::cout() << "[async_generator] ag_map / ag_filter / ag_reduce over one source shape: " << doubled.size() << " doubled ("
+    qb::io::cout() << "[async_generator] map_to_vector / filter_to_vector / reduce over one source shape: " << doubled.size() << " doubled ("
                    << doubled.front() << ".." << doubled.back() << "), " << evens.size() << " even, sum " << total << "\n";
 
     int visited = 0;
-    co_await ag_for_each(bounded(sink), [&visited](int) { ++visited; });
-    qb::io::cout() << "    ag_for_each walked " << visited << " values without building a container at all\n\n";
+    co_await for_each(bounded(sink), [&visited](int) { ++visited; });
+    qb::io::cout() << "    for_each walked " << visited << " values without building a container at all\n\n";
 }
 
 int
@@ -232,8 +232,7 @@ main() {
     // Gated on the two measured pull counts rather than on reaching the last line. They must
     // AGREE: two spellings of "take n" that consume different amounts of their source is the
     // defect this program was written to measure, and the gate is what keeps them together.
-    qb::io::cout() << "    measured: a synchronous take(gen, 3) pulled " << sync_pulled << ", an ag_take(gen, 3) pulled " << *async_pulled
-                   << "\n";
+    qb::io::cout() << "    measured: a synchronous take(gen, 3) pulled " << sync_pulled << ", an take(gen, 3) pulled " << *async_pulled << "\n";
     if (sync_pulled == 3 && *async_pulled == 3)
         qb::io::cout() << "=== generators complete: 3 pulled for a sync take of 3, 3 for an async one ===\n";
     else

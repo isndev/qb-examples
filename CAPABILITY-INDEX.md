@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**98 programs, 7 tiers, 806 distinct capabilities, 1595 claims.**
+**98 programs, 7 tiers, 804 distinct capabilities, 1593 claims.**
 
 ## 1. By capability
 
@@ -811,12 +811,6 @@ can disagree.
 | capability | demonstrated by |
 | --- | --- |
 | `qb::io::async::AProtocol<T>` | `02-io/05-custom-protocol.cpp` |
-| `qb::io::async::ag_collect` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::ag_filter` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::ag_for_each` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::ag_map` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::ag_reduce` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::ag_take` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::aggressive_retry_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::async_awaiter<int>` | `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::async_event` | `03-coroutines/12-sync-primitives.cpp` |
@@ -846,6 +840,8 @@ can disagree.
 | `qb::io::async::detaching_scope` | `03-coroutines/07-structured-concurrency.cpp` |
 | `qb::io::async::directory_watcher` | `02-io/08-timeouts-and-watchers.cpp` |
 | `qb::io::async::filter` | `03-coroutines/09-channels.cpp` |
+| `qb::io::async::filter_to_vector` | `03-coroutines/10-generators.cpp` |
+| `qb::io::async::for_each` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::from_range` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::generator<int>` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::idempotent_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
@@ -857,12 +853,14 @@ can disagree.
 | `qb::io::async::make_pipeline` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::make_retryable` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::make_shared_task` | `03-coroutines/13-retry-and-single-flight.cpp` |
+| `qb::io::async::map_to_vector` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::merge_streams` | `03-coroutines/11-async-streams.cpp` |
 | `qb::io::async::parallel` | `03-coroutines/08-bounded-fan-out.cpp` |
 | `qb::io::async::parallel_map` | `03-coroutines/08-bounded-fan-out.cpp` |
 | `qb::io::async::race` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::range` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::range_stream` | `03-coroutines/11-async-streams.cpp` |
+| `qb::io::async::reduce` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::repeat_n` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::repeat_value` | `03-coroutines/11-async-streams.cpp` |
 | `qb::io::async::repeat_while` | `03-coroutines/08-bounded-fan-out.cpp` |
@@ -1206,7 +1204,7 @@ can disagree.
   - How many pieces of work are allowed to be in flight AT ONCE — all of them (`parallel`), exactly K of them (`parallel_map`), or one (`repeat_while`). The middle one is the answer almost every real system needs, and this program measures the ceiling rather than trusting it.
 - **`03-coroutines/09-channels.cpp`** — 19 capabilities
   - Handing values from one coroutine to another through a queue whose CAPACITY is the backpressure policy, closing it as the one shutdown protocol, and waiting on several of them at once with `select`.
-- **`03-coroutines/10-generators.cpp`** — 21 capabilities
+- **`03-coroutines/10-generators.cpp`** — 19 capabilities
   - Producing a sequence one value at a time instead of returning a container: `generator<T>` when the production is synchronous, `async_generator<T>` when it has to await. Laziness is the point, so this program counts what the source actually produced rather than trusting that it stopped when the consumer did.
 - **`03-coroutines/11-async-streams.cpp`** — 32 capabilities
   - Composing a sequence instead of looping over it: `async_stream<T>` is a chain of transformations that produces NOTHING until a terminal pulls on it, and the only sequence library here that treats TIME as a source and as a transform.
