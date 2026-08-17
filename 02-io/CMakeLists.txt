@@ -71,12 +71,25 @@ qb_example(SOURCE 09-graceful-drain.cpp DEPENDS qb-io)
 qb_example(SOURCE 10-crypto-and-compression.cpp DEPENDS qb-io REQUIRES ssl compression)
 qb_example(SOURCE 11-logging-and-metrics.cpp DEPENDS qb-io)
 
+# 12-quic needs the QUIC backend AND a certificate: there is no plaintext QUIC, so the TLS files
+# are not an option the example adds, they are what `listen()` requires. Gated on `quic` alone —
+# a QUIC-enabled build implies SSL, and naming both would let the roster report two capabilities
+# for one gate.
+qb_example(SOURCE 12-quic.cpp DEPENDS qb-io REQUIRES quic TARGET_VAR QB_EXAMPLE_IO_QUIC)
+
 # Stage resources/ next to the tier's binaries so 07-tls opens "resources/ssl/cert.pem" with a
 # plain relative path. `if (TARGET ...)` and not an unconditional call: in an SSL-off build the
 # gate above returned before add_executable() and the target genuinely does not exist.
+set(QB_EXAMPLE_IO_CERT_USERS "")
 if (TARGET ${QB_EXAMPLE_IO_TLS})
+    list(APPEND QB_EXAMPLE_IO_CERT_USERS ${QB_EXAMPLE_IO_TLS})
+endif ()
+if (TARGET ${QB_EXAMPLE_IO_QUIC})
+    list(APPEND QB_EXAMPLE_IO_CERT_USERS ${QB_EXAMPLE_IO_QUIC})
+endif ()
+if (QB_EXAMPLE_IO_CERT_USERS)
     qb_stage_example_resources(
             STAGE_NAME qb-example-io-resources
-            TARGETS ${QB_EXAMPLE_IO_TLS}
+            TARGETS ${QB_EXAMPLE_IO_CERT_USERS}
     )
 endif ()

@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**98 programs, 7 tiers, 804 distinct capabilities, 1593 claims.**
+**99 programs, 7 tiers, 820 distinct capabilities, 1612 claims.**
 
 ## 1. By capability
 
@@ -127,6 +127,7 @@ can disagree.
 | `ctx.token` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.until_cancelled` | `03-coroutines/06-cancellation.cpp` |
 | `current_count` | `03-coroutines/12-sync-primitives.cpp` |
+| `current_state` | `02-io/12-quic.cpp` |
 | `debounce` | `03-coroutines/11-async-streams.cpp` |
 | `del` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `disable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
@@ -236,7 +237,7 @@ can disagree.
 | `listen` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `listen_v4` | `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `llen` | `06-modules/redis/02-data-types.cpp` |
-| `local_endpoint` | `02-io/06-framing-toolbox.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/ws/03-coro-session.cpp` |
+| `local_endpoint` | `02-io/06-framing-toolbox.cpp`, `02-io/12-quic.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/ws/03-coro-session.cpp` |
 | `lock` | `01-actors/12-lockfree-bridge.cpp` |
 | `locked` | `01-actors/12-lockfree-bridge.cpp` |
 | `lpop` | `06-modules/redis/02-data-types.cpp` |
@@ -270,6 +271,7 @@ can disagree.
 | `on_notify_dropped` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `one<int, std::string>` | `06-modules/pgsql/06-typed-rows.cpp` |
 | `open` | `02-io/02-files.cpp` |
+| `open_bidirectional_stream` | `02-io/12-quic.cpp` |
 | `parts` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `path` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `pending` | `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
@@ -330,7 +332,9 @@ can disagree.
 | `script_load` | `06-modules/redis/07-scripting.cpp` |
 | `sdiff` | `06-modules/redis/02-data-types.cpp` |
 | `send<Tick>` | `01-actors/11-hot-path.cpp` |
+| `send_datagram` | `02-io/12-quic.cpp` |
 | `send_for` | `03-coroutines/09-channels.cpp` |
+| `send_stream_data` | `02-io/12-quic.cpp` |
 | `session_cache` | `02-io/07-tls.cpp` |
 | `session_count` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `sessions` | `05-services/04-shutdown-and-drain/main.cpp` |
@@ -346,6 +350,7 @@ can disagree.
 | `set_insecure` | `02-io/07-tls.cpp` |
 | `set_pending_cap` | `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `set_request_timeout` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `set_settings` | `02-io/12-quic.cpp` |
 | `set_timeout` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp` |
 | `set_verify_peer` | `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `setbit` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
@@ -785,12 +790,13 @@ can disagree.
 | capability | demonstrated by |
 | --- | --- |
 | `qb::io::cerr` | `02-io/01-event-loop.cpp`, `02-io/02-files.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
-| `qb::io::cout` | `01-actors/01-hello-actor.cpp`, `02-io/01-event-loop.cpp`, `02-io/02-files.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/10-crypto-and-compression.cpp`, `02-io/11-logging-and-metrics.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `qb::io::cout` | `01-actors/01-hello-actor.cpp`, `02-io/01-event-loop.cpp`, `02-io/02-files.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/10-crypto-and-compression.cpp`, `02-io/11-logging-and-metrics.cpp`, `02-io/12-quic.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::io::endpoint` | `02-io/04-udp.cpp` |
 | `qb::io::uri` | `02-io/07-tls.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `06-modules/http/12-http2.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::use<EchoServer>::tcp::server<EchoSession>` | `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::use<T>` | `06-modules/ws/01-chat-server.cpp` |
 | `qb::io::use<T>::file` | `02-io/08-timeouts-and-watchers.cpp` |
+| `qb::io::use<T>::quic::session` | `02-io/12-quic.cpp` |
 | `qb::io::use<T>::tcp::acceptor` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `qb::io::use<T>::tcp::client<S>` | `02-io/03-tcp.cpp`, `02-io/05-custom-protocol.cpp`, `02-io/06-framing-toolbox.cpp`, `02-io/09-graceful-drain.cpp` |
 | `qb::io::use<T>::tcp::io_handler<S>` | `05-services/04-shutdown-and-drain/main.cpp` |
@@ -845,7 +851,7 @@ can disagree.
 | `qb::io::async::from_range` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::generator<int>` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::idempotent_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
-| `qb::io::async::init` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp`, `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::io::async::init` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp`, `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `02-io/12-quic.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::async::interval` | `03-coroutines/11-async-streams.cpp` |
 | `qb::io::async::iota` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::joining_scope` | `03-coroutines/07-structured-concurrency.cpp` |
@@ -868,6 +874,7 @@ can disagree.
 | `qb::io::async::retry_exhausted` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::retry_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::run` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp` |
+| `qb::io::async::run_for` | `02-io/12-quic.cpp` |
 | `qb::io::async::run_sync` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::async::run_until` | `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::scoped_callback` | `02-io/08-timeouts-and-watchers.cpp` |
@@ -929,6 +936,23 @@ can disagree.
 | --- | --- |
 | `qb::io::async::listener::current.loop()` | `02-io/01-event-loop.cpp` |
 
+### `qb::io::async::quic`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::io::async::quic::connector` | `02-io/12-quic.cpp` |
+| `qb::io::async::quic::server` | `02-io/12-quic.cpp` |
+
+### `qb::io::async::quic::event`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::io::async::quic::event::connected` | `02-io/12-quic.cpp` |
+| `qb::io::async::quic::event::connection_closed` | `02-io/12-quic.cpp` |
+| `qb::io::async::quic::event::datagram` | `02-io/12-quic.cpp` |
+| `qb::io::async::quic::event::stream_data` | `02-io/12-quic.cpp` |
+| `qb::io::async::quic::event::stream_started` | `02-io/12-quic.cpp` |
+
 ### `qb::io::async::tcp`
 
 | capability | demonstrated by |
@@ -942,6 +966,13 @@ can disagree.
 | `qb::io::log::Level` | `02-io/11-logging-and-metrics.cpp` |
 | `qb::io::log::init` | `02-io/11-logging-and-metrics.cpp` |
 | `qb::io::log::setLevel` | `02-io/11-logging-and-metrics.cpp` |
+
+### `qb::io::quic`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::io::quic::settings` | `02-io/12-quic.cpp` |
+| `qb::io::quic::tls_config` | `02-io/12-quic.cpp` |
 
 ### `qb::io::ssl`
 
@@ -1183,6 +1214,8 @@ can disagree.
   - The security and payload primitives qb-io already ships, on their own terms: digests and HMAC, an AEAD that REFUSES a tampered ciphertext, Argon2 password hashing, a constant-time comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND — because a decompression bomb is an attack, not a corner case.
 - **`02-io/11-logging-and-metrics.cpp`** — 26 capabilities
   - The two production surfaces a qb-io service needs and that nothing in the corpus used: the asynchronous logger behind QB_LOG_* — which every qb binary has ALREADY started before main() runs — and a fixed-capacity rolling window of measurements taken with the raw CPU counter, so a hot loop can report its own latency without allocating.
+- **`02-io/12-quic.cpp`** — 19 capabilities
+  - QUIC as a qb-io transport in its own right, not as something HTTP/3 happens to sit on: one `endpoint` type for both roles, ALPN chosen during the handshake rather than by the port, independent streams over one connection, unreliable datagrams alongside them, and the refusal that matters — a peer whose ALPN does not match never connects.
 
 ### `03-coroutines`
 
