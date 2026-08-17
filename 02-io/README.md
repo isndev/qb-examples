@@ -29,8 +29,9 @@ exist.
 | `09-graceful-drain.cpp` | `qb-example-io-graceful-drain` |
 | `10-crypto-and-compression.cpp` | `qb-example-io-crypto-and-compression` (`REQUIRES ssl compression`) |
 | `11-logging-and-metrics.cpp` | `qb-example-io-logging-and-metrics` |
+| `12-quic.cpp` | `qb-example-io-quic` (`REQUIRES quic`) |
 
-Two of them declare a capability gate. In a build without OpenSSL they are **not created at all**
+Three of them declare a capability gate — two on OpenSSL, one on the QUIC backend. In a build without the capability they are **not created at all**
 — they do not fail to compile, they silently do not exist — so the build's roster records them as
 `gated` and `dev/agent/run-examples.py` reports a SKIP naming the capability, instead of a program
 that has gone missing.
@@ -247,7 +248,7 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   `main()` runs, so every qb binary creates `./qb.1.log` in its working directory and starts a
   logging thread whether or not it ever logs. Calling `log::init` yourself REPLACES that logger
   rather than adding one — which is also how you flush it. `qb::ring_buffer<T,N>` is the window
-  (note it publishes `capacity()`/`empty()`/`full()` but **no `size()`**), `qb::tsc_ticks()` the
+  (it publishes `size()` alongside `capacity()`/`empty()`/`full()` — `size()` was private while the capacity it bounds was public, which 3.0 fixed), `qb::tsc_ticks()` the
   measurement, and `qb::CPU` the machine the numbers came from.
 * **Run**: `./build/presets/release/examples/02-io/qb-example-io-logging-and-metrics`
 
@@ -255,9 +256,38 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
 
 ## What this tier does not yet cover
 
-All eleven programs of the design exist. What is still missing inside them is narrower and worth
+All twelve programs of the design exist. What is still missing inside them is narrower and worth
 naming: `connect_with_socket`'s coroutine form and `protocol::accept`/`protocol::handshake` (the
 handshake protocol drives a TLS handshake explicitly and is only reached by qbm-http/2 today), the
 `transport::udp::identity` demultiplexing that `04-udp` points at, and `async::epoll`, which is
 Linux-only and deliberately not wired into the loop. Nothing here should be read as saying they do
 not exist.
+
+---
+
+## 12. QUIC (`12-quic.cpp`) — `REQUIRES quic`
+
+* **Teaches**: QUIC as a qb-io transport in its own right, rather than as the thing HTTP/3 happens
+  to sit on. One endpoint type serves both roles, ALPN is chosen inside the handshake instead of by
+  the port, streams are independent, datagrams ride the same connection, and a peer whose ALPN does
+  not match is refused before there is a connection to refuse.
+* **Details**: it runs on UDP, so ordering, retransmission, congestion control and the handshake are
+  QUIC's own — and having implemented them it offers what TCP cannot. **Independent streams**: one
+  connection carries many, each ordered and reliable on its own, so a lost packet stalls the stream
+  that lost it and nothing else (over TCP one lost segment stalls every multiplexed exchange on the
+  socket — head-of-line blocking, and why HTTP/2 over TCP still queues behind itself).
+  **Datagrams**: the same connection also carries unreliable, unordered payloads that are never
+  retransmitted, for telemetry or a position update whose value is gone by the time a retransmit
+  would land. They are negotiated, so `enable_datagrams` has to be set on **both** ends or nothing
+  arrives. And **TLS is not a layer here**: there is no plaintext QUIC, the transport and TLS 1.3
+  handshakes are one exchange, which is why `listen()` takes a certificate.
+* **The beat that matters**: a client offering `h3` against a server advertising `qb-demo/1` is
+  REFUSED *inside* the handshake — the program asserts the peer reaches `closed`, that the server's
+  `on(connected)` never fired, and that the listener is still serving its first connection
+  afterwards. This is the failure people meet first and usually misread as a certificate problem.
+* **Shape**: server and client on **one** listener. That is a property of qb-io, not a shortcut for
+  a demo — an endpoint is a watcher on a UDP socket, so one thread holds as many as it likes — and
+  it is what lets the program assert both sides of every exchange instead of trusting one of them.
+* **Gate**: `REQUIRES quic` alone. A QUIC build implies SSL and there is no plaintext QUIC, so the
+  certificate is not an option this example adds; naming both would report two capabilities for one
+  gate.
