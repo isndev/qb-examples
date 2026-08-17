@@ -417,9 +417,12 @@ main() {
         qb::io::cerr() << "[fatal] could not bind the HTTP/2 upstream on 127.0.0.1:" << H2_PORT << "\n";
         return 1;
     }
-    // listen() BINDS; start() is what registers the acceptor with the event loop. The h3 server
-    // below needs no such call — its QUIC endpoint::listen() does both — and the asymmetry is
-    // worth knowing: forgetting it here does not fail, it makes every connect() time out.
+    // Redundant since 3.0 and kept on purpose: listen() now binds AND arms the accept watcher,
+    // on the h2 server exactly as on the h3 one below, so the two stacks finally agree. Before
+    // 3.0 this call was required here and its absence did not fail — it made every connect()
+    // time out with nothing in any log naming the cause. A second start() is a no-op (libev's
+    // qev_io_start returns early on an active watcher), which is what lets code written against
+    // the old contract keep working unchanged.
     h2_server->start();
 
     // ---- the HTTP/3 upstream -----------------------------------------------------------
