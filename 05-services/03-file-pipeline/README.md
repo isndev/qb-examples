@@ -63,7 +63,7 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
 > }
 > ```
 >
-> `spawn` is `qb/src/qb/core/Actor.h:1238-1239`; `Actor::kill()` cancels its scope at
+> `spawn` is `qb/src/qb/core/Actor.h:1243-1244`; `Actor::kill()` cancels its scope at
 > `qb/src/qb/core/Actor.cpp:283-289`. Never capture `this` in the coroutine — the work moves into
 > `on(StartTestsTick&)` (`main.cpp:126-128`) / `on(ShutdownTick&)` (`main.cpp:131-133`), which only run on a live
 > actor. Note the contrast with the workers

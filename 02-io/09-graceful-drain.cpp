@@ -46,10 +46,18 @@
  * guaranteed to go out first. That is the difference between a server that answers and hangs up
  * and one that hangs up on its own answer.
  *
- * Measured, and worth knowing: on that path `eos` does **not** fire. The write loop tests
- * `_reason || !_protocol->ok()` before it emits `eos`, and `close_after_deliver()` made the
- * protocol not-ok, so the disposal wins. `eos` is the event for a buffer that drained on a
- * connection that is staying up.
+ * Measured, and worth knowing: `eos` fires on that path too, and it is the LAST thing you are told
+ * before the teardown — run this and you will see `eos` and then `disconnected`, in that order, from
+ * the same drain. That is what makes `close_after_deliver()` usable: it is the one call that means
+ * "tell me when the last byte is really gone", so it would be perverse for it to be the one path
+ * that never reported delivery. Until 3.0 it was exactly that: the write loop tested
+ * `_reason || !_protocol->ok()` and returned before emitting `eos`, and `close_after_deliver()`
+ * marks the protocol not-ok, so the disposal won and the event was swallowed.
+ *
+ * An aborting `disconnect()` still emits nothing, and the distinction is the point: `eos` asserts
+ * that queued output reached the transport. A graceful close has flushed it, so the claim is true;
+ * an abort has thrown it away, so the claim would be a lie. The write loop scopes the emission on
+ * `!_reason` for that reason and no other.
  *
  * Then `dispose()` runs, in this order: `on(disconnected)` first, `on(dispose)` last. That order is
  * load-bearing for a self-owned object: `dispose()` still touches `this` after `on(disconnected)`
