@@ -141,7 +141,7 @@ demo_terminals() {
 
     const auto n       = co_await fresh().count();
     const auto head    = co_await fresh().first();
-    const auto total   = co_await fresh().reduce([](int a, int b) { return a + b; }, 0);
+    const auto total   = co_await fresh().reduce(0, [](int a, int b) { return a + b; });
     const bool any_big = co_await fresh().any([](int v) { return v > 8; });
     const bool all_pos = co_await fresh().all([](int v) { return v > 0; });
     const auto found   = co_await fresh().find([](int v) { return v % 2 == 0; });
