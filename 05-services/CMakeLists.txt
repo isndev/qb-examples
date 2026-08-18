@@ -49,6 +49,15 @@ add_subdirectory(02-pubsub-broker)
 
 if (NOT QB_PLATFORM_WINDOWS)
     add_subdirectory(03-file-pipeline)
+else ()
+    # Recorded as gated rather than left simply absent. The roster is what
+    # run-examples.py cross-checks the manifest against, and a target that is
+    # neither `built` nor `gated` reads there as a stale manifest entry that
+    # "runs nothing and passes forever". It is not stale: it is excluded here on
+    # purpose, and the roster should say so. Same columns and same arity that
+    # qb_example writes for a capability gate.
+    set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_GATED
+                 "qb-example-services-file-pipeline|examples/05-services/03-file-pipeline/main.cpp|posix")
 endif ()
 
 add_subdirectory(04-shutdown-and-drain)
