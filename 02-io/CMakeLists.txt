@@ -52,6 +52,15 @@ qb_example(SOURCE 01-event-loop.cpp DEPENDS qb-io)
 # equivalent here, so the example is not created there rather than failing to compile.
 if (NOT QB_PLATFORM_WINDOWS)
     qb_example(SOURCE 02-files.cpp DEPENDS qb-io)
+else ()
+    # Recorded as gated rather than left simply absent. The roster is what
+    # run-examples.py cross-checks the manifest against, and a target that is
+    # neither `built` nor `gated` reads there as a stale manifest entry that
+    # "runs nothing and passes forever". It is not stale: it is excluded here on
+    # purpose, and the roster should say so. Same columns and same arity that
+    # qb_example writes for a capability gate.
+    set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_GATED
+                 "qb-example-io-files|examples/02-io/02-files.cpp|posix")
 endif ()
 
 qb_example(SOURCE 03-tcp.cpp DEPENDS qb-io)
