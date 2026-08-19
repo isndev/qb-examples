@@ -424,7 +424,7 @@ main() {
     // on the h2 server exactly as on the h3 one below, so the two stacks finally agree. Before
     // 3.0 this call was required here and its absence did not fail — it made every connect()
     // time out with nothing in any log naming the cause. A second start() is a no-op (libev's
-    // qev_io_start returns early on an active watcher), which is what lets code written against
+    // ev_io_start returns early on an active watcher), which is what lets code written against
     // the old contract keep working unchanged.
     h2_server->start();
 

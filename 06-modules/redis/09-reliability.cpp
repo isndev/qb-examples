@@ -77,8 +77,9 @@ namespace {
 
 constexpr const char *URI      = "tcp://localhost:6379";
 constexpr const char *DEAD_URI = "tcp://127.0.0.1:6399"; // nothing listens here, on purpose
-constexpr const char *TLS_URI  = "rediss://localhost:6380";
-constexpr const char *K_QUEUE  = "qb:example:rel:queue";
+// Referenced only from the QB_IO_WITH_SSL branch below, so an SSL-off build has a constant
+constexpr const char *TLS_URI [[maybe_unused]] = "rediss://localhost:6380";
+constexpr const char *K_QUEUE                  = "qb:example:rel:queue";
 
 /// What the coroutine parked on BRPOP saw when the link was cut under it.
 struct ParkedOutcome {
