@@ -31,7 +31,7 @@
  *
  * The previous note here gave `g++ -I qb/include -I /path/to/libev ... -lev`, which cannot
  * work: qb's include root is qb/src, the libev fork lives INSIDE it (reached as
- * <qb/vendor/qev/qev.h>, so it needs no -I of its own), the archive is libqev.a, and
+ * <qb/ev/qev.h>, so it needs no -I of its own), the archive is libqev.a, and
  * linking qb-io also pulls OpenSSL/zlib -- flags a one-line example cannot enumerate.
  */
 

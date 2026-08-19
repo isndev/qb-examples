@@ -306,7 +306,7 @@ public:
 class FileWatcher {
 private:
     std::filesystem::path _filename;
-    // Narrow, stable backing storage for the libev stat watcher: qev_stat_set()
+    // Narrow, stable backing storage for the libev stat watcher: ev_stat_set()
     // stores the `const char*` by pointer (it does not copy), so the buffer must
     // outlive the watcher. path.string() returns a temporary, hence this member.
     std::string _native_path;

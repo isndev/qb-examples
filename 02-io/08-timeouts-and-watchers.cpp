@@ -28,7 +28,7 @@
  * `updateTimeout()` for the whole budget. Look at the base's own handler
  * (`qb/src/qb/io/async/io.h:181`):
  *
- *     const qev_tstamp after = _last_activity - event.loop.now() + _timeout;
+ *     const ev_tstamp after = _last_activity - event.loop.now() + _timeout;
  *     if (after <= 0.)  Derived.on(event);          // the budget really elapsed
  *     else            { _async_event.set(after); _async_event.start(); }   // still busy: wait more
  *
