@@ -9,7 +9,11 @@
  *               engine.hasError, qb::io::uri, qb::io::cout, qb::io::cerr
  * @prerequisites 05-services/01-tcp-chat, 06-modules/http/09-coroutine-handlers
  * @expect "[Main] Listening on :"
- * @expect "[Main] Shutdown complete"
+ * @expect[posix] "[Main] Shutdown complete"
+ *   (tagged for a FRAMEWORK gap, not an example defect: qb maps no console control event
+ *    into its signal pipeline on Windows — no SetConsoleCtrlHandler anywhere in qb/src —
+ *    and SIGTERM is never OS-delivered there, so the post-signal teardown that prints this
+ *    line is unreachable from outside the process. Retire this tag with that handler.)
  * @brief Entry point – creates the QB engine, actor pool, and starts the loop.
  *
  * ## Actor topology
