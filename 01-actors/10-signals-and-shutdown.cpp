@@ -11,7 +11,9 @@
  *               push<E>, qb::Main, addActor<T>
  * @prerequisites 01-actors/05-lifecycle
  * @expect "[server] accepting; 3 units of work queued"
- * @expect "[server] SIGHUP: reloaded configuration, still serving — a signal is an EVENT"
+ * @expect[posix] "[server] SIGHUP: reloaded configuration, still serving — a signal is an EVENT"
+ *   (tagged: SIGHUP does not exist on Windows — the code below sits behind #ifdef SIGHUP,
+ *    so on that platform this line has no code to print it; the other six lessons hold)
  * @expect "[server] SIGTERM: stop accepting, drain "
  * @expect "[server] drained; every accepted unit finished before the process leaves"
  * @expect "[main] engine.hasError() = no — cores started, no actor failed its SYNCHRONOUS init"

@@ -16,7 +16,10 @@
  *               qb::io::async::init, qb::io::async::run_until, qb::io::cout
  * @prerequisites 02-io/06-framing-toolbox
  * @expect "=== qb-io: graceful drain ==="
- * @expect "[server] pending_write: "
+ * @expect[posix] "[server] pending_write: "
+ *   (tagged: measured on Windows loopback, AFD accepts a single non-blocking send() of
+ *    300 KiB..64 MiB WHOLE with SO_SNDBUF=16 KiB — never partial, never EWOULDBLOCK — so
+ *    there is no buffer small enough to make this line reachable there)
  * @expect "[server] eos: the output buffer is empty; everything queued has reached the socket"
  * @expect "[client] input_drained: the buffer is empty — NOT a disconnect"
  * @expect "[server] close_after_deliver(): the farewell is queued, the close waits for it"
