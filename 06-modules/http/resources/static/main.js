@@ -67,10 +67,16 @@ function showPageInfo() {
         if (footer) {
             const debugInfo = document.createElement('div');
             debugInfo.className = 'debug-info';
-            debugInfo.innerHTML = '<strong>Debug Info:</strong><br>' +
-                'URL: ' + pageInfo.url + '<br>' +
-                'Time: ' + pageInfo.localTime + '<br>' +
-                'User Agent: ' + pageInfo.userAgent;
+            // Built with text nodes, never innerHTML: pageInfo.url is window.location.href,
+            // which the visitor's URL controls -- ?debug=true&<img onerror=...> would execute.
+            const strong = document.createElement('strong');
+            strong.textContent = 'Debug Info:';
+            debugInfo.appendChild(strong);
+            [['URL', pageInfo.url], ['Time', pageInfo.localTime], ['User Agent', pageInfo.userAgent]]
+                .forEach(([label, value]) => {
+                    debugInfo.appendChild(document.createElement('br'));
+                    debugInfo.appendChild(document.createTextNode(label + ': ' + value));
+                });
             footer.appendChild(debugInfo);
         }
     }
