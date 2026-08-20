@@ -1,3 +1,11 @@
+/** Safe HTML escaping via the DOM -- the same shape the other demos use. */
+function escapeHtml(text) {
+    if (text == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(text);
+    return d.innerHTML;
+}
+
 // HTTP/2 Demo JavaScript with CSP-compatible event handling
 class Http2Demo {
     constructor() {
@@ -455,16 +463,16 @@ class Http2Demo {
                 resultDiv.className = 'request-result';
                 resultDiv.innerHTML = `
                     <div class="request-info">
-                        <strong>${req.name}</strong>
+                        <strong>${escapeHtml(req.name)}</strong>
                         <span class="status ${result.success ? 'success' : 'error'}">
                             ${result.success ? 'SUCCESS' : 'FAILED'}
                         </span>
                         <span class="duration">${result.duration}ms</span>
                     </div>
                     <div class="request-details">
-                        Status: ${result.status || 'N/A'} | 
+                        Status: ${escapeHtml(result.status || 'N/A')} | 
                         Response time: ${result.duration}ms |
-                        Stream ID: ${result.data ? JSON.parse(result.data).stream_id : 'N/A'}
+                        Stream ID: ${escapeHtml(result.data ? JSON.parse(result.data).stream_id : 'N/A')}
                     </div>
                 `;
 
@@ -513,7 +521,7 @@ class Http2Demo {
                 item.className = `push-timeline-item ${type}`;
                 item.innerHTML = `
                     <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-                    <span class="message">${message}</span>
+                    <span class="message">${escapeHtml(message)}</span>
                 `;
                 timeline.appendChild(item);
                 timeline.scrollTop = timeline.scrollHeight;
@@ -562,7 +570,7 @@ class Http2Demo {
                 item.className = `push-timeline-item ${type}`;
                 item.innerHTML = `
                     <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-                    <span class="message">${message}</span>
+                    <span class="message">${escapeHtml(message)}</span>
                 `;
                 timeline.appendChild(item);
                 timeline.scrollTop = timeline.scrollHeight;
@@ -620,8 +628,8 @@ class Http2Demo {
                 item.className = `priority-item ${priority}`;
                 item.innerHTML = `
                     <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-                    <span class="priority-level">[${priority.toUpperCase()}]</span>
-                    <span class="message">${message}</span>
+                    <span class="priority-level">[${escapeHtml(priority.toUpperCase())}]</span>
+                    <span class="message">${escapeHtml(message)}</span>
                 `;
                 results.appendChild(item);
                 results.scrollTop = results.scrollHeight;

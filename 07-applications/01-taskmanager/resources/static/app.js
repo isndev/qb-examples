@@ -403,7 +403,7 @@ function logEvent(message, type = 'info', icon = '📡') {
     el.innerHTML = `
         <span class="event-icon">${icon}</span>
         <div>
-            <div class="event-msg">${message}</div>
+            <div class="event-msg">${escHtml(message)}</div>
             <div class="event-time">${new Date().toLocaleTimeString()}</div>
         </div>`;
     eventsLog.insertBefore(el, eventsLog.firstChild);
