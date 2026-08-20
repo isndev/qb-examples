@@ -295,6 +295,24 @@ function(qb_example)
         # read the `@expect` lines it must see printed — so it has to be right.
         set_property(GLOBAL APPEND PROPERTY QB_EXAMPLE_SOURCES
                      "examples/${_dir_rel}/${_primary}")
+        # Windows: deploy the vcpkg runtime DLLs next to the binary, the way qb_add_test
+        # already does for every test (qb/cmake/qbFunctions.cmake) and for the same reason —
+        # $<TARGET_RUNTIME_DLLS> is empty for Find-module dependencies, so nothing else puts
+        # libssl/libcrypto/z beside the executable. Nobody had ever RUN the corpus on Windows
+        # until 3.0's runner could stop a process there; the first run measured 0 of 97
+        # passing, every one dead in 0.0s with exit 0xC0000135 (STATUS_DLL_NOT_FOUND), while
+        # the same binaries' test siblings ran green from bin/tests with the DLLs deployed.
+        # One deployer per output directory — the function dedupes by DEST_DIR — and a strict
+        # no-op everywhere else: it returns empty on NOT WIN32 before touching anything. The
+        # COMMAND guard keeps this file loadable in a context that never included qb's
+        # functions; today that context does not exist (examples build only under the
+        # superproject), so the guard is belt over braces, not a supported mode.
+        if (WIN32 AND COMMAND qb_ensure_runtime_dll_deployer)
+            qb_ensure_runtime_dll_deployer("${CMAKE_CURRENT_BINARY_DIR}" _qe_dll_deployer)
+            if (_qe_dll_deployer)
+                add_dependencies(${_target} ${_qe_dll_deployer})
+            endif ()
+        endif ()
         if (QE_TARGET_VAR)
             set(${QE_TARGET_VAR} "${_target}" PARENT_SCOPE)
         endif ()
