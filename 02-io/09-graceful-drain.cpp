@@ -385,7 +385,19 @@ main() {
 
     // Asserted rather than narrated: a run where neither event fired proved nothing about
     // backpressure, and would otherwise be indistinguishable from a run where it works.
-    if (g_act != 2 || !g_promoted || g_pending_writes == 0 || g_pending_reads == 0) {
+    //
+    // pending_write is exempt on Windows, for the same measured reason its @expect line above
+    // carries [posix]: AFD accepts a non-blocking send() of 300 KiB -- and, measured, up to
+    // 64 MiB -- WHOLE, even with SO_SNDBUF at 16 KiB on the sender and 16 KiB RCVBUF on the
+    // peer. The kernel never leaves residue in the framework's output buffer, so the event this
+    // act exists to show cannot fire on this loopback. Everything else in the script -- both
+    // acts, the promotion, pending_read on the way in -- runs and stays asserted there.
+#ifdef _WIN32
+    const bool pending_write_ok = true;
+#else
+    const bool pending_write_ok = g_pending_writes != 0;
+#endif
+    if (g_act != 2 || !g_promoted || !pending_write_ok || g_pending_reads == 0) {
         qb::io::cerr() << "=== the drain script did not finish (act " << g_act << ", " << g_pending_writes << " pending_write, "
                        << g_pending_reads << " pending_read) ===\n";
         return 1;
