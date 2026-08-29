@@ -149,12 +149,22 @@ jobs:
             exit 1
           fi
           # Comment lines start with '#'; `gated|` rows name a missing capability, not a
-          # binary. ubuntu-latest ships OpenSSL, so the whole corpus builds: 99 `built` rows.
+          # binary. ubuntu-latest ships OpenSSL so the SSL-gated dozen builds — but not the
+          # ngtcp2 crypto helper, so QUIC resolves to backend 'none' and 02-io/12-quic is
+          # gated here (measured on this lane's second run: 98 built + 1 gated). The floor
+          # stays 99 TOTAL, and anything gated must be the QUIC example BY NAME — a gated
+          # row this lane did not expect is a program that silently left the build.
           built="$(grep -c '^built|' "${roster}")"
           gated="$(grep -c '^gated|' "${roster}" || true)"
           echo "roster: ${built} built, ${gated} gated"
-          if [ "${built}" -lt 99 ]; then
-            echo "::error::roster has ${built} built entries, floor 99 — part of the corpus silently left the build"
+          if [ "$((built + gated))" -lt 99 ]; then
+            echo "::error::roster has ${built}+${gated} entries, floor 99 — part of the corpus silently left the build"
+            exit 1
+          fi
+          unexpected="$(grep '^gated|' "${roster}" | grep -v '|quic$' | grep -vE '\|qb-example-io-quic\|' || true)"
+          if [ -n "${unexpected}" ]; then
+            echo "::error::gated rows other than the QUIC example — these programs left the build unnamed:"
+            printf '%s\n' "${unexpected}"
             exit 1
           fi
           missing=0
