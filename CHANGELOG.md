@@ -9,6 +9,10 @@ plumbing do not qualify.
 
 ## [Unreleased]
 
+Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+
+## [3.0.1] - 2026-08-29
+
 ### Fixed
 
 - **A failed bind no longer reports success — three programs, one defect class.**
