@@ -5,7 +5,7 @@
  *          actors on another, the room's state on a third — and one builder() chain that names
  *          the pool so the acceptor can round-robin over it.
  * @demonstrates qb::Main, addActor<T>, engine.core, builder(), idList(), qb::io::uri,
- *               engine.start, engine.join, qb::io::cout, qb::io::cerr
+ *               engine.start, engine.hasError, engine.join, qb::io::cout, qb::io::cerr
  * @prerequisites 01-actors/04-cores-and-placement, 02-io/03-tcp
  * @expect "Chat server started on ports 3001 and 3002"
  * @expect "Engine is running"
@@ -91,6 +91,16 @@ main(int argc, char *argv[]) {
         // - Wait for user input to stop
         // - Demonstrate proper shutdown sequence
         engine.start(true); // asynchronous start
+        // start(true) WAITS for the init barrier: every core has either reached its event
+        // loop or recorded why it could not, so hasError() is answerable RIGHT HERE. A
+        // server whose acceptor failed to bind must say so through its exit status --
+        // printing "Engine is running" over cores that never started is how a failed bind
+        // reports success to whatever supervises this process.
+        if (engine.hasError()) {
+            qb::io::cerr() << "Engine failed to start: an actor failed its init (see log above)" << std::endl;
+            engine.join();
+            return 1;
+        }
         qb::io::cout() << "Engine is running" << std::endl;
         qb::io::cout() << "Press Enter to stop the engine" << std::endl;
         std::cin.get();
