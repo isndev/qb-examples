@@ -1,0 +1,173 @@
+# examples build — the 99-program corpus, built and roster-verified in this repository's
+# own CI (Huly QB-7).
+#
+# Until this lane existed, isndev/qb-examples shipped NO workflow at all: its only coverage
+# was the private superproject's examples-build.yml, so an external contributor's PR got
+# zero feedback — the same shape the three qbm modules closed in 3.0 with tests.yml lanes.
+#
+# What this lane proves and does not prove, stated:
+#   * PROVES: the corpus configures and builds against the same-named qb + qbm branches
+#     (the pairing this change is proposed to join), the build's own roster records >= 99
+#     programs, every roster entry's binary EXISTS, and one named smoke program runs.
+#   * DOES NOT prove: the run contracts. The example RUNNER (@expect assertion, serve modes,
+#     second-instance checks, service probes) and its manifest live in the private
+#     superproject's dev/agent and run there — this lane is the build half a public PR needs,
+#     not a substitute for the corpus run.
+name: build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  # Nightly, against whatever the same-named qb/qbm branches are that day: the path filters
+  # cannot see a qb-side change, and a stale green here would vouch for a pairing that no
+  # longer exists. Same schedule and reasoning as the three qbm modules' lanes.
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      qb_ref:
+        description: 'isndev/qb + qbm-* ref to build against (empty = the branch of the same name)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build the corpus against same-named qb + qbm
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v6
+        with:
+          path: examples
+
+      # github.base_ref for a PR (the branch being merged INTO), github.ref_name otherwise.
+      # Never github.head_ref: on a fork PR that string is attacker-controlled, and it is
+      # also the wrong question — what must be tested is the pairing this change is proposed
+      # to become part of. Passed through env:, never interpolated, so a branch name can
+      # never be shell. (The block mirrors the three qbm modules' lanes verbatim.)
+      - name: Resolve which qb/qbm ref to build against
+        env:
+          INPUT_REF: ${{ inputs.qb_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ref="${INPUT_REF}"
+          if [ -z "${ref}" ]; then
+            if [ -n "${BASE_REF}" ]; then ref="${BASE_REF}"; else ref="${REF_NAME}"; fi
+          fi
+          echo "companion ref: ${ref}"
+          # Prove it exists on EVERY companion repo rather than discovering a miss at
+          # checkout time; refuse to fall back — a lane that quietly built develop while
+          # claiming main would be worse than no lane.
+          for repo in qb qbm-http qbm-pgsql qbm-redis; do
+            if ! git ls-remote --exit-code --heads --tags "https://github.com/isndev/${repo}" "${ref}" >/dev/null; then
+              echo "::error::isndev/${repo} has no branch or tag '${ref}'. All five repos carry the same two branch names (main, develop); re-run manually with the qb_ref input for a different pairing."
+              exit 1
+            fi
+          done
+          echo "QB_REF=${ref}" >> "${GITHUB_ENV}"
+
+      - name: Check out isndev/qb
+        uses: actions/checkout@v6
+        with:
+          repository: isndev/qb
+          ref: ${{ env.QB_REF }}
+          path: qb
+
+      - name: Check out the three qbm modules
+        uses: actions/checkout@v6
+        with:
+          repository: isndev/qbm-http
+          ref: ${{ env.QB_REF }}
+          path: qbm/http
+      - uses: actions/checkout@v6
+        with:
+          repository: isndev/qbm-pgsql
+          ref: ${{ env.QB_REF }}
+          path: qbm/pgsql
+      - uses: actions/checkout@v6
+        with:
+          repository: isndev/qbm-redis
+          ref: ${{ env.QB_REF }}
+          path: qbm/redis
+
+      - name: Install dependencies
+        run: ./qb/scripts/ci-install-linux-dependencies.sh --profile build
+
+      - name: Configure through the CI superbuild driver
+        run: |
+          set -euo pipefail
+          cmake -S examples/.github/ci/superbuild -B build \
+                -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DQB_EXAMPLES_CI_QB_DIR="$PWD/qb" \
+                -DQB_EXAMPLES_CI_QBM_DIR="$PWD/qbm" \
+                -DQB_EXAMPLES_CI_EXAMPLES_DIR="$PWD/examples"
+
+      - name: Build the corpus
+        run: |
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log
+          # A build that compiled nothing is a stale-cache lie, not a success — the exact
+          # shape `--fresh` once hid from the private gate (0 TUs, "0 warnings").
+          tus="$(grep -cE 'Building CXX object' build.log || true)"
+          echo "compiled ${tus} translation unit(s)"
+          if [ "${tus:-0}" -lt 90 ]; then
+            echo "::error::only ${tus} TUs compiled — the corpus did not actually build here"
+            exit 1
+          fi
+
+      # The build writes its own release roster; this lane holds it to the same floors the
+      # private runner enforces, minus the run half it cannot do.
+      - name: Roster and existence floors
+        run: |
+          set -euo pipefail
+          roster="build/examples/example-roster.txt"
+          if [ ! -s "${roster}" ]; then
+            echo "::error::${roster} missing or empty — the corpus's own inventory was not produced"
+            exit 1
+          fi
+          # Comment lines start with '#'; `gated|` rows name a missing capability, not a
+          # binary. ubuntu-latest ships OpenSSL, so the whole corpus builds: 99 `built` rows.
+          built="$(grep -c '^built|' "${roster}")"
+          gated="$(grep -c '^gated|' "${roster}" || true)"
+          echo "roster: ${built} built, ${gated} gated"
+          if [ "${built}" -lt 99 ]; then
+            echo "::error::roster has ${built} built entries, floor 99 — part of the corpus silently left the build"
+            exit 1
+          fi
+          missing=0
+          while IFS='|' read -r kind _name _src path; do
+            [ "${kind}" = "built" ] || continue
+            if [ ! -x "${path}" ]; then
+              echo "::error::roster names ${path} but no executable exists there"
+              missing=$((missing + 1))
+            fi
+          done < "${roster}"
+          [ "${missing}" -eq 0 ] || exit 1
+          echo "every built entry's binary exists"
+
+      # One named smoke run: a self-contained `exits` program with no services and no stdin
+      # dependency, chosen BY NAME with the reason. Not a substitute for the private corpus
+      # runner — proof the binaries this lane built are runnable at all on this host.
+      - name: Smoke-run one self-contained program
+        run: |
+          set -euo pipefail
+          bin="$(awk -F'|' '$2 == "qb-example-actors-hello-actor" {print $4}' build/examples/example-roster.txt)"
+          if [ -z "${bin}" ]; then
+            echo "::error::the smoke program qb-example-actors-hello-actor is not in the roster"
+            exit 1
+          fi
+          timeout 60 "${bin}" < /dev/null
+          echo "smoke program ran and exited 0"
