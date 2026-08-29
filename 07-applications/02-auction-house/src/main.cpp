@@ -10,10 +10,7 @@
  *               engine.join, engine.hasError, qb::io::uri, qb::io::cout, qb::io::cerr
  * @prerequisites 07-applications/01-taskmanager, 06-modules/pgsql/03-transactions
  * @expect "[Main] Database initialized successfully"
- * @expect[posix] "[Main] Server stopped. Goodbye!"
- *   (tagged for the same FRAMEWORK gap as 01-taskmanager: no console-ctrl-to-signal
- *    bridge in qb on Windows, so the post-SIGTERM teardown cannot be provoked from
- *    outside the process. Retire this tag with that handler.)
+ * @expect "[Main] Server stopped. Goodbye!"
  * @brief Auction House - Real-time auction system entry point.
  *
  * Architecture:
