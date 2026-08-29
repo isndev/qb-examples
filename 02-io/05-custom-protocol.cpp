@@ -621,8 +621,10 @@ displayHelp() {
                    << "  client <host> <port> - Run as client\n";
 }
 
-// Run server in a thread
-void
+// Run the server; the return value is main's exit code. A server that cannot bind
+// must say so THROUGH ITS EXIT STATUS — printing the error and exiting 0 is how a
+// failed bind reports success to every script, service manager and CI that runs it.
+int
 runServer(uint16_t port) {
     qb::io::cout() << "Starting echo server on port " << port << std::endl;
 
@@ -636,7 +638,7 @@ runServer(uint16_t port) {
     auto status = server.transport().listen_v4(port);
     if (status != 0) {
         qb::io::cerr() << "Failed to listen on port " << port << " (error: " << status << ")" << std::endl;
-        return;
+        return 1;
     }
 
     qb::io::cout() << "Server bound to port " << port << " successfully" << std::endl;
@@ -661,10 +663,11 @@ runServer(uint16_t port) {
     // Cleanup
     qb::io::cout() << "Stopping server..." << std::endl;
     input_thread.join();
+    return 0;
 }
 
-// Run client with interactive input
-void
+// Run the client; the return value is main's exit code, for the same reason as the server.
+int
 runClient(const std::string &host, uint16_t port) {
     qb::io::cout() << "Starting echo client connecting to " << host << ":" << port << std::endl;
 
@@ -678,7 +681,7 @@ runClient(const std::string &host, uint16_t port) {
     auto status = client.transport().connect_v4(host.c_str(), port);
     if (status != 0) {
         qb::io::cerr() << "Failed to connect to server (error: " << status << ")" << std::endl;
-        return;
+        return 1;
     }
 
     // Initialize client protocol and start
@@ -709,6 +712,7 @@ runClient(const std::string &host, uint16_t port) {
     }
 
     qb::io::cout() << "Client shutting down" << std::endl;
+    return 0;
 }
 
 int
@@ -730,7 +734,7 @@ main(int argc, char *argv[]) {
             // argv is untrusted: fall back to the default port on bad input.
             port = qb::to_number<uint16_t>(argv[2]).value_or(DEFAULT_PORT);
         }
-        runServer(port);
+        return runServer(port);
     } else if (mode == "client") {
         // Run as client
         if (argc < 4) {
@@ -747,12 +751,10 @@ main(int argc, char *argv[]) {
             displayHelp();
             return 1;
         }
-        runClient(host, *port);
+        return runClient(host, *port);
     } else {
         qb::io::cerr() << "Invalid mode: " << mode << std::endl;
         displayHelp();
         return 1;
     }
-
-    return 0;
 }

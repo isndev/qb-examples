@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**99 programs, 7 tiers, 820 distinct capabilities, 1612 claims.**
+**99 programs, 7 tiers, 820 distinct capabilities, 1614 claims.**
 
 ## 1. By capability
 
@@ -137,7 +137,7 @@ can disagree.
 | `empty` | `03-coroutines/11-async-streams.cpp`, `04-patterns/03-worker-pool.cpp` |
 | `enable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
 | `engine.core` | `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
-| `engine.hasError` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `engine.hasError` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.join` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.start` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.stop` | `05-services/02-pubsub-broker/server/main.cpp` |
@@ -1273,11 +1273,11 @@ can disagree.
 
 - **`05-services/01-tcp-chat/client/main.cpp`** — 9 capabilities
   - The other half of a two-binary project: console input on one core, the socket on another, so a blocking read never holds up the network — and an exit code that reports what the engine actually did.
-- **`05-services/01-tcp-chat/server/main.cpp`** — 10 capabilities
+- **`05-services/01-tcp-chat/server/main.cpp`** — 11 capabilities
   - How a real server is laid out across cores: the acceptor on one, a pool of session actors on another, the room's state on a third — and one builder() chain that names the pool so the acceptor can round-robin over it.
 - **`05-services/02-pubsub-broker/client/main.cpp`** — 9 capabilities
   - A publish/subscribe client: the same input-actor / network-actor split as the chat client, driving subscribe, unsubscribe and publish over one connection.
-- **`05-services/02-pubsub-broker/server/main.cpp`** — 11 capabilities
+- **`05-services/02-pubsub-broker/server/main.cpp`** — 12 capabilities
   - Topic fan-out without copying the payload: one message body behind a shared_ptr and N events carrying views into it — the corpus's payload model, in the same acceptor / session-pool / logic-actor layout as 01-tcp-chat.
 - **`05-services/03-file-pipeline/main.cpp`** — 15 capabilities
   - Getting blocking work off the event loop: a manager that owns the queue, a pool of worker actors spread over the cores that do the file I/O, and a client that drives the whole run and then shuts it down.

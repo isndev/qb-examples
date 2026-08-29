@@ -5,7 +5,7 @@
  *          N events carrying views into it — the corpus's payload model, in the same
  *          acceptor / session-pool / logic-actor layout as 01-tcp-chat.
  * @demonstrates qb::Main, addActor<T>, engine.core, builder(), idList(), qb::io::uri,
- *               engine.start, engine.stop, engine.join, qb::io::cout, qb::io::cerr
+ *               engine.start, engine.hasError, engine.stop, engine.join, qb::io::cout, qb::io::cerr
  * @prerequisites 05-services/01-tcp-chat
  * @expect "Message broker server started on port 12345"
  * @expect "Engine is running"
@@ -81,6 +81,16 @@ main(int argc, char *argv[]) {
         // - Wait for user input to stop
         // - Demonstrate proper shutdown sequence
         engine.start(true); // asynchronous start
+        // start(true) WAITS for the init barrier: every core has either reached its event
+        // loop or recorded why it could not, so hasError() is answerable RIGHT HERE. A
+        // server whose acceptor failed to bind must say so through its exit status --
+        // printing "Engine is running" over cores that never started is how a failed bind
+        // reports success to whatever supervises this process.
+        if (engine.hasError()) {
+            qb::io::cerr() << "Engine failed to start: an actor failed its init (see log above)" << std::endl;
+            engine.join();
+            return 1;
+        }
         qb::io::cout() << "Engine is running" << std::endl;
         qb::io::cout() << "Press Enter to stop the engine" << std::endl;
         std::cin.get();
