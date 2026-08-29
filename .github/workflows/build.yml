@@ -44,6 +44,12 @@ jobs:
     name: build the corpus against same-named qb + qbm
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # clang, pinned — never the runner's default gcc: the corpus's coroutine-heavy tiers
+      # ICE stock gcc (measured on this lane's very first run: gcc-13 'walk_tree_1 ...
+      # internal compiler error' mid-tier-06; the superproject's memory records a gcc-14.2
+      # coroutine ICE of the same family). Same major the qbm module lanes pin.
+      LLVM_VERSION: '22'
 
     steps:
       - name: Check out this repository
@@ -106,11 +112,15 @@ jobs:
       - name: Install dependencies
         run: ./qb/scripts/ci-install-linux-dependencies.sh --profile build
 
+      # clang-22 arrives with --profile build above (the qbm lanes rely on the same fact);
+      # the configure below pins it and would fail loudly if the profile ever dropped it.
       - name: Configure through the CI superbuild driver
         run: |
           set -euo pipefail
           cmake -S examples/.github/ci/superbuild -B build \
                 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER="clang-${LLVM_VERSION}" \
+                -DCMAKE_CXX_COMPILER="clang++-${LLVM_VERSION}" \
                 -DQB_EXAMPLES_CI_QB_DIR="$PWD/qb" \
                 -DQB_EXAMPLES_CI_QBM_DIR="$PWD/qbm" \
                 -DQB_EXAMPLES_CI_EXAMPLES_DIR="$PWD/examples"
