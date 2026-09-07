@@ -55,7 +55,7 @@
  * SYNCHRONOUS `onInit()` returned false at startup, an escaped exception. It is necessary and
  * it is not sufficient, for two measured reasons:
  *   * an actor whose **async** `onInit()` fails after the engine is running is simply removed
- *     (`VirtualCore.cpp:619`) and sets no engine flag at all;
+ *     (`VirtualCore.cpp:634`) and sets no engine flag at all;
  *   * "the port was already in use" is an application fact the engine has no opinion about.
  * So a real `main()` reads both: `engine.hasError()` and its own startup-failure flag. This
  * program carries both, and `--fail-bind` makes the second one fire so you can watch the exit

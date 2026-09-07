@@ -44,7 +44,7 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
   (`qb/src/qb/io/async/io.h:366-370`). The `open`/`read`/`write` therefore run on the worker's own VirtualCore thread,
   inside the event handler, exactly as if the lambda had been inlined. The parallelism in this example is real, but it
   comes from having **four worker actors on three cores**, not from the callback. To actually defer to the next loop
-  turn you would use `qb::io::async::defer(fn)` (`qb/src/qb/io/async/listener.h:1030-1034`); to run after a delay,
+  turn you would use `qb::io::async::defer(fn)` (`qb/src/qb/io/async/listener.h:1059-1063`); to run after a delay,
   `qb::io::async::callback(fn, duration)`.
 
 > **`ClientActor`'s two delays are coroutines, not timers — and that is the point.**
