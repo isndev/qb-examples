@@ -97,7 +97,7 @@ namespace {
 
 // One unit of work handed across the boundary. Trivially copyable on purpose: the ring's bulk
 // paths use `std::memcpy` and `spsc::ringbuffer` static_asserts anything else away
-// (qb/system/lockfree/spsc.h:53). It is also the same rule an event payload obeys — nothing here
+// (qb/system/lockfree/spsc.h:90-91). It is also the same rule an event payload obeys — nothing here
 // may hold a pointer into itself.
 struct Job {
     std::uint32_t producer;
