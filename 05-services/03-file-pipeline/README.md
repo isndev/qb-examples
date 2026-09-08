@@ -41,16 +41,16 @@ A `ClientActor` asks for files to be written and read back. It never touches a f
 * **"Offload blocking I/O" is not what happens.** Both workers wrap their file work in
   `qb::io::async::callback(lambda)` with **one** argument (`file_worker.h:112`, `:168`). That overload schedules
   nothing — it calls the function **inline, synchronously**, right there in the handler
-  (`qb/src/qb/io/async/io.h:366-370`). The `open`/`read`/`write` therefore run on the worker's own VirtualCore thread,
+  (`qb/src/qb/io/async/io.h:364-368`). The `open`/`read`/`write` therefore run on the worker's own VirtualCore thread,
   inside the event handler, exactly as if the lambda had been inlined. The parallelism in this example is real, but it
   comes from having **four worker actors on three cores**, not from the callback. To actually defer to the next loop
-  turn you would use `qb::io::async::defer(fn)` (`qb/src/qb/io/async/listener.h:1151-1155`); to run after a delay,
+  turn you would use `qb::io::async::defer(fn)` (`qb/src/qb/io/async/listener.h:1050-1054`); to run after a delay,
   `qb::io::async::callback(fn, duration)`.
 
 > **`ClientActor`'s two delays are coroutines, not timers — and that is the point.**
 > `main.cpp:120` (`startTests` after 500 ms) and `main.cpp:263` (broadcast the kill after 1 s) used to be
 > `qb::io::async::callback([this]..., delay)`, which heap-allocates a `Timeout` owned by the **event loop**, not by the
-> actor (`qb/src/qb/io/async/io.h:389`). Nothing cancels it if the actor dies first, and the lambda then dereferences
+> actor (`qb/src/qb/io/async/io.h:384`). Nothing cancels it if the actor dies first, and the lambda then dereferences
 > freed memory. Both now go through one lifetime-bound helper (`ClientActor::scheduleTick<T>`, `main.cpp:202-209`):
 >
 > ```cpp

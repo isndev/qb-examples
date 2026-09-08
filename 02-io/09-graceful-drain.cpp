@@ -72,7 +72,7 @@
  * The client below reconnects when its connection drops, which means destroying and recreating the
  * very object whose handler noticed. Doing that inline frees memory the framework is still standing
  * on. `async::callback(f)` — with no delay — does NOT help: it calls `f` INLINE, right there
- * (`qb/src/qb/io/async/io.h:367`). `async::defer(f)` queues `f` to the tail of the current loop
+ * (`qb/src/qb/io/async/io.h:365`). `async::defer(f)` queues `f` to the tail of the current loop
  * turn, after every watcher for this turn has returned. It is the correct primitive, and it had
  * **zero** call sites in 55 programs.
  *

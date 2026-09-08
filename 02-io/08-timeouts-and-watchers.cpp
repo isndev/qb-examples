@@ -26,7 +26,7 @@
  * `qb::io::async::with_timeout<Derived>` reads like a periodic timer and is not one. Its contract
  * is *inactivity*: it fires `Derived::on(event::timer&)` only when nothing has called
  * `updateTimeout()` for the whole budget. Look at the base's own handler
- * (`qb/src/qb/io/async/io.h:181`):
+ * (`qb/src/qb/io/async/io.h:179`):
  *
  *     const ev_tstamp after = _last_activity - event.loop.now() + _timeout;
  *     if (after <= 0.)  Derived.on(event);          // the budget really elapsed
