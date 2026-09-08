@@ -24,7 +24,7 @@
  * WHAT THE ENGINE ACTUALLY DOES
  * -----------------------------
  * A cross-core `push` copies the event's bytes into the destination core's mailbox with
- * `memcpy` (`qb/src/qb/core/Main.cpp:215`) and reclaims the source slot WITHOUT running a
+ * `memcpy` (`qb/src/qb/core/Main.cpp:241`) and reclaims the source slot WITHOUT running a
  * destructor. The receiving core then `reinterpret_cast`s those bytes back into your type. So
  * the event is not moved and it is not copy-constructed: it is **relocated**.
  *
@@ -37,8 +37,8 @@
  * the old bytes after the relocation. C++20 has no `is_trivially_relocatable`, and the nearest
  * available trait — `is_trivially_copyable` — is far too strict: it would reject
  * `std::shared_ptr` and `std::vector`, both of which are perfectly safe here because they point
- * at the HEAP, not at themselves. So the framework declines to assert (`Main.cpp:148-151`) and
- * ships a **debug-only** guard instead: `event_points_into_itself` (`Main.cpp:173-187`) scans
+ * at the HEAP, not at themselves. So the framework declines to assert (`Main.cpp:174-177`) and
+ * ships a **debug-only** guard instead: `event_points_into_itself` (`Main.cpp:199-213`) scans
  * the event's own byte range for a pointer aimed back into it, and on a hit logs `QB_LOG_CRIT`
  * and asserts. It exists in Debug builds only, and it relies on the Debug-only zeroing in
  * `qb::detail::prepare_event_storage` — do not remove one without the other.
