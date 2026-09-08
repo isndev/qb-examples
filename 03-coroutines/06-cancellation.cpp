@@ -27,12 +27,12 @@
  * An actor may be killed at any time — by `kill()`, by a `KillEvent`, by SIGINT. Its
  * coroutines do not stop being suspended when that happens: a frame parked on a 30-second
  * timer is still parked, still owns whatever its locals own, and the actor object it was
- * spawned from is erased from the core's map IMMEDIATELY (`VirtualCore.cpp:952`). Without a
+ * spawned from is erased from the core's map IMMEDIATELY (`VirtualCore.cpp:973`). Without a
  * mechanism that is either a leak — nobody ever unwinds the frame — or a use-after-free,
  * because something unwinds it and it touches the actor.
  *
  * The mechanism is one `qb::io::async::cancellation_token` per actor: its SCOPE. `kill()`
- * cancels it (`Actor.cpp:288`), every cancellation-aware awaiter has registered an
+ * cancels it (`Actor.cpp:441`), every cancellation-aware awaiter has registered an
  * `on_cancel` hook, each hook re-queues its coroutine, and each coroutine resumes into a
  * thrown `cancelled_error` and UNWINDS NORMALLY. Destructors run. `catch` blocks run. This
  * program watches that happen with a counter rather than asserting it in prose.

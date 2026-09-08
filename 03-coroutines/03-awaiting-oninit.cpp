@@ -175,7 +175,7 @@ public:
 
         // ONE CLOCK TRAP, MEASURED. `Actor::time()` is the VirtualCore's CACHED loop clock,
         // refreshed once per loop pass (`VirtualCore.cpp:659`) — and its initial value is 0
-        // (`VirtualCore.h:377`). At engine start `onInit` runs BEFORE the core's first pass,
+        // (`VirtualCore.h:381`). At engine start `onInit` runs BEFORE the core's first pass,
         // so it reads 0 here and an elapsed-time subtraction against it yields the whole UNIX
         // epoch. It is exactly right everywhere the loop is already turning, which is every
         // other use of it in this corpus; for a startup measurement use a real clock.
