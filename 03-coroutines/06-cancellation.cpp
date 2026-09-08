@@ -27,7 +27,7 @@
  * An actor may be killed at any time — by `kill()`, by a `KillEvent`, by SIGINT. Its
  * coroutines do not stop being suspended when that happens: a frame parked on a 30-second
  * timer is still parked, still owns whatever its locals own, and the actor object it was
- * spawned from is erased from the core's map IMMEDIATELY (`VirtualCore.cpp:973`). Without a
+ * spawned from is erased from the core's map IMMEDIATELY (`VirtualCore.cpp:1111`). Without a
  * mechanism that is either a leak — nobody ever unwinds the frame — or a use-after-free,
  * because something unwinds it and it touches the actor.
  *
