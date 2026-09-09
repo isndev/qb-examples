@@ -9,7 +9,22 @@ plumbing do not qualify.
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+### Fixed
+
+- **Two programs whose ending was decided by one core's timeline — the corpus runner's
+  two signals, a hang and a dead path, each seen once on the arm64 CI runner.**
+  `02-io/03-tcp` gated its shutdown command on a flag the SERVER thread clears when it sees
+  the client's socket close — the client object's destructor, microseconds before
+  `join()` returns — so the server's 10 ms tick could win and no shutdown was ever sent: a
+  hang after the full script had printed, won ~999 times in 1 000 on x86 and lost 2 of 16
+  on the arm64 VM; `main` decides on the server's own state now. `04-patterns/01-pubsub`
+  stopped the engine on the survivor's second wave alone while the polite desk's exit ran on
+  the other core with nothing ordering the two, so a run could print `=== pub/sub complete
+  ===`, exit 0, and never print `[bus@1] a POLITE subscriber reclaims its slot at once`;
+  each feed now reports to the reporter once its bus has judged the departed desk, and the
+  run ends only when both buses have spoken AND the survivor's wave has landed (40/40 quiet,
+  40/40 under twelve busy neighbours on WSL2). The lessons are untouched; what changed is
+  that both programs now end for a reason every core agrees on.
 
 ## [3.0.1] - 2026-08-29
 
