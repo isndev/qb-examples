@@ -44,7 +44,8 @@
  * - Runs the `TCPServer` in one thread and the `TCPClient` in another.
  * - The client sends several commands, and the server responds accordingly.
  * - Includes logic for the client to request server shutdown and for the main loop to manage
- *   the server's lifecycle based on the `g_server_running` flag.
+ *   the server's lifecycle based on the `g_server_running` flag (and on that flag only: the
+ *   server thread owns `g_client_connected`, see the note in `main`).
  * - Uses `qb::io::async::run(EVRUN_NOWAIT)` in loops with short sleeps to drive the event processing.
  *
  * QB-IO Features Demonstrated:
@@ -379,8 +380,14 @@ main() {
     // Wait for the client thread to finish
     client_thread.join();
 
-    // If the server is still running, send a shutdown command
-    if (g_server_running && g_client_connected) {
+    // If the server is still running, send a shutdown command. The decision rests on
+    // g_server_running ALONE: g_client_connected belongs to the server thread, which clears it
+    // in ~ServerClientHandler() the moment it sees the client's socket close -- and that close
+    // is the TCPClient destructor at the end of runClient(), microseconds before join() returns
+    // here. Gating on it raced the server's 10 ms tick: when the tick won, no shutdown was ever
+    // sent and server_thread.join() below waited for ever (measured: 2 of 16 corpus runs on the
+    // arm64 CI runner, ~1 in 1000 on a fast x86 host).
+    if (g_server_running) {
         printSection("Shutting Down Server");
 
         // Create a temporary client to send the shutdown command
@@ -398,6 +405,10 @@ main() {
             }
 
             shutdown_client.disconnect();
+        } else {
+            // The server cannot be told: stop its loop from here rather than wait on it for ever.
+            printError("Shutdown", "Could not reach the server to send 'shutdown'; stopping its loop directly");
+            g_server_running = false;
         }
     }
 
