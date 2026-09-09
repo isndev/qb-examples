@@ -301,7 +301,7 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   is terminal, so `receive()` answers `nullopt` for ever while `on_notify()` keeps firing and every
   later notification is handed to the drop handler. Build a NEW consumer after a drop.
 * **Do not call `disconnect()` from a coroutine**: it ends with
-  `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (`pgsql.h:2530`), and pumping the loop from
+  `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (`pgsql.h:2643`), and pumping the loop from
   inside a coroutine re-enters `CoroutineScheduler::run_ready`, whose assert catches exactly that
   (SIGABRT under the `sanitize` preset; silent re-entrancy under `release`). This example drops the
   link with `pg_terminate_backend` from the publisher instead — which is also what a failover does.
