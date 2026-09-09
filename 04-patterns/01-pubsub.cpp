@@ -101,6 +101,15 @@ struct Left : public qb::Event {
         : polite(p) {}
 };
 
+// A feed -> the reporter: "my bus has judged its departed desk, and published once more." The
+// two exits run on two cores, so nothing orders them against the survivor's report; the run may
+// end only once both buses have spoken, or the slower core's verdict is cut off by the stop.
+struct BusReport : public qb::Event {
+    bool polite;
+    explicit BusReport(bool p)
+        : polite(p) {}
+};
+
 // ---------------------------------------------------------------------------
 // A subscriber. Joining the bus is two lines of onInit; leaving it is one line, or none.
 // ---------------------------------------------------------------------------
@@ -166,12 +175,14 @@ public:
 class MarketFeed : public qb::Actor {
     qb::string<8> _symbol;
     int           _expect_desks;
+    qb::ActorId   _reporter;
     int           _ready = 0;
 
 public:
-    MarketFeed(std::string_view symbol, int expect_desks)
+    MarketFeed(std::string_view symbol, int expect_desks, qb::ActorId reporter)
         : _symbol(symbol)
-        , _expect_desks(expect_desks) {}
+        , _expect_desks(expect_desks)
+        , _reporter(reporter) {}
 
     qb::io::async::task<bool>
     onInit() override {
@@ -209,6 +220,7 @@ public:
         // Either way, publishing again is correct and safe: a dead id resolves to no handler, and
         // publishing into an empty bus is a well-defined no-op rather than an error.
         publish_wave(*bus, 1);
+        push<BusReport>(_reporter, e.polite);
     }
 
 private:
@@ -226,12 +238,14 @@ private:
 class Reporter : public qb::Actor {
     qb::ActorId _killed_desk;
     qb::ActorId _polite_desk;
-    int         _reports = 0;
+    int         _reports     = 0;
+    int         _bus_reports = 0;
 
 public:
     qb::io::async::task<bool>
     onInit() override {
         registerEvent<DeskReport>(*this);
+        registerEvent<BusReport>(*this);
         co_return true;
     }
 
@@ -247,11 +261,28 @@ public:
             push<Leave>(_polite_desk, true);
             return;
         }
-        if (_reports > 3) {
-            // The survivor reported a second wave: the bus still delivers with a dead id in it.
-            qb::io::cout() << "=== pub/sub complete: 2 buses, 3 desks, no registry code ===\n";
-            qb::Main::stop();
-        }
+        finish_if_done();
+    }
+
+    void
+    on(BusReport const &) {
+        ++_bus_reports;
+        finish_if_done();
+    }
+
+private:
+    // The run is over when the survivor has reported a second wave (the bus still delivers with
+    // a dead id in it) AND both buses have judged their departed desk. The two conditions arrive
+    // from two cores in no fixed order: the killed desk's core does its two hops -- the feed's
+    // verdict, then the survivor's wave -- while the polite desk's core does its own, and a stop
+    // taken on the survivor alone would end the engine with the other bus's verdict unprinted
+    // (measured on the CI runner: the polite line missing from a run that exited 0).
+    void
+    finish_if_done() {
+        if (_reports < 4 || _bus_reports < 2)
+            return;
+        qb::io::cout() << "=== pub/sub complete: 2 buses, 3 desks, no registry code ===\n";
+        qb::Main::stop();
     }
 };
 
@@ -266,8 +297,8 @@ main() {
     engine.addActor<qb::PubSub<PriceTick>>(1);
 
     auto reporter = engine.addActor<Reporter>(0);
-    auto feed0    = engine.addActor<MarketFeed>(0, "AAPL", 2);
-    auto feed1    = engine.addActor<MarketFeed>(1, "BTC-EUR", 1);
+    auto feed0    = engine.addActor<MarketFeed>(0, "AAPL", 2, reporter);
+    auto feed1    = engine.addActor<MarketFeed>(1, "BTC-EUR", 1, reporter);
 
     engine.addActor<Desk>(0, "equities-A", feed0, reporter);
     engine.addActor<Desk>(0, "equities-B", feed0, reporter);
