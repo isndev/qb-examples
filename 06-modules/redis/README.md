@@ -29,7 +29,7 @@ pre-3.0 programs that used to sit beside them — `example2_hash_operations`,
 `02-data-types` merges the first two and adds sets, and `07-scripting` + `10-cache-actor`
 between them cover the third.
 
-**Every program added since 3.0 deletes the keys it wrote**, on the failure path as well as the
+**Every program added in this directory deletes the keys it wrote**, on the failure path as well as the
 success one. That is not tidiness: `06-streams` writes ~1,000,000 stream entries per run and leaves
 them (measured: `XLEN` 1,000,546 and ~240 MB after one run from a clean key), and a program whose
 cost depends on what a previous run left behind cannot be judged by a timeout.
