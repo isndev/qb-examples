@@ -26,6 +26,22 @@ plumbing do not qualify.
   40/40 under twelve busy neighbours on WSL2). The lessons are untouched; what changed is
   that both programs now end for a reason every core agrees on.
 
+## [3.1.0] - 2026-08-30
+
+### Changed
+
+- **This repository gets its own CI (Huly QB-7).** Until then 99 programs protected no push to the
+  repository that owns them. A lane checks out the same-named qb and qbm branches, drives the
+  superproject's superbuild, and holds floors that refuse vacuity: at least 90 translation units
+  compiled, a roster of at least 99 built rows, every built binary present, one self-contained
+  program run — with clang pinned like every other lane, and the roster floor set to what
+  `ubuntu-latest` can build.
+- **The two tier-7 post-SIGTERM `@expect` tails lose their platform tag**
+  (`07-applications/01-taskmanager`, `07-applications/02-auction-house`): qb 3.1.0's console-control
+  bridge delivers CTRL_BREAK as the SIGTERM their teardown already handles, so the lines the tag
+  excluded on Windows are assertable there. The platform-tagged count returns to 2, both honest
+  bounds (SIGHUP's existence, AFD's send buffer), neither a framework gap.
+
 ## [3.0.1] - 2026-08-29
 
 ### Fixed
@@ -78,3 +94,8 @@ nowhere, so it went into `06-modules/redis/06-streams`. And "relocatable is not 
 `shared_ptr` into an event settles whether the EVENT can be memcpy'd and says nothing about who
 may write through the POINTEE) went into `01-actors/03-event-payloads`, beside the rule it is
 the second half of.
+
+[Unreleased]: https://github.com/isndev/qb-examples/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/isndev/qb-examples/compare/v3.0.1...v3.1.0
+[3.0.1]: https://github.com/isndev/qb-examples/compare/v3.0.0...v3.0.1
+[3.0.0]: https://github.com/isndev/qb-examples/releases/tag/v3.0.0
