@@ -11,6 +11,10 @@ plumbing do not qualify.
 
 Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
 
+## [3.2.1] - 2026-09-24
+
+Lockstep release with the qb 3.2.1 train; no change in this repository (the version says compatible, this section says unchanged).
+
 ## [3.2.0] - 2026-09-21
 
 ### Fixed
@@ -99,7 +103,8 @@ nowhere, so it went into `06-modules/redis/06-streams`. And "relocatable is not 
 may write through the POINTEE) went into `01-actors/03-event-payloads`, beside the rule it is
 the second half of.
 
-[Unreleased]: https://github.com/isndev/qb-examples/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/isndev/qb-examples/compare/v3.2.1...HEAD
+[3.2.1]: https://github.com/isndev/qb-examples/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/isndev/qb-examples/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/isndev/qb-examples/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/isndev/qb-examples/compare/v3.0.0...v3.0.1
