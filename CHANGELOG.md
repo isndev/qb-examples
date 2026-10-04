@@ -9,7 +9,12 @@ plumbing do not qualify.
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+### Fixed
+
+- **`02-io/08-timeouts-and-watchers` no longer says `ev_stat` is never inotify (Huly QB-204).** On Linux
+  inotify wakes it for a path on a filesystem libev knows to be local, and it polls everywhere else; the
+  header block, the interval comment and the closing line say so. What the program teaches is unchanged:
+  the event is two `stat`s, so a directory event says THAT something changed, never WHAT.
 
 ## [3.2.1] - 2026-09-24
 

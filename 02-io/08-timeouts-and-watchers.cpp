@@ -5,7 +5,7 @@
  *          by running the two re-arming calls side by side and counting how often each fires; a
  *          one-shot timer you can still cancel; a `file_watcher` that tails a growing file and
  *          frames its lines for you; and a `directory_watcher` whose real limit is the lesson: it
- *          polls, and it tells you THAT something changed, never WHAT.
+ *          compares stats, and it tells you THAT something changed, never WHAT.
  * @demonstrates qb::io::async::with_timeout, setTimeout, updateTimeout, getTimeout,
  *               qb::io::async::event::timer, qb::io::async::scoped_callback, qb::io::async::callback,
  *               qb::io::use<T>::file, qb::io::async::directory_watcher,
@@ -47,17 +47,17 @@
  *
  * WHAT ev::stat CAN AND CANNOT TELL YOU
  * -------------------------------------
- * Both watchers are built on libev's `ev_stat`, which **polls** `stat()` — it is not inotify,
- * FSEvents or ReadDirectoryChangesW. Three consequences a design has to plan around:
+ * Both watchers are built on libev's `ev_stat`: on Linux, inotify wakes it for a path on a filesystem
+ * libev knows to be local (ext4, xfs, btrfs, tmpfs, ...); anywhere else — macOS, Windows, overlayfs,
+ * NFS, 9p — it **polls** `stat()` every interval. Either way it compares two `stat`s. Consequences:
  *   * the event carries `attr` and `prev` (two `struct stat`), so you learn size, mtime, inode and
  *     link count. For a directory that means "the directory changed"; the changed FILE's name is
  *     simply not in the data, and recovering it means diffing a listing yourself.
- *   * the interval is a floor, not a promise, and libev clamps very small values (~0.11 s). Two
- *     changes inside one interval are one event.
- *   * a file whose size and mtime both return to their previous values between two polls did not
+ *   * where it polls, the interval is a floor, not a promise, and libev clamps very small values
+ *     (~0.11 s). Two changes between two looks are one event.
+ *   * a file whose size and mtime both return to their previous values between two looks did not
  *     happen, as far as this API is concerned.
- * A reader who plans against inotify semantics plans wrongly, which is why the limit is stated here
- * rather than discovered later.
+ * A reader who plans against inotify-queue semantics plans wrongly, even where inotify wakes it.
  *
  * Build:
  *   cmake --preset release
@@ -261,8 +261,8 @@ main() {
         qb::io::cerr() << "[fatal] could not open " << file.string() << "\n";
         return 1;
     }
-    // The interval is a FLOOR: libev clamps `ev_stat` to about 0.11 s, so asking for 10 ms would
-    // not make this poll faster. 100 ms is honest about what it will actually do.
+    // Where ev_stat polls, the interval is a FLOOR: libev clamps it to about 0.11 s, so asking for
+    // 10 ms would not poll faster (a local Linux filesystem wakes it through inotify at once).
     tail.start(file, 100ms);
 
     qb::io::cout() << "\n--- 4. watching a directory ---\n";
@@ -292,7 +292,7 @@ main() {
     qb::io::cout() << "[tail] framed " << tail.lines() << " line(s) out of a file that was being written to\n";
     qb::io::cout() << "[dir] " << dirwatch.events() << " directory event(s) observed\n";
     qb::io::cout() << "[dir] a directory event says THAT something changed, never WHAT: no filename is carried,\n"
-                      "      because ev::stat is two struct stats and a poll, not an inotify queue\n";
+                      "      because ev::stat compares two struct stats -- even where inotify wakes it\n";
 
     // The stop is explicit. Both watchers keep the loop alive otherwise, and a program that leaves
     // its watchers running is a program that never returns from `run()`.

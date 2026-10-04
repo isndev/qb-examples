@@ -47,9 +47,9 @@
  *    a `std::string` compiles and is correct; a `qb::EventQOS0` holding one is rejected at every
  *    enqueue sink, `getPipe().push` and `allocated_push` included. Derive fire-and-forget events
  *    from `qb::EventQOS0` and the compiler will hold you to the rule. (`Actor.h:889`,
- *    `Event.h` `routing_safe_type_id`, `VirtualCore.h:821`.)
+ *    `Event.h` `routing_safe_type_id`, `VirtualCore.h:829`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
- *    (`Event.h:499`, `:509`) — the same type, not two priorities. Only `EventQOS0` is a
+ *    (`Event.h:498`, `:508`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.
  *
  * THE `allocated_push` ARITHMETIC, WHICH IS EASY TO GET WRONG BY A FACTOR OF TWO
