@@ -22,10 +22,11 @@
  *
  * ## Lifecycle
  * `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the owner
- * then spawns `consume_loop()` as an actor-scoped coroutine. What ends that loop is
- * `~RedisCoroConsumer` closing the message channel — part of the actor's own
- * destruction — so the loop resumes with `std::nullopt` after the actor is gone.
- * Neither `shutdown()` nor `kill()` ends it; both were measured and neither does.
+ * then spawns `consume_loop()` as an actor-scoped coroutine. `shutdown()` ends that
+ * loop: its `disconnect()` closes the consumer's message channel, and a closed channel
+ * resumes a parked `receive()` with `std::nullopt`. The close only SCHEDULES that
+ * resume, and the owner calls `kill()` in the same handler — so the reap at the end of
+ * that pass destroys the actor first, and the loop resumes after the actor is gone.
  */
 #pragma once
 
@@ -60,19 +61,21 @@ public:
     qb::io::async::task<bool> connect_subscriber();
 
     /**
-     * @brief Drain published messages forever, broadcasting each to WS clients.
-     * @details Ends when `~RedisCoroConsumer` closes the message channel — i.e. as part of
-     *          the owning actor's destruction — and therefore resumes one last time with
+     * @brief Drain published messages, broadcasting each to WS clients, until the
+     *        subscriber disconnects.
+     * @details Ends when the message channel closes: `shutdown()`'s `disconnect()` closes
+     *          it, and so do a dropped link and `~RedisCoroConsumer`. On shutdown the owner
+     *          is killed in the same pass, so the loop resumes one last time with
      *          `std::nullopt` after that actor is gone. Nothing after the loop may touch
      *          `this`; see the definition.
      */
     qb::io::async::task<void> consume_loop();
 
     /**
-     * @brief Drop the subscriber connection (idempotent).
-     * @details Does NOT end `consume_loop()`, despite the intuition: `disconnect()` only
-     *          feeds the io watcher a deferred event, and when the actor is killed in the
-     *          same pass `~client()` stops that watcher before it ever fires.
+     * @brief Drop the subscriber connection (idempotent), which ends `consume_loop()`.
+     * @details The teardown completes inside `disconnect()`, and the consumer's disconnect
+     *          handler closes the message channel. The parked `receive()` resumes on a later
+     *          pass — after the owner, killed in the same handler, is gone.
      */
     void shutdown();
 

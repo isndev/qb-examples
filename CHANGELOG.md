@@ -15,6 +15,17 @@ plumbing do not qualify.
   `on(qb::io::async::event::disconnected &)`, a non-const lvalue reference, which never binds the rvalue the event
   is dispatched as: neither was ever called, so the client could not leave its loop when the server went. They take
   `&&` now.
+- **`06-modules/pgsql/07-listen-notify` teaches the fixed consumer (Huly QB-252, QB-253).** Its section 5 measured
+  the defect -- a reconnected `notify_co_consumer`'s `receive()` answering `nullopt` for ever, remedied with a second
+  consumer -- and its comments said `disconnect()` aborts a debug build when called from a coroutine. It now
+  measures that the same consumer's `receive()` hands over the notification the re-LISTEN let through, says
+  `disconnect()` is safe there, and its `[reuse]` line changed with it; the drop handler is documented as the
+  backpressure signal it now only is.
+- **The taskmanager and auction-house comments describe the subscriber's shutdown as it now happens (Huly
+  QB-252).** They said `shutdown()`'s `disconnect()` does NOT end the receive loop -- which was the defect: the
+  consumer's disconnect handler never ran. It ends it now. The rule they keep is the loop's: its tail touches nothing
+  of the actor, because `close()` only schedules the resume and the actor, killed in the same handler, is reaped
+  first.
 - **`02-io/08-timeouts-and-watchers` no longer says `ev_stat` is never inotify (Huly QB-204).** On Linux
   inotify wakes it for a path on a filesystem libev knows to be local, and it polls everywhere else; the
   header block, the interval comment and the closing line say so. What the program teaches is unchanged:

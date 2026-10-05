@@ -150,7 +150,8 @@ POST /tasks
 - Inherits `qb::io::use<T>::tcp::io_handler<WsSession>` (session pool)
 - Owns a `qb::redis::tcp::co_consumer` (coroutine Redis SUB)
 - `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the actor
-  then spawns `consume_loop()` (scoped — cancelled on kill)
+  then spawns `consume_loop()`, which `shutdown()`'s `disconnect()` ends (a channel
+  `receive()` is not cancellation-aware: `kill()` alone would not)
 
 ### `WsSession`  _(declaration + impl)_
 

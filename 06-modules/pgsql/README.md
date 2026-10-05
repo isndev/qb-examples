@@ -296,15 +296,16 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   COMMIT, never after a rollback); it is NOT a queue (one sent while nobody listens is gone); the
   payload is capped at 8000 bytes, so send an identifier and let the reader fetch the row; and the
   subscription belongs to the CONNECTION, so a reconnect subscribes you to nothing.
-* **And a limit worth knowing**: after ANY disconnect this consumer's `co_await receive()` is DEAD.
-  `on_pg_notify_consumer_disconnected` closes its internal channel and `qb::io::async::channel::close()`
-  is terminal, so `receive()` answers `nullopt` for ever while `on_notify()` keeps firing and every
-  later notification is handed to the drop handler. Build a NEW consumer after a drop.
-* **Do not call `disconnect()` from a coroutine**: it ends with
-  `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (`pgsql.h:2647`), and pumping the loop from
-  inside a coroutine re-enters `CoroutineScheduler::run_ready`, whose assert catches exactly that
-  (SIGABRT under the `sanitize` preset; silent re-entrancy under `release`). This example drops the
-  link with `pg_terminate_backend` from the publisher instead — which is also what a failover does.
+* **And `receive()` comes back with the connection**: a drop closes the consumer's queue — which is
+  what ends a parked `co_await receive()`, with `nullopt` — and once the same consumer is connected
+  again it serves the new connection from a fresh queue, carrying over anything received and not yet
+  read. The example measures it: after the reconnect and the re-LISTEN, the same object's `receive()`
+  hands over the notification the re-LISTEN let through. (Until 3.3 the queue stayed closed and
+  `receive()` answered `nullopt` for ever — Huly QB-252.)
+* **The link is dropped from the server**: `pg_terminate_backend` from the publisher, which is what a
+  failover or an admin does. `disconnect()` would do as well — it completes the teardown inside the
+  call and is safe from a coroutine (until 3.3 it pumped the event loop, and from a coroutine that
+  re-entered the scheduler — Huly QB-253).
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-listen-notify`
 
 ---

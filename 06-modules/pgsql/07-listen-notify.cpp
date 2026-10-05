@@ -17,7 +17,7 @@
  * @expect "[trigger] the INSERT itself published: a trigger called pg_notify(), so the writer did"
  * @expect "[rule] NOTIFY is NOT a queue — one sent while nobody was listening is gone, and no"
  * @expect "[rule] the subscription belongs to the CONNECTION: after a reconnect you must LISTEN"
- * @expect "[reuse] a reconnected consumer\'s co_await receive() is DEAD: the disconnect closed its"
+ * @expect "[reuse] a reconnected consumer's co_await receive() comes back: the drop closed its"
  * @expect "=== listen/notify complete: the trigger, the function and the table are dropped ==="
  *
  * WHAT THIS IS FOR
@@ -53,10 +53,11 @@
  *
  * A LIFETIME NOTE THAT IS EASY TO GET WRONG THE OTHER WAY
  * -------------------------------------------------------
- * `receive()` parks on the consumer's channel, and `~notify_co_consumer` CLOSES that channel — so
- * unlike every other module awaiter here, a parked `receive()` does resume during destruction,
- * with `std::nullopt`. That makes `while (auto n = co_await sub.receive())` a loop that ends by
- * itself when the consumer goes away, rather than an orphaned frame.
+ * `receive()` parks on the consumer's queue, and both a disconnect and `~notify_co_consumer` CLOSE
+ * that queue — so unlike every other module awaiter here, a parked `receive()` does resume when
+ * the link drops or the consumer is destroyed, with `std::nullopt`. That makes
+ * `while (auto n = co_await sub.receive())` a loop that ends by itself, rather than an orphaned
+ * frame; a reconnected consumer serves its next connection from a fresh queue (section 5).
  *
  * Everything this program creates — one table, one function, one trigger — is dropped on the way
  * out, and the consumer UNLISTENs.
@@ -111,13 +112,13 @@ run_listen_notify(bool &running, bool &ok) {
     // resumes — which is what makes it the right place for a counter and the wrong place for work.
     int seen_via_callback = 0;
     sub.on_notify([&seen_via_callback](qb::pg::notification &&) { ++seen_via_callback; });
-    // The drop handler fires for TWO different reasons, and the distinction matters: the channel
-    // is full (you are behind), or the channel has been CLOSED (see section 5 — a disconnect
-    // closes it permanently). Both arrive here; only one of them is backpressure.
+    // The drop handler is backpressure: it fires when the consumer's queue is full — you are
+    // behind. A disconnect closes the queue too, but no notification arrives on a closed link, and
+    // the next connection is served by a fresh queue (section 5).
     sub.on_notify_dropped([](qb::pg::notification &&n) {
         qb::io::cout() << "        [dropped] a notification on '" << n.channel
                        << "' did not reach receive(): the consumer's\n"
-                          "                  channel is full or closed\n";
+                          "                  queue is full\n";
     });
 
     if (!(co_await sub.listen(CHANNEL)).ok()) {
@@ -220,16 +221,10 @@ run_listen_notify(bool &running, bool &ok) {
                             : "[rule] UNEXPECTED: a notification arrived after UNLISTEN\n");
 
     // ...and the reconnect rule, measured rather than asserted. The connection is dropped from
-    // the SERVER side — `pg_terminate_backend` on the consumer's own backend — which is what a
-    // failover or an admin actually does, and which is also the only way to do it from here:
-    //
-    //   `sub.disconnect()` ABORTS a debug or sanitize build. It ends with
-    //   `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (pgsql.h:2534) to drain the local
-    //   close synchronously, and pumping the loop from inside a coroutine re-enters
-    //   `CoroutineScheduler::run_ready`, whose assert says exactly that (scheduler.h:526).
-    //   Measured: SIGABRT under the `sanitize` preset, silent re-entrancy under `release` where
-    //   NDEBUG removes the assert. Call disconnect() from a callback or from main(), not from a
-    //   coroutine.
+    // the SERVER side — `pg_terminate_backend` on the consumer's own backend — because that is
+    // what a failover or an admin actually does, and the one drop a client cannot prevent.
+    // (`sub.disconnect()` would do as well: it completes the teardown inside the call, and is
+    // safe from a coroutine like this one.)
     auto      my_pid_row = co_await sub.execute("SELECT pg_backend_pid();");
     const int sub_pid    = my_pid_row.ok() && !my_pid_row.result().empty() ? my_pid_row.result()[0][0].as<int>() : 0;
     (void) co_await pub.query("SELECT pg_terminate_backend($1);", sub_pid);
@@ -257,36 +252,24 @@ run_listen_notify(bool &running, bool &ok) {
                    << "; after re-LISTEN the callback fired again: " << (callback_recovered ? "yes" : "no") << ")\n\n";
 
     // -----------------------------------------------------------------------------------
-    // 5. ...BUT receive() DOES NOT COME BACK, AND THAT IS A LIMIT WORTH KNOWING
+    // 5. ...AND receive() COMES BACK WITH IT
     // -----------------------------------------------------------------------------------
-    // MEASURED on this tree, not inferred. `on_pg_notify_consumer_disconnected` closes the
-    // consumer's internal channel, and `qb::io::async::channel<T>::close()` is TERMINAL — there
-    // is no reopen and `_closed` is only ever set to true (`qb/io/async/coroutine/channel.h`).
-    // So after ANY disconnect this consumer's `receive()` returns std::nullopt for ever, and
-    // every later notification is handed to the drop handler instead. The callback half keeps
-    // working, because `deliver_pg_notify` invokes it BEFORE it tries the channel.
-    std::optional<qb::pg::notification> after_reconnect = co_await sub.receive();
-    const bool                          receive_is_dead = !after_reconnect.has_value();
+    // The drop closed the consumer's queue — which is what ends a `receive()` parked on it, with
+    // std::nullopt — and a closed queue never reopens (`qb::io::async::channel<T>::close()` is
+    // terminal). It does not have to: the consumer outlives its connections, and once connected
+    // again it serves the new connection from a fresh queue, carrying over anything received and
+    // not yet read. The re-LISTENed notification above went to the callback AND to that queue, so the
+    // same object's `co_await receive()` hands it over — no second consumer, no loop to rewire.
+    std::optional<qb::pg::notification> after_reconnect;
+    if (callback_recovered) // it is queued; without it, receive() would park waiting for nothing
+        after_reconnect = co_await sub.receive();
 
-    // The recovery is therefore a NEW consumer, not a reconnected one. That is the whole
-    // remedy, and it costs one object.
-    qb::pg::tcp::notify_co_consumer fresh;
-    bool                            fresh_ok = false;
-    if (co_await fresh.connect(PG_CONNECTION_STRING) && (co_await fresh.listen(CHANNEL)).ok()) {
-        (void) co_await pub.notify(CHANNEL, "to-a-fresh-consumer");
-        std::optional<qb::pg::notification> got = co_await fresh.receive();
-        fresh_ok                                = got.has_value() && got->payload == "to-a-fresh-consumer";
-        (void) co_await fresh.unlisten_all();
-    }
-
-    const bool reuse_ok = receive_is_dead && fresh_ok;
-    qb::io::cout() << (reuse_ok ? "[reuse] a reconnected consumer\'s co_await receive() is DEAD: the disconnect closed its\n"
-                                  "        internal channel and a closed channel never reopens, so receive() answers\n"
-                                  "        nullopt for ever while on_notify() keeps firing. Build a NEW consumer after a\n"
-                                  "        drop — do not reconnect the old one\n"
-                                : "[reuse] UNEXPECTED: the reconnected consumer\'s receive() behaved differently than measured\n");
-    qb::io::cout() << "        (reconnected consumer\'s receive(): " << (receive_is_dead ? "nullopt" : "a notification")
-                   << "; a fresh consumer: " << (fresh_ok ? "delivered" : "did not deliver") << ")\n\n";
+    const bool reuse_ok = after_reconnect.has_value() && after_reconnect->payload == "after-relisten";
+    qb::io::cout() << (reuse_ok ? "[reuse] a reconnected consumer's co_await receive() comes back: the drop closed its\n"
+                                  "        queue, the reconnect gave it a fresh one, and the notification the re-LISTEN\n"
+                                  "        let through was waiting there — the same object, the same loop\n"
+                                : "[reuse] UNEXPECTED: the reconnected consumer's receive() did not deliver the re-LISTENed one\n");
+    qb::io::cout() << "        (reconnected consumer's receive(): '" << (after_reconnect ? after_reconnect->payload : "nothing") << "')\n\n";
 
     // ---- cleanup ----------------------------------------------------------------------
     (void) co_await sub.unlisten_all();

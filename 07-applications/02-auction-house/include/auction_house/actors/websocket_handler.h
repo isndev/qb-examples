@@ -33,28 +33,28 @@ public:
     qb::io::async::task<bool> connect_subscriber();
 
     /**
-     * @brief Drain published messages forever, broadcasting each to WS clients.
+     * @brief Drain published messages, broadcasting each to WS clients, until the
+     *        subscriber disconnects.
      *
      * NOTHING AFTER THE LOOP MAY TOUCH `this`, AND THAT IS LOAD-BEARING. The loop ends when
-     * the message channel closes, and the only thing that closes it here is
-     * `~RedisCoroConsumer` — running as part of the owning actor's destruction. `close()`
-     * SCHEDULES a resume for every parked receiver, so the loop resumes with `std::nullopt`
-     * *after* `~AuctionManager`, with `this` (which is `&_ws_handler`, a member of that
+     * the message channel closes. On shutdown that is `shutdown()`'s `disconnect()`, inside
+     * the handler that then calls `kill()`: `close()` SCHEDULES a resume for every parked
+     * receiver, the reap at the end of that pass runs `~AuctionManager` first, and the loop
+     * resumes with `std::nullopt` with `this` (which is `&_ws_handler`, a member of that
      * actor) already freed. The framework anticipates the parked receiver outliving its
      * channel — `recv_awaiter` holds a `_ch_alive` flag and returns `nullopt` without
      * dereferencing the freed channel. It cannot anticipate the loop's tail reading its own
      * members, so a `client_count()` or `_manager` access added there is an immediate
-     * use-after-free: measured, one member read at that point is an ASan heap-use-after-free
-     * on every run.
+     * use-after-free: measured, one member read at that point is an ASan heap-use-after-free.
      */
     qb::io::async::task<void> consume_loop();
 
     /**
-     * @brief Drop the subscriber connection (idempotent).
+     * @brief Drop the subscriber connection (idempotent), which ends `consume_loop()`.
      *
-     * Does NOT end `consume_loop()`, despite the intuition: `disconnect()` only feeds the io
-     * watcher a deferred event, and when the actor is killed in the same pass `~client()`
-     * stops that watcher before it ever fires. Measured, not assumed.
+     * The teardown completes inside `disconnect()`, and the consumer's disconnect handler
+     * closes the message channel. The parked `receive()` resumes on a later pass — after the
+     * owner, killed in the same handler, is gone.
      */
     void shutdown();
 
