@@ -224,7 +224,7 @@ run_listen_notify(bool &running, bool &ok) {
     // failover or an admin actually does, and which is also the only way to do it from here:
     //
     //   `sub.disconnect()` ABORTS a debug or sanitize build. It ends with
-    //   `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (pgsql.h:2530) to drain the local
+    //   `qb::io::async::listener::current.run(EVRUN_NOWAIT)` (pgsql.h:2534) to drain the local
     //   close synchronously, and pumping the loop from inside a coroutine re-enters
     //   `CoroutineScheduler::run_ready`, whose assert says exactly that (scheduler.h:526).
     //   Measured: SIGABRT under the `sanitize` preset, silent re-entrancy under `release` where
