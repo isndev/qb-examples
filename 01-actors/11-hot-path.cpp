@@ -46,8 +46,8 @@
  *    whichever primitive queued it — `send` included. So a `send` of a plain `qb::Event` holding
  *    a `std::string` compiles and is correct; a `qb::EventQOS0` holding one is rejected at every
  *    enqueue sink, `getPipe().push` and `allocated_push` included. Derive fire-and-forget events
- *    from `qb::EventQOS0` and the compiler will hold you to the rule. (`Actor.h:889`,
- *    `Event.h` `routing_safe_type_id`, `VirtualCore.h:829`.)
+ *    from `qb::EventQOS0` and the compiler will hold you to the rule. (`Actor.h:913`,
+ *    `Event.h` `routing_safe_type_id`, `VirtualCore.h:841`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
  *    (`Event.h:498`, `:508`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.

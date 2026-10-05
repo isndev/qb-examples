@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**99 programs, 7 tiers, 820 distinct capabilities, 1614 claims.**
+**99 programs, 7 tiers, 822 distinct capabilities, 1616 claims.**
 
 ## 1. By capability
 
@@ -176,6 +176,7 @@ can disagree.
 | `geosearch` | `06-modules/redis/13-geospatial.cpp` |
 | `get` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `get()` | `01-actors/08-child-actors.cpp`, `03-coroutines/03-awaiting-oninit.cpp` |
+| `getCoreStats()` | `01-actors/04-cores-and-placement.cpp` |
 | `getIndex` | `01-actors/03-event-payloads.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/04-ask-request-response.cpp` |
 | `getIndex()` | `01-actors/04-cores-and-placement.cpp`, `04-patterns/01-pubsub.cpp` |
 | `getMessageSize` | `02-io/05-custom-protocol.cpp` |
@@ -467,6 +468,7 @@ can disagree.
 | `qb::ChildDown` | `04-patterns/02-supervisor.cpp` |
 | `qb::CircuitBreaker` | `04-patterns/05-resilience.cpp` |
 | `qb::CoreIdSet` | `01-actors/11-hot-path.cpp` |
+| `qb::CoreStats` | `01-actors/04-cores-and-placement.cpp` |
 | `qb::Event` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `qb::EventQOS0` | `01-actors/11-hot-path.cpp` |
 | `qb::FillEvent<int>` | `01-actors/03-event-payloads.cpp` |
@@ -1171,7 +1173,7 @@ can disagree.
   - Request and response between actors: who sent it, how the answer gets back, and why the pause in the middle is a coroutine sleep and never a blocked handler.
 - **`01-actors/03-event-payloads.cpp`** — 17 capabilities
   - The one rule about event payloads you cannot discover by testing on a Mac: an event is RELOCATED with memcpy and its source destructor is never run, so no member may STORE a pointer into itself. Which shapes are safe, which are not, why the compiler cannot tell you, what the debug guard does — and how a foreign thread feeds an actor system without a mutex.
-- **`01-actors/04-cores-and-placement.cpp`** — 12 capabilities
+- **`01-actors/04-cores-and-placement.cpp`** — 14 capabilities
   - Where an actor runs and how you address it once it is there: placing actors on several cores, reading the core back out of an id, and the system-wide broadcast.
 - **`01-actors/05-lifecycle.cpp`** — 11 capabilities
   - How an actor ends: a KillEvent handler that runs only because it was registered, a two-phase drain that finishes the work in flight first, and the difference between "stop taking work" and "terminate".

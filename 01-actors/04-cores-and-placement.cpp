@@ -4,10 +4,12 @@
  * @teaches Where an actor runs and how you address it once it is there: placing actors on
  *          several cores, reading the core back out of an id, and the system-wide broadcast.
  * @demonstrates qb::Main, addActor<T>, id(), getIndex(), qb::ActorId, registerEvent<E>, push<E>,
- *               broadcast<E>, spawn, qb::ScopedCoroContext, ctx.sleep, kill()
+ *               broadcast<E>, spawn, qb::ScopedCoroContext, ctx.sleep, kill(), getCoreStats(),
+ *               qb::CoreStats
  * @prerequisites 01-actors/02-messaging
  * @expect "DispatcherActor: Broadcasting system notification"
  * @expect "DispatcherActor: All events dispatched, terminating"
+ * @expect " events to other cores ("
  * @expect "All work completed, processed "
  *
  * @example Multi-Core Actor Distribution and Event Broadcasting
@@ -59,6 +61,10 @@
  * - Non-Blocking Delays: `spawn(...)` + `co_await ctx.sleep(...)`.
  * - Actor Lifecycle: `kill()` for self-termination.
  * - Core Information: `getIndex()` to retrieve the actor's current core ID.
+ * - Core Counters: `getCoreStats()` -- what the actor's core has received and published. The
+ *   dispatcher's pushes to the worker sharing core 0 never leave that core, so they show in
+ *   `events_received` and not in `events_sent`, which counts only what crossed into another
+ *   core's mailbox.
  * - Engine Management: `qb::Main`, `std::thread::hardware_concurrency()`.
  * - Thread-Safe I/O: `qb::io::cout()`.
  */
@@ -225,6 +231,11 @@ private:
             qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Processed enough events, terminating" << std::endl;
             qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": Standard: " << _processed_standard << ", High: " << _processed_high
                            << ", Low: " << _processed_low << ", Notifications: " << _notifications_received << std::endl;
+            // The counters belong to the core, not to the actor: on core 0 they include the
+            // dispatcher's traffic too. Cumulative since the core started.
+            const qb::CoreStats stats = getCoreStats();
+            qb::io::cout() << _timestamp() << "WorkerActor " << id() << ": core " << getIndex() << " so far: " << stats.events_received
+                           << " events received, " << stats.events_sent << " published to other cores" << std::endl;
             kill();
         }
     }
@@ -307,6 +318,13 @@ private:
             // Send final notification
             std::string msg = "All work completed, processed " + std::to_string(_dispatched_events) + " events";
             broadcast<SystemNotificationEvent>(msg);
+            // Only what crossed into ANOTHER core's mailbox counts as published: the work for the
+            // worker sharing core 0, and this actor's own ticks, stayed on the core. The final
+            // broadcast above is still in the outbound queue -- the flush of the next pass sends it.
+            const qb::CoreStats stats = getCoreStats();
+            qb::io::cout() << "DispatcherActor: core " << getIndex() << " published " << stats.events_sent << " events to other cores ("
+                           << stats.buckets_sent << " buckets), received " << stats.events_received << ", " << stats.loop_passes
+                           << " loop passes" << std::endl;
             kill();
         }
     }

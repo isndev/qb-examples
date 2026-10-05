@@ -9,6 +9,13 @@ plumbing do not qualify.
 
 ## [Unreleased]
 
+### Added
+
+- **`01-actors/04-cores-and-placement` reads its cores' counters (Huly QB-162).** Each worker reports what its core
+  has received and published to other cores, and the dispatcher how many events core 0 published, with
+  `getCoreStats()`: its pushes to the worker sharing core 0 never leave that core, so they show as received there and
+  never as sent. One new line, `DispatcherActor: core 0 published ...`.
+
 ### Fixed
 
 - **`02-io/05-custom-protocol`'s disconnect handlers run (Huly QB-252).** Both were declared

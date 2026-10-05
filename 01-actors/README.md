@@ -82,7 +82,9 @@ the file's code.
     * `DispatcherActor`: Runs on a specific core, dispatches work to workers round-robin, sends
       `SystemNotificationEvent`s system-wide with `broadcast<T>()`.
 * **QB Features**: Multi-core assignment with `engine.addActor(core_id, ...)`, `broadcast<T>()` **versus**
-  `qb::BroadcastId(core_id)` (which reaches one core's actors only), `getIndex()` for core ID.
+  `qb::BroadcastId(core_id)` (which reaches one core's actors only), `getIndex()` for core ID, and `getCoreStats()`
+  for what a core has received and published: the dispatcher's pushes to the worker sharing core 0 never leave
+  that core, so they show as received there and not as sent.
 
 ### `05-lifecycle.cpp`
 
