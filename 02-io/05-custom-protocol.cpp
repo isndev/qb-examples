@@ -362,7 +362,7 @@ public:
 
     // Handle disconnection event
     void
-    on(qb::io::async::event::disconnected &) {
+    on(qb::io::async::event::disconnected &&) {
         qb::io::cout() << "Server client handler disconnected" << std::endl;
     }
 };
@@ -489,7 +489,7 @@ public:
 
     // Handle disconnection event
     void
-    on(qb::io::async::event::disconnected &) {
+    on(qb::io::async::event::disconnected &&) {
         qb::io::cout() << "Client disconnected from server" << std::endl;
         _connected = false;
         _running   = false;

@@ -106,7 +106,7 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   (`name = _name`, `coordinator = _coordinator_id`) before the first `co_await`. The loop resumes when
   `~RedisCoroConsumer` closes the message channel — i.e. while the actor is being destroyed — so a member read after
   the resume is a use-after-free, and was one.
-  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1734-1735`): `cb_consumer` is the
+  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1768-1769`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-pubsub`
 

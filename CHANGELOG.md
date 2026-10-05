@@ -11,6 +11,10 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **`02-io/05-custom-protocol`'s disconnect handlers run (Huly QB-252).** Both were declared
+  `on(qb::io::async::event::disconnected &)`, a non-const lvalue reference, which never binds the rvalue the event
+  is dispatched as: neither was ever called, so the client could not leave its loop when the server went. They take
+  `&&` now.
 - **`02-io/08-timeouts-and-watchers` no longer says `ev_stat` is never inotify (Huly QB-204).** On Linux
   inotify wakes it for a path on a filesystem libev knows to be local, and it polls everywhere else; the
   header block, the interval comment and the closing line say so. What the program teaches is unchanged:
