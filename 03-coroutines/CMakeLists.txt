@@ -39,6 +39,7 @@
 #     03-coroutines/12-sync-primitives.cpp          ->  qb-example-coroutines-sync-primitives
 #     03-coroutines/13-retry-and-single-flight.cpp  ->  qb-example-coroutines-retry-and-single-flight
 #     03-coroutines/14-foreign-awaitables.cpp       ->  qb-example-coroutines-foreign-awaitables
+#     03-coroutines/15-offloading-blocking-work.cpp ->  qb-example-coroutines-offloading-blocking-work
 #
 # 07..14 closed the corpus's largest coroutine gap. Before them, `coroutine_scope` and its
 # three exit policies, `parallel`/`parallel_map`/`repeat_while`, `channel` + `select`,
@@ -58,7 +59,8 @@
 #
 # 01, 05 and 07..14 DEPEND on qb-io alone -- all ten are standalone by definition and have
 # neither qb::Main nor qb::Actor; the old CMakeLists linked qb-core into 01 and that made
-# the claim untestable. 02, 03, 04 and 06 are actor programs and need qb-core.
+# the claim untestable. 02, 03, 04 and 06 are actor programs and need qb-core, and so does 15,
+# whose second half kills an actor while its offloaded call runs.
 # -----------------------------------------------------------------------------
 
 project(qb_examples_03_coroutines
@@ -83,3 +85,4 @@ qb_example(SOURCE 11-async-streams.cpp DEPENDS qb-io)
 qb_example(SOURCE 12-sync-primitives.cpp DEPENDS qb-io)
 qb_example(SOURCE 13-retry-and-single-flight.cpp DEPENDS qb-io)
 qb_example(SOURCE 14-foreign-awaitables.cpp DEPENDS qb-io)
+qb_example(SOURCE 15-offloading-blocking-work.cpp DEPENDS qb-core)

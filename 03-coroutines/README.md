@@ -3,8 +3,8 @@
 Coroutines: standalone on `qb-io`, hosted inside an actor, and the primitives that make a
 concurrent program readable — awaiting during `onInit`, request/response as one line, combining
 awaitables, cancelling them, and then the whole structured-concurrency surface: scopes, bounded
-fan-out, channels, generators, streams, the sync primitives, retry, and the two adapters for
-awaiting something qb does not own.
+fan-out, channels, generators, streams, the sync primitives, retry, the two adapters for
+awaiting something qb does not own, and moving a call that blocks off the loop.
 
 Prerequisites: tier 01, plus `02-io/01-event-loop` — you need an actor to spawn from and a loop to
 be resumed by.
@@ -28,6 +28,7 @@ The CMake target and the binary are **derived** from each file's path
 | `12-sync-primitives.cpp` | `qb-example-coroutines-sync-primitives` | `qb-io` |
 | `13-retry-and-single-flight.cpp` | `qb-example-coroutines-retry-and-single-flight` | `qb-io` |
 | `14-foreign-awaitables.cpp` | `qb-example-coroutines-foreign-awaitables` | `qb-io` |
+| `15-offloading-blocking-work.cpp` | `qb-example-coroutines-offloading-blocking-work` | `qb-core` |
 
 `01`, `05` and `07`–`14` link **qb-io alone**: all ten are standalone by definition, with neither
 `qb::Main` nor `qb::Actor`, and naming `qb-core` in their `DEPENDS` would make that claim
@@ -240,3 +241,15 @@ cmake --build --preset release --target qb-example-coroutines-combinators
   difference between waiting and blocking. The socket is a `qb::io::udp::socket` on an **ephemeral**
   loopback port rather than a `pipe()`, because `native_handle()` is an `int` on POSIX and a
   `SOCKET` on Windows and each `wait_*` ships an overload for both.
+
+### `15-offloading-blocking-work.cpp`
+
+* **Focus**: a call that BLOCKS — a cold file, a DNS lookup, a deliberately slow KDF — and the loop
+  that has to keep turning while it runs.
+* **QB Features**: `co_await qb::io::async::offload(fn, args...)` (values in, values out; the call
+  runs on a pool thread and the coroutine resumes on its own loop), an exception rethrown across the
+  hop, `set_offload_threads` and `current_offload_stats`, and the actor's `ctx.offload`.
+* The same 300 ms call is made twice beside a 5 ms heartbeat, and the heartbeat's worst gap is the
+  measurement: inline, it is the whole call; offloaded, it stays a tick. Then an actor is killed
+  while its `ctx.offload` call still runs — the wait ends at once with `cancelled_error`, the call
+  finishes on the pool, and its late result is discarded on the core and counted, handed to no one.

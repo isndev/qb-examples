@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**100 programs, 7 tiers, 826 distinct capabilities, 1628 claims.**
+**101 programs, 7 tiers, 831 distinct capabilities, 1638 claims.**
 
 ## 1. By capability
 
@@ -117,6 +117,7 @@ can disagree.
 | `ctx.cancellation_point` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.cancelled` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.id` | `04-patterns/09-discovery.cpp` |
+| `ctx.offload` | `03-coroutines/15-offloading-blocking-work.cpp` |
 | `ctx.push<Drained>` | `01-actors/10-signals-and-shutdown.cpp` |
 | `ctx.push<Step>` | `01-actors/08-child-actors.cpp` |
 | `ctx.push_to` | `05-services/04-shutdown-and-drain/main.cpp` |
@@ -483,7 +484,7 @@ can disagree.
 | `qb::Request<int>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `qb::RequireEvent` | `04-patterns/09-discovery.cpp` |
 | `qb::SagaScope` | `04-patterns/07-saga.cpp` |
-| `qb::ScopedCoroContext` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `qb::ScopedCoroContext` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
 | `qb::Service` | `01-actors/07-service-actor.cpp` |
 | `qb::ServiceActor<ConfigTag>` | `01-actors/07-service-actor.cpp` |
 | `qb::SignalEvent` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
@@ -836,7 +837,7 @@ can disagree.
 | `qb::io::async::callback` | `02-io/06-framing-toolbox.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/10-cache-actor.cpp` |
 | `qb::io::async::cancellable_sleep` | `03-coroutines/06-cancellation.cpp` |
 | `qb::io::async::cancellation_token` | `03-coroutines/06-cancellation.cpp`, `03-coroutines/08-bounded-fan-out.cpp` |
-| `qb::io::async::cancelled_error` | `03-coroutines/06-cancellation.cpp` |
+| `qb::io::async::cancelled_error` | `03-coroutines/06-cancellation.cpp`, `03-coroutines/15-offloading-blocking-work.cpp` |
 | `qb::io::async::cancelling_scope` | `03-coroutines/07-structured-concurrency.cpp` |
 | `qb::io::async::capture_result` | `03-coroutines/08-bounded-fan-out.cpp` |
 | `qb::io::async::channel<int>` | `03-coroutines/09-channels.cpp`, `03-coroutines/11-async-streams.cpp` |
@@ -848,6 +849,7 @@ can disagree.
 | `qb::io::async::coro_scheduler` | `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::coro_with_timeout` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::coroutine_scope` | `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp` |
+| `qb::io::async::current_offload_stats` | `03-coroutines/15-offloading-blocking-work.cpp` |
 | `qb::io::async::defer` | `02-io/09-graceful-drain.cpp` |
 | `qb::io::async::detaching_scope` | `03-coroutines/07-structured-concurrency.cpp` |
 | `qb::io::async::directory_watcher` | `02-io/08-timeouts-and-watchers.cpp` |
@@ -867,6 +869,8 @@ can disagree.
 | `qb::io::async::make_shared_task` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::map_to_vector` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::merge_streams` | `03-coroutines/11-async-streams.cpp` |
+| `qb::io::async::offload` | `03-coroutines/15-offloading-blocking-work.cpp` |
+| `qb::io::async::offload_stats` | `03-coroutines/15-offloading-blocking-work.cpp` |
 | `qb::io::async::parallel` | `03-coroutines/08-bounded-fan-out.cpp` |
 | `qb::io::async::parallel_map` | `03-coroutines/08-bounded-fan-out.cpp` |
 | `qb::io::async::race` | `03-coroutines/05-combinators.cpp` |
@@ -881,15 +885,16 @@ can disagree.
 | `qb::io::async::retry_policy` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::run` | `02-io/01-event-loop.cpp`, `02-io/03-tcp.cpp`, `02-io/04-udp.cpp` |
 | `qb::io::async::run_for` | `02-io/12-quic.cpp` |
-| `qb::io::async::run_sync` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::io::async::run_sync` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/11-async-streams.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::async::run_until` | `02-io/06-framing-toolbox.cpp`, `02-io/07-tls.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/11-logging-and-metrics.cpp`, `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::scoped_callback` | `02-io/08-timeouts-and-watchers.cpp` |
 | `qb::io::async::select` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::select_result` | `03-coroutines/09-channels.cpp` |
 | `qb::io::async::semaphore` | `03-coroutines/12-sync-primitives.cpp` |
+| `qb::io::async::set_offload_threads` | `03-coroutines/15-offloading-blocking-work.cpp` |
 | `qb::io::async::shared_task<int>` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `qb::io::async::skip` | `03-coroutines/10-generators.cpp` |
-| `qb::io::async::sleep` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/04-coro-client.cpp` |
+| `qb::io::async::sleep` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/10-generators.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::async::take` | `03-coroutines/10-generators.cpp` |
 | `qb::io::async::task<bool>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/06-cancellation.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/09-reliability.cpp` |
 | `qb::io::async::task<int>` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp` |
@@ -903,7 +908,7 @@ can disagree.
 | `qb::io::async::wait_for_io` | `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::wait_readable` | `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::wait_writable` | `03-coroutines/14-foreign-awaitables.cpp` |
-| `qb::io::async::when_all` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `04-patterns/05-resilience.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp` |
+| `qb::io::async::when_all` | `03-coroutines/01-first-coroutine.cpp`, `03-coroutines/05-combinators.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `04-patterns/05-resilience.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp` |
 | `qb::io::async::when_any` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::when_any_result` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::with_deadline` | `03-coroutines/05-combinators.cpp` |
@@ -1255,6 +1260,8 @@ can disagree.
   - One flaky operation and several callers who all want it: `with_retry` decides when to try again and when to give up, and `shared_task` makes five callers share ONE attempt instead of each starting their own. Together they are the difference between a retry that heals a blip and a retry that becomes the outage.
 - **`03-coroutines/14-foreign-awaitables.cpp`** — 13 capabilities
   - Awaiting something qb does not own: a raw socket handle, via `wait_readable`/`wait_writable`/`wait_for_io`, and a callback-based library, via `async_awaiter<T>`. These two are the escape hatch that keeps a foreign API from forcing a blocking call onto the event loop.
+- **`03-coroutines/15-offloading-blocking-work.cpp`** — 10 capabilities
+  - A call that blocks -- a cold file, a DNS lookup, a deliberately slow KDF -- freezes every coroutine, timer and socket of its loop for as long as it runs. `co_await offload(fn, args...)` runs it on a small pool instead and resumes on the loop, which keeps turning meanwhile. Inside an actor, `ctx.offload(...)` adds what a kill needs: the wait ends at once, and the call's late result is discarded.
 
 ### `04-patterns`
 

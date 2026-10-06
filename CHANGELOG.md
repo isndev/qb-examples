@@ -19,6 +19,11 @@ plumbing do not qualify.
   other and with no clock: killed on its core and on core 1, after their destructors; an `onInit()` that failed while
   it was being watched (`init_failed`); an id nobody holds any more (`unknown`); and one taken back with `unwatch()`
   while the answer about it was already on its way, which never arrives.
+- **`03-coroutines/15-offloading-blocking-work` (Huly QB-69).** The same 300 ms blocking call is made beside a 5 ms
+  heartbeat, inline and then through `co_await qb::io::async::offload(...)`, and the heartbeat's worst gap is printed
+  both times: the whole call, then one tick. An exception thrown on the pool is caught on the loop; then an actor is
+  killed while its `ctx.offload` call still runs, the wait ends at once, and the call's late result is discarded on
+  its core and counted, handed to no one.
 
 ### Changed
 
