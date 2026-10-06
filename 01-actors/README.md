@@ -19,6 +19,8 @@ The CMake target and the binary are **derived** from each file's path
 | `09-state-machine.cpp` | `qb-example-actors-state-machine` |
 | `10-signals-and-shutdown.cpp` | `qb-example-actors-signals-and-shutdown` |
 | `11-hot-path.cpp` | `qb-example-actors-hot-path` |
+| `12-lockfree-bridge.cpp` | `qb-example-actors-lockfree-bridge` |
+| `13-death-watch.cpp` | `qb-example-actors-death-watch` |
 
 **The tier is now dense**, and the five programs that filled its holes are the ones that closed
 the corpus's third-largest measured gap: `ServiceActor`, `getService`, `getServiceId`,
@@ -167,3 +169,29 @@ the file's code.
 > the SAME same-core and cross-core (the boundary is paid at the flush, not at your call site),
 > and an actor that opts out of the default events needs `registerEvent<qb::SignalEvent>` as well
 > as `registerEvent<qb::KillEvent>`, because `qb::Main::stop()` travels as a signal.
+
+### `12-lockfree-bridge.cpp`
+
+* **Focus**: many threads that are not `VirtualCore`s handing work to one actor -- the multi-producer
+  half of the boundary `03-event-payloads.cpp` crosses with one.
+* **Actors**: a `Drain` that empties a `qb::lockfree::mpsc::ringbuffer` a bounded batch per loop
+  turn, fed by five `std::thread`s (three with a slot of their own, two sharing).
+* **QB Features**: `qb::lockfree::mpsc::ringbuffer` and why its three enqueue overloads are not
+  interchangeable, a bounded ring as backpressure, `qb::lockfree::SpinLock` (`trylock`,
+  `trylock_for`, `lock`, `unlock`) and when not to use it, `qb::ICallback`.
+
+### `13-death-watch.cpp`
+
+* **Focus**: learning that another actor is really gone -- its destructor run -- whatever ended it,
+  on any core, without its cooperation.
+* **Actors**: a `Lab` on core 0 that watches five actors end five ways, one after the other: a
+  `Worker` killed on its core, a `Doomed` actor whose `onInit()` fails, a `Worker` killed on core 1,
+  the same id watched again once nobody holds it, and a `Teller` unwatched while the answer about
+  it is already on its way.
+* **QB Features**: `watch` / `unwatch`, `qb::DownEvent` and its `qb::DownReason` (`killed`,
+  `init_failed`, `unknown`), `qb::down_reason_name`.
+
+> The guarantee to build on: every watch is answered exactly once, after the watched actor's
+> destructor ran, and nothing arrives after `unwatch()`. Ids are reused, so to watch the
+> replacement of an actor whose answer may still be on its way, unwatch the old one first -- the
+> rule `qb::Supervisor`'s watch mode follows (`04-patterns/02-supervisor.cpp`).

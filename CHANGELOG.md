@@ -15,6 +15,18 @@ plumbing do not qualify.
   has received and published to other cores, and the dispatcher how many events core 0 published, with
   `getCoreStats()`: its pushes to the worker sharing core 0 never leave that core, so they show as received there and
   never as sent. One new line, `DispatcherActor: core 0 published ...`.
+- **`01-actors/13-death-watch` (Huly QB-51).** One watcher on core 0 learns how five actors ended, one after the
+  other and with no clock: killed on its core and on core 1, after their destructors; an `onInit()` that failed while
+  it was being watched (`init_failed`); an id nobody holds any more (`unknown`); and one taken back with `unwatch()`
+  while the answer about it was already on its way, which never arrives.
+
+### Changed
+
+- **`04-patterns/02-supervisor` shows `qb::supervision::watch` and reads exact totals (Huly QB-51).** A fifth phase
+  runs the watch mode: slot 1 first `stop()`s, a `ChildDown` and a `DownEvent` for one death and one restart, then
+  its replacement is `kill()`ed, which only the watch sees. Every phase that ends on a count now reads it after 20
+  quiet passes and prints it in full, `= 4 spawns` and so on, so a restart too many would show where the program used
+  to stop at the count it expected. The header's "it is cooperative" section says when it is not.
 
 ### Fixed
 

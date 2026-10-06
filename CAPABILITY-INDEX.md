@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**99 programs, 7 tiers, 822 distinct capabilities, 1616 claims.**
+**100 programs, 7 tiers, 826 distinct capabilities, 1628 claims.**
 
 ## 1. By capability
 
@@ -44,10 +44,10 @@ can disagree.
 | `active_count` | `03-coroutines/07-structured-concurrency.cpp` |
 | `add` | `04-patterns/03-worker-pool.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `addActor` | `05-services/04-shutdown-and-drain/main.cpp` |
-| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `addRefActor<Database>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `addRefActor<Member>` | `01-actors/08-child-actors.cpp` |
-| `addRefActor<T>` | `04-patterns/02-supervisor.cpp` |
+| `addRefActor<T>` | `01-actors/13-death-watch.cpp`, `04-patterns/02-supervisor.cpp` |
 | `addRefHandle<Member>` | `01-actors/08-child-actors.cpp` |
 | `add_chunk` | `06-modules/http/14-streaming-and-cookies.cpp` |
 | `add_cookie` | `06-modules/http/14-streaming-and-cookies.cpp` |
@@ -184,7 +184,7 @@ can disagree.
 | `getService` | `04-patterns/01-pubsub.cpp` |
 | `getService<ConfigService>` | `01-actors/07-service-actor.cpp` |
 | `getServiceId<ConfigTag>` | `01-actors/07-service-actor.cpp` |
-| `getSource()` | `01-actors/02-messaging.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/09-state-machine.cpp` |
+| `getSource()` | `01-actors/02-messaging.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/13-death-watch.cpp` |
 | `getTimeout` | `02-io/08-timeouts-and-watchers.cpp` |
 | `get_alpn_selected_protocol` | `02-io/07-tls.cpp` |
 | `get_base_uri` | `06-modules/http/15-http2-and-http3-clients.cpp` |
@@ -286,7 +286,7 @@ can disagree.
 | `prepare_file` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `prune_completed` | `03-coroutines/07-structured-concurrency.cpp` |
 | `publish` | `02-io/09-graceful-drain.cpp`, `04-patterns/01-pubsub.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
-| `push<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/12-lockfree-bridge.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
+| `push<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `push<Ping>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `push<Tick>` | `01-actors/11-hot-path.cpp` |
 | `push_back` | `02-io/11-logging-and-metrics.cpp` |
@@ -303,7 +303,7 @@ can disagree.
 | `recv_for` | `03-coroutines/09-channels.cpp` |
 | `reduce` | `03-coroutines/11-async-streams.cpp` |
 | `registerCallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
+| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `registerSession` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `release_savepoint` | `06-modules/pgsql/03-transactions.cpp` |
 | `remove` | `04-patterns/03-worker-pool.cpp` |
@@ -406,7 +406,7 @@ can disagree.
 | `unlock` | `01-actors/12-lockfree-bridge.cpp` |
 | `unregisterCallback` | `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
 | `unsubscribe` | `04-patterns/01-pubsub.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
-| `unwatch` | `06-modules/redis/05-transactions.cpp` |
+| `unwatch` | `01-actors/13-death-watch.cpp`, `06-modules/redis/05-transactions.cpp` |
 | `updateTimeout` | `02-io/08-timeouts-and-watchers.cpp` |
 | `use` | `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `usedCoreSet` | `01-actors/07-service-actor.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
@@ -415,7 +415,7 @@ can disagree.
 | `verify` | `02-io/07-tls.cpp` |
 | `view` | `06-modules/pgsql/06-typed-rows.cpp` |
 | `waiters_count` | `03-coroutines/12-sync-primitives.cpp` |
-| `watch` | `06-modules/redis/05-transactions.cpp` |
+| `watch` | `01-actors/13-death-watch.cpp`, `06-modules/redis/05-transactions.cpp` |
 | `with_connect_timeout` | `06-modules/redis/09-reliability.cpp` |
 | `with_initial_delay` | `06-modules/redis/09-reliability.cpp` |
 | `with_jitter` | `06-modules/redis/09-reliability.cpp` |
@@ -469,11 +469,13 @@ can disagree.
 | `qb::CircuitBreaker` | `04-patterns/05-resilience.cpp` |
 | `qb::CoreIdSet` | `01-actors/11-hot-path.cpp` |
 | `qb::CoreStats` | `01-actors/04-cores-and-placement.cpp` |
+| `qb::DownEvent` | `01-actors/13-death-watch.cpp` |
+| `qb::DownReason` | `01-actors/13-death-watch.cpp` |
 | `qb::Event` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `qb::EventQOS0` | `01-actors/11-hot-path.cpp` |
 | `qb::FillEvent<int>` | `01-actors/03-event-payloads.cpp` |
 | `qb::ICallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `qb::KillEvent` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/02-supervisor.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `qb::KillEvent` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/02-supervisor.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
 | `qb::LoopEvent` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
 | `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::Pipe` | `01-actors/11-hot-path.cpp` |
@@ -507,6 +509,7 @@ can disagree.
 | `qb::deadline` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::deadline_in` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::dedup_map<std::uint64_t, int>` | `04-patterns/08-batching-and-idempotency.cpp` |
+| `qb::down_reason_name` | `01-actors/13-death-watch.cpp` |
 | `qb::duration` | `02-io/01-event-loop.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `05-services/03-file-pipeline/main.cpp` |
 | `qb::end_stream` | `04-patterns/06-streaming.cpp` |
 | `qb::generate_random_uuid` | `02-io/10-crypto-and-compression.cpp` |
@@ -525,6 +528,7 @@ can disagree.
 | `qb::stream_overflow_error` | `04-patterns/06-streaming.cpp` |
 | `qb::string<32>` | `01-actors/03-event-payloads.cpp` |
 | `qb::string<8>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp` |
+| `qb::supervision` | `04-patterns/02-supervisor.cpp` |
 | `qb::to_number<T>` | `02-io/05-custom-protocol.cpp` |
 | `qb::tsc_ticks` | `01-actors/11-hot-path.cpp`, `02-io/11-logging-and-metrics.cpp` |
 | `qb::uuid` | `02-io/10-crypto-and-compression.cpp` |
@@ -1191,6 +1195,8 @@ can disagree.
   - The knobs qb is sold on and the corpus never showed: `send` versus `push`, a variable-length event written straight into the pipe with `getPipe` + `allocated_push`, an actor that opts out of the five default event registrations, the latency/affinity settings — each one measured with `tsc_ticks` rather than asserted.
 - **`01-actors/12-lockfree-bridge.cpp`** — 21 capabilities
   - The other half of the foreign-thread boundary: 03-event-payloads bridged ONE outside thread with an spsc ring; this bridges MANY with qb::lockfree::mpsc::ringbuffer, shows why its three enqueue overloads are not interchangeable (one of them takes a lock and two do not), why the drain must be BOUNDED per loop turn, and what qb::lockfree::SpinLock is — the primitive underneath all of it, and the one you will most often be wrong to use.
+- **`01-actors/13-death-watch.cpp`** — 11 capabilities
+  - Learn that another actor is gone -- really gone, its destructor run -- whatever ended it, on any core, without its cooperation: `watch()` it, and one `qb::DownEvent` arrives, carrying why. `unwatch()` takes it back, even when the answer is already on its way.
 
 ### `02-io`
 
@@ -1254,8 +1260,8 @@ can disagree.
 
 - **`04-patterns/01-pubsub.cpp`** — 14 capabilities
   - A publish/subscribe bus you do not write: `qb::PubSub<Topic>` is a per-core ServiceActor, so a publisher reaches every subscriber on its own core with no registry, no ids plumbed through constructors and no cleanup code — and a subscriber killed without unsubscribing is inert rather than a leak.
-- **`04-patterns/02-supervisor.cpp`** — 15 capabilities
-  - Let something else restart your actors. `qb::Supervisor` owns a fixed set of child slots, restarts them by a declared `restart_strategy` when one terminates, ignores a stale report from an already-replaced child, and escalates instead of restarting forever once a restart-intensity cap is exceeded.
+- **`04-patterns/02-supervisor.cpp`** — 16 capabilities
+  - Let something else restart your actors. `qb::Supervisor` owns a fixed set of child slots, restarts them by a declared `restart_strategy` when one terminates, ignores a stale report from an already-replaced child, escalates instead of restarting forever once a restart-intensity cap is exceeded -- and, in `qb::supervision::watch` mode, restarts a child that died without saying so.
 - **`04-patterns/03-worker-pool.cpp`** — 12 capabilities
   - The two routing decisions a pool of workers ever has to make, and the one line each costs: `next()` when any worker will do, `for_key(k)` when the same key must keep reaching the same worker — plus the caveat that makes the second one honest.
 - **`04-patterns/04-scatter-gather.cpp`** — 19 capabilities

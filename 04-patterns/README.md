@@ -48,8 +48,11 @@ what a killed subscriber looks like from the bus's side.
 **`02-supervisor`** — the two questions supervision actually answers: *what else restarts when this
 one dies* (`one_for_one` / `one_for_all` / `rest_for_one`, told apart here by their exact spawn
 totals: 4, 6, 5) and *when do we stop restarting* (`max_restarts` inside a window, then
-`on_escalate`). Note the cooperative rule: a child that dies without calling `stop()` sends no
-`ChildDown` and is not restarted.
+`on_escalate`). By default supervision is cooperative: a child that dies without calling `stop()`
+sends no `ChildDown` and is not restarted. Its fifth phase is `qb::supervision::watch`, where the
+supervisor also watches each child (`01-actors/13-death-watch`), so a child that is simply killed
+is restarted too, and one that `stop()`s is restarted once, not twice: 3 + 2 = 5. Every total is
+read after 20 quiet passes, so a restart too many would show.
 
 **`03-worker-pool`** — `next()` for round-robin, `for_key(k)` for stickiness, and a measurement of
 what `remove()` does to your keys. `WorkerPool` is a vector plus a cursor: it sends nothing and

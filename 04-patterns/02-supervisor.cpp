@@ -3,17 +3,19 @@
  * @tier 04-patterns
  * @teaches Let something else restart your actors. `qb::Supervisor` owns a fixed set of child
  *          slots, restarts them by a declared `restart_strategy` when one terminates, ignores
- *          a stale report from an already-replaced child, and escalates instead of restarting
- *          forever once a restart-intensity cap is exceeded.
+ *          a stale report from an already-replaced child, escalates instead of restarting
+ *          forever once a restart-intensity cap is exceeded -- and, in `qb::supervision::watch`
+ *          mode, restarts a child that died without saying so.
  * @demonstrates qb::Supervisor, qb::SupervisedActor, qb::ChildDown, qb::restart_strategy,
- *               spawn_child, on_escalate, supervisor(), stop(), child, restarts,
+ *               qb::supervision, spawn_child, on_escalate, supervisor(), stop(), child, restarts,
  *               child_count, addRefActor<T>, qb::KillEvent, registerEvent<E>, push<E>
- * @prerequisites 01-actors/05-lifecycle, 04-patterns/01-pubsub
- * @expect "[lab] one_for_one + a stale ChildDown: 3 initial + 1 restart = "
- * @expect "[lab] one_for_all, crash slot 1: 3 initial + 3 restarts = "
- * @expect "[lab] rest_for_one, crash slot 1: 3 initial + 2 restarts = "
- * @expect "[lab] intensity cap: 1 initial + 2 restarts, then on_escalate() = "
- * @expect "=== supervision complete: 4 policies, no restart bookkeeping written by hand ==="
+ * @prerequisites 01-actors/05-lifecycle, 01-actors/13-death-watch, 04-patterns/01-pubsub
+ * @expect "[lab] one_for_one + a stale ChildDown: 3 initial + 1 restart = 4 spawns"
+ * @expect "[lab] one_for_all, crash slot 1: 3 initial + 3 restarts = 6 spawns"
+ * @expect "[lab] rest_for_one, crash slot 1: 3 initial + 2 restarts = 5 spawns"
+ * @expect "[lab] intensity cap: 1 initial + 2 restarts, then on_escalate() = 3 spawns"
+ * @expect "[lab] watch mode, slot 1 stop()s then is kill()ed: 3 initial + 2 restarts = 5 spawns"
+ * @expect "=== supervision complete: 5 policies, no restart bookkeeping written by hand ==="
  *
  * WHAT THIS REPLACES
  * ------------------
@@ -34,16 +36,22 @@
  * outgoing child is recognised as stale and ignored. Killing the supervisor kills its children
  * first, so nothing is orphaned.
  *
- * WHAT SUPERVISION HERE IS NOT
- * ----------------------------
- * It is COOPERATIVE. A child that dies without calling `stop()` — one killed by someone else,
- * or whose `onInit()` returned false — sends no `ChildDown`, so nothing restarts it. That is
- * stated in the header (`supervisor.h`) and it is the single most important thing to know
- * before designing around this class: supervision keys off the notification, not off death.
+ * COOPERATIVE BY DEFAULT, WATCHING ON REQUEST
+ * -------------------------------------------
+ * By default supervision keys off the notification, not off death: a child that dies without
+ * calling `stop()` — one killed by someone else, or whose `onInit()` returned false — sends no
+ * `ChildDown`, so nothing restarts it. Pass `qb::supervision::watch` as the constructor's last
+ * argument and the supervisor also WATCHES each child (`qb::Actor::watch`, the subject of
+ * `01-actors/13-death-watch`): whatever ends a child, its `qb::DownEvent` restarts it. A child
+ * that does call `stop()` is still restarted once, not twice — the supervisor unwatches a child
+ * before it replaces it, so the death of the outgoing child is never taken for the death of its
+ * replacement, which most likely reuses its id. Pair the mode with `max_restarts`: a child that
+ * always fails would otherwise be restarted forever.
  *
- * The four phases below run one at a time, each on a fresh supervisor created by the Lab with
- * `addRefActor`, so the spawn totals are exact and the output reads top to bottom. The totals
- * are what tell the three strategies apart, and they are the whole lesson:
+ * The five phases below run one at a time, each on a fresh supervisor created by the Lab with
+ * `addRefActor`. A phase that ends on a spawn count lets the core run 20 more passes before it
+ * prints the count, so a restart too many would show in the total. The totals are what tell the
+ * strategies apart, and they are the whole lesson:
  *   one_for_one  restart the child that went down                   3 + 1 = 4
  *   one_for_all  restart every child when any one goes down         3 + 3 = 6
  *   rest_for_one restart it and everything started after it         3 + 2 = 5
@@ -65,15 +73,22 @@
 
 using namespace std::chrono_literals;
 
-// Lab -> supervisor: crash whatever child is currently in this slot.
+// Lab -> supervisor: crash whatever child is currently in this slot -- cooperatively (`stop()`)
+// or not (a bare `kill()`, which sends no ChildDown).
 struct TriggerCrash : public qb::Event {
     std::size_t slot;
-    explicit TriggerCrash(std::size_t s)
-        : slot(s) {}
+    bool        cooperative;
+    TriggerCrash(std::size_t s, bool coop)
+        : slot(s)
+        , cooperative(coop) {}
 };
 
-// Supervisor -> child: terminate cooperatively.
-struct Crash : public qb::Event {};
+// Supervisor -> child: terminate, the way the Lab asked.
+struct Crash : public qb::Event {
+    bool cooperative;
+    explicit Crash(bool coop)
+        : cooperative(coop) {}
+};
 
 // Child -> Lab: "slot S is up, live as `who`". One per spawn, so counting them counts restarts.
 struct SpawnAck : public qb::Event {
@@ -86,6 +101,9 @@ struct SpawnAck : public qb::Event {
 
 // Supervisor -> Lab: the restart-intensity cap was exceeded; nothing was restarted.
 struct Escalated : public qb::Event {};
+
+// Lab -> Lab: one more pass before a phase's count is read.
+struct Settle : public qb::Event {};
 
 // ---------------------------------------------------------------------------
 // A supervised child. It derives SupervisedActor, not Actor, and the only thing that buys is
@@ -112,10 +130,13 @@ public:
     }
 
     void
-    on(Crash const &) {
-        // Cooperative termination: ChildDown to the supervisor, then kill(). A worker that just
-        // called kill() here would NOT be restarted — see the header note above.
-        stop();
+    on(Crash const &e) {
+        // Cooperative termination: ChildDown to the supervisor, then kill(). A bare kill() sends
+        // no ChildDown: only a supervisor in watch mode notices it -- see the header note above.
+        if (e.cooperative)
+            stop();
+        else
+            kill();
     }
 };
 
@@ -128,16 +149,17 @@ class WorkerSupervisor : public qb::Supervisor {
 
 public:
     WorkerSupervisor(qb::restart_strategy strategy, std::size_t children, qb::ActorId lab, unsigned max_restarts, qb::duration window,
-                     bool probe_stale)
-        : qb::Supervisor(strategy, children, max_restarts, window)
+                     qb::supervision mode, bool probe_stale)
+        : qb::Supervisor(strategy, children, max_restarts, window, mode)
         , _lab(lab)
         , _probe_stale(probe_stale) {}
 
     qb::io::async::task<bool>
     onInit() override {
         registerEvent<TriggerCrash>(*this);
-        // The base onInit registers ChildDown + KillEvent and spawns the initial children, so it
-        // must run — and `co_await`ing it is how a derived onInit composes with it.
+        // The base onInit registers ChildDown + KillEvent (and DownEvent in watch mode) and
+        // spawns the initial children, so it must run — and `co_await`ing it is how a derived
+        // onInit composes with it.
         const bool ok = co_await qb::Supervisor::onInit();
         if (_probe_stale) {
             // THE GENERATION GUARD, provoked rather than described. A `ChildDown` is what a child
@@ -151,7 +173,7 @@ public:
 
     void
     on(TriggerCrash const &e) {
-        push<Crash>(child(e.slot)); // `child(slot)` is always the CURRENT occupant of that slot
+        push<Crash>(child(e.slot), e.cooperative); // `child(slot)` is always the CURRENT occupant of that slot
     }
 
 protected:
@@ -173,36 +195,47 @@ protected:
 };
 
 // ---------------------------------------------------------------------------
-// Runs the four phases in order. Each phase gets a fresh supervisor so its spawn total is
+// Runs the five phases in order. Each phase gets a fresh supervisor so its spawn total is
 // exact; crashes are driven off the acks, never off a clock, so nothing here can race.
 // ---------------------------------------------------------------------------
 class Lab : public qb::Actor {
     struct Phase {
         qb::restart_strategy strategy;
+        qb::supervision      mode;
         std::size_t          children;
-        int                  crashes; ///< how many times to crash slot 1 (or 0 for a 1-slot phase)
+        int                  crashes;     ///< how many times to crash `crash_slot`
+        int                  cooperative; ///< how many of them go through stop() (the rest: a bare kill())
         std::size_t          crash_slot;
         unsigned             max_restarts;  ///< 0 = unlimited
         int                  expected_acks; ///< initial spawns + expected restarts
         const char          *label;
     };
 
-    // The three strategies differ ONLY in this table, which is the point.
+    // The phases differ ONLY in this table, which is the point.
     static constexpr Phase kPhases[] = {
         // Phase 1 also receives one STALE `qb::ChildDown` that must be ignored, so its total of 4
         // proves the generation guard as well as the strategy.
-        {qb::restart_strategy::one_for_one, 3, 1, 1, 0, 4, "[lab] one_for_one + a stale ChildDown: 3 initial + 1 restart = "},
-        {qb::restart_strategy::one_for_all, 3, 1, 1, 0, 6, "[lab] one_for_all, crash slot 1: 3 initial + 3 restarts = "},
-        {qb::restart_strategy::rest_for_one, 3, 1, 1, 0, 5, "[lab] rest_for_one, crash slot 1: 3 initial + 2 restarts = "},
+        {qb::restart_strategy::one_for_one, qb::supervision::cooperative, 3, 1, 1, 1, 0, 4,
+         "[lab] one_for_one + a stale ChildDown: 3 initial + 1 restart = 4 spawns"},
+        {qb::restart_strategy::one_for_all, qb::supervision::cooperative, 3, 1, 1, 1, 0, 6,
+         "[lab] one_for_all, crash slot 1: 3 initial + 3 restarts = 6 spawns"},
+        {qb::restart_strategy::rest_for_one, qb::supervision::cooperative, 3, 1, 1, 1, 0, 5,
+         "[lab] rest_for_one, crash slot 1: 3 initial + 2 restarts = 5 spawns"},
         // 1 child, cap 2 restarts inside a 1 s window: crash it three times and the third
         // ChildDown escalates instead of restarting, so the acks stop at 3.
-        {qb::restart_strategy::one_for_one, 1, 3, 0, 2, 3, "[lab] intensity cap: 1 initial + 2 restarts, then on_escalate() = "},
+        {qb::restart_strategy::one_for_one, qb::supervision::cooperative, 1, 3, 3, 0, 2, 3,
+         "[lab] intensity cap: 1 initial + 2 restarts, then on_escalate() = 3 spawns"},
+        // Watch mode: slot 1 first stop()s -- a ChildDown AND a DownEvent, one restart -- then its
+        // replacement is kill()ed -- a DownEvent alone, which cooperative mode would never see.
+        {qb::restart_strategy::one_for_one, qb::supervision::watch, 3, 2, 1, 1, 0, 5,
+         "[lab] watch mode, slot 1 stop()s then is kill()ed: 3 initial + 2 restarts = 5 spawns"},
     };
     static constexpr int kPhaseCount = static_cast<int>(std::size(kPhases));
 
     int         _phase   = 0;
     int         _acks    = 0;
     int         _crashes = 0;
+    int         _settle  = 0;
     qb::ActorId _sup;
 
 public:
@@ -210,6 +243,7 @@ public:
     onInit() override {
         registerEvent<SpawnAck>(*this);
         registerEvent<Escalated>(*this);
+        registerEvent<Settle>(*this);
         start_phase();
         co_return true;
     }
@@ -221,11 +255,20 @@ public:
         // Crash again only once the previous restart has completed — the ack IS that completion,
         // so the phases are causally ordered with no sleep anywhere in this program.
         if (_acks >= static_cast<int>(p.children) && _crashes < p.crashes) {
+            push<TriggerCrash>(_sup, p.crash_slot, _crashes < p.cooperative);
             ++_crashes;
-            push<TriggerCrash>(_sup, p.crash_slot);
         }
         if (_acks == p.expected_acks && p.max_restarts == 0)
-            finish_phase();
+            push<Settle>(id()); // the count is read once the core has had time to restart too much
+    }
+
+    void
+    on(Settle const &) {
+        if (++_settle < 20) {
+            push<Settle>(id());
+            return;
+        }
+        finish_phase();
     }
 
     void
@@ -239,15 +282,20 @@ private:
         auto const &p = kPhases[_phase];
         _acks         = 0;
         _crashes      = 0;
+        _settle       = 0;
         _sup          = addRefActor<WorkerSupervisor>(p.strategy, p.children, id(), p.max_restarts,
-                                                      p.max_restarts ? qb::duration{1s} : qb::duration::zero(),
+                                                      p.max_restarts ? qb::duration{1s} : qb::duration::zero(), p.mode,
                                                       /*probe_stale=*/_phase == 0)
                             .id();
     }
 
     void
     finish_phase() {
-        qb::io::cout() << kPhases[_phase].label << _acks << " spawns\n";
+        // The phase's line, whole, when the total it states was counted -- or the total that was.
+        if (_acks == kPhases[_phase].expected_acks)
+            qb::io::cout() << kPhases[_phase].label << "\n";
+        else
+            qb::io::cout() << "[lab] UNEXPECTED total " << _acks << ", wanted: " << kPhases[_phase].label << "\n";
         // Killing the supervisor tears down its children first — no orphans, and the next phase
         // starts from a clean core.
         push<qb::KillEvent>(_sup);
@@ -255,7 +303,7 @@ private:
             start_phase();
             return;
         }
-        qb::io::cout() << "=== supervision complete: 4 policies, no restart bookkeeping written by hand ===\n";
+        qb::io::cout() << "=== supervision complete: 5 policies, no restart bookkeeping written by hand ===\n";
         qb::Main::stop();
     }
 };
@@ -265,7 +313,7 @@ main() {
     qb::Main engine;
     engine.addActor<Lab>(0);
 
-    qb::io::cout() << "[main] one supervisor at a time, four restart policies\n";
+    qb::io::cout() << "[main] one supervisor at a time, five restart policies\n";
 
     engine.start();
     engine.join();
