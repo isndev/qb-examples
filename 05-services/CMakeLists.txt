@@ -61,3 +61,4 @@ else ()
 endif ()
 
 add_subdirectory(04-shutdown-and-drain)
+add_subdirectory(05-sharded-accept)
