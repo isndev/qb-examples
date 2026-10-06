@@ -20,4 +20,10 @@ with `CA:TRUE` — as the CA a client passes to `ssl::Context::client().trust(..
 lets the example demonstrate REAL peer verification on a loopback connection instead of switching
 verification off, which is the one thing a TLS example must not teach.
 
-**Not for anything but a demo.** The private key is in this repository. Never point a service at it.
+`renewed-cert.pem` / `renewed-key.pem` — a second self-signed pair with the same subject, SANs and
+`CA:TRUE`, a new key and a new serial: the certificate `02-io/13-tls-certificate-renewal.cpp` renews
+to, by copying it over a working copy of the first pair. It exists only in this tier.
+
+    validity 2026-10-06 .. 2046-10-01
+
+**Not for anything but a demo.** The private keys are in this repository. Never point a service at them.

@@ -85,6 +85,7 @@ qb_example(SOURCE 11-logging-and-metrics.cpp DEPENDS qb-io)
 # a QUIC-enabled build implies SSL, and naming both would let the roster report two capabilities
 # for one gate.
 qb_example(SOURCE 12-quic.cpp DEPENDS qb-io REQUIRES quic TARGET_VAR QB_EXAMPLE_IO_QUIC)
+qb_example(SOURCE 13-tls-certificate-renewal.cpp DEPENDS qb-io REQUIRES ssl TARGET_VAR QB_EXAMPLE_IO_TLS_RENEWAL)
 
 # Stage resources/ next to the tier's binaries so 07-tls opens "resources/ssl/cert.pem" with a
 # plain relative path. `if (TARGET ...)` and not an unconditional call: in an SSL-off build the
@@ -95,6 +96,9 @@ if (TARGET ${QB_EXAMPLE_IO_TLS})
 endif ()
 if (TARGET ${QB_EXAMPLE_IO_QUIC})
     list(APPEND QB_EXAMPLE_IO_CERT_USERS ${QB_EXAMPLE_IO_QUIC})
+endif ()
+if (TARGET ${QB_EXAMPLE_IO_TLS_RENEWAL})
+    list(APPEND QB_EXAMPLE_IO_CERT_USERS ${QB_EXAMPLE_IO_TLS_RENEWAL})
 endif ()
 if (QB_EXAMPLE_IO_CERT_USERS)
     qb_stage_example_resources(

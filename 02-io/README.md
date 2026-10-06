@@ -30,8 +30,9 @@ exist.
 | `10-crypto-and-compression.cpp` | `qb-example-io-crypto-and-compression` (`REQUIRES ssl compression`) |
 | `11-logging-and-metrics.cpp` | `qb-example-io-logging-and-metrics` |
 | `12-quic.cpp` | `qb-example-io-quic` (`REQUIRES quic`) |
+| `13-tls-certificate-renewal.cpp` | `qb-example-io-tls-certificate-renewal` (`REQUIRES ssl`) |
 
-Three of them declare a capability gate — two on OpenSSL, one on the QUIC backend. In a build without the capability they are **not created at all**
+Four of them declare a capability gate — three on OpenSSL, one on the QUIC backend. In a build without the capability they are **not created at all**
 — they do not fail to compile, they silently do not exist — so the build's roster records them as
 `gated` and `dev/agent/run-examples.py` reports a SKIP naming the capability, instead of a program
 that has gone missing.
@@ -256,7 +257,7 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
 
 ## What this tier does not yet cover
 
-All twelve programs of the design exist. What is still missing inside them is narrower and worth
+All thirteen programs of the design exist. What is still missing inside them is narrower and worth
 naming: `connect_with_socket`'s coroutine form and `protocol::accept`/`protocol::handshake` (the
 handshake protocol drives a TLS handshake explicitly and is only reached by qbm-http/2 today), the
 `transport::udp::identity` demultiplexing that `04-udp` points at, and `async::epoll`, which is
@@ -291,3 +292,24 @@ not exist.
 * **Gate**: `REQUIRES quic` alone. A QUIC build implies SSL and there is no plaintext QUIC, so the
   certificate is not an option this example adds; naming both would report two capabilities for one
   gate.
+
+---
+
+## 13. Renewing a TLS certificate (`13-tls-certificate-renewal.cpp`) — `REQUIRES ssl`
+
+* **Teaches**: a TLS server renews its certificate while it serves — `reload_context()` on its listener
+  (3.3) — with no restart and no dropped connection.
+* **Details**: each accept mints its connection's `SSL` from the listener's context, and an `SSL` keeps
+  a reference on the context it came from; so the reload changes the context of the NEXT accept and
+  nothing else. The program serves a working copy of the demo certificate from a scratch directory and
+  renews it there the way renewal tools do — same paths, new content — in two steps, reloading after
+  each. The half-done step (the new certificate beside the old key) is a pair `Context::server()`
+  refuses, and `reload_context()` returns `false` for it: the original certificate goes on serving
+  instead of every following handshake failing.
+* **Witnesses**: `[early]` trusts the original certificate and holds one session open across the
+  renewal, talking before and after it; `[strict]` trusts only the renewed certificate, so it is
+  refused before the renewal and accepted after it. A verifying client fails on the wrong certificate
+  instead of printing whichever it got, and the program asserts all four outcomes.
+* **`REQUIRES ssl`**; it reads `resources/ssl/` relatively (the renewed pair is `renewed-cert.pem` /
+  `renewed-key.pem`) — run it from its own directory.
+* **Run**: `cd build/presets/release/examples/02-io && ./qb-example-io-tls-certificate-renewal`
