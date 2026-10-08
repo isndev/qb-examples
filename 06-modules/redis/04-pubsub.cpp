@@ -28,7 +28,7 @@
  *     -   Uses `qb::redis::tcp::co_consumer` — the coroutine-based Pub/Sub consumer.
  *     -   `onInit()` connects the consumer and subscribes to requested channels.
  *     -   A long-lived receive loop coroutine runs via `spawn()`:
- *           `while (auto msg = co_await _consumer.receive()) { ... }`
+ *           `while (auto msg = co_await consumer->receive()) { ... }`
  *         Each received message is forwarded to the `CoordinatorActor`.
  *     -   Handles `SubscribeEvent` to add more channels at runtime.
  *     -   Handles `ShutdownEvent` by disconnecting the consumer (which closes the
@@ -47,10 +47,9 @@
  *   - `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>`
  *   - `co_await consumer.receive()` → `std::optional<qb::redis::message>` loop
  *   - `consumer.disconnect()` to close the channel and end the loop
- * - `spawn()` for actor-scoped background coroutines, and the rule that goes with it: capture
- *   everything the body READS by value before the first `co_await`, and address other actors by
- *   id through the context. A spawned loop can resume after its actor is gone — see
- *   `SubscriberActor::onInit()`, where disconnect closes the channel before the loop resumes.
+ * - `spawn()` for actor-scoped background coroutines: retain the consumer in the frame,
+ *   capture values read after suspension, and address other actors by id through the context.
+ *   A queued message can resume after the subscriber actor is gone.
  * - `spawn(...)` + `co_await ctx.sleep(d)` + a self-addressed tick event as the way to wait —
  *   and the one place where a bare `qb::io::async::callback(fn, d)` is still right, in
  *   `CoordinatorActor::on(CoordinatorShutdownTick&)`, where the body captures nothing and is
@@ -205,15 +204,19 @@ public:
 // Subscriber actor that listens for messages on Redis channels using co_consumer
 class SubscriberActor : public qb::Actor {
 private:
-    qb::redis::tcp::co_consumer _consumer{REDIS_URI};
-    std::vector<std::string>    _subscribed_channels;
-    qb::ActorId                 _coordinator_id;
-    std::string                 _name;
+    std::shared_ptr<qb::redis::tcp::co_consumer> _consumer{std::make_shared<qb::redis::tcp::co_consumer>(qb::io::uri REDIS_URI)};
+    std::vector<std::string>                     _subscribed_channels;
+    qb::ActorId                                  _coordinator_id;
+    std::string                                  _name;
 
 public:
     SubscriberActor(qb::ActorId coordinator, std::string name = "Subscriber")
         : _coordinator_id(coordinator)
         , _name(std::move(name)) {}
+
+    ~SubscriberActor() override {
+        _consumer->disconnect();
+    }
 
     qb::io::async::task<bool>
     onInit() override {
@@ -225,7 +228,7 @@ public:
 
         cout << _name << " connecting to Redis..." << std::endl;
 
-        if (!co_await _consumer.connect()) {
+        if (!co_await _consumer->connect()) {
             qb::io::cerr() << _name << " failed to connect to Redis" << std::endl;
             co_return false;
         }
@@ -234,10 +237,9 @@ public:
 
         // Spawn the long-lived receive loop.
         //
-        // `name` and `coordinator` are captured BY VALUE, before the first `co_await`, and the
-        // coordinator is addressed by id through `ctx`. That is not tidiness — it is what makes
-        // this loop correct, and reading `_name` here instead was a real defect: AddressSanitizer
-        // reported `heap-use-after-free` on the final line of this lambda, on every run.
+        // Keep the consumer alive in the coroutine frame: a message already handed to a parked
+        // receive() can be returned after actor reap, and the next loop condition calls receive()
+        // again. Capture the other values before suspension and address the coordinator by id.
         //
         // `disconnect()` tears down the transport immediately in this handler. Its
         // `event::disconnected` handler closes the message channel before returning,
@@ -247,16 +249,14 @@ public:
         // disconnect and peer loss with a live consumer. A live closed channel drains
         // buffered messages before yielding `nullopt`.
         //
-        // The receiver may resume after this actor is destroyed. The channel's `recv_awaiter`
-        // holds a liveness guard and returns `nullopt` without touching freed channel storage
-        // if teardown destroyed it (`qb/io/async/coroutine/channel.h`). Keep values read after
-        // `co_await` in the coroutine frame (`name`, `coordinator`) or use `ctx`; never read
-        // `_name` or another actor member then. This remains necessary because the
-        // receiver's scheduled resume may run after `kill()` reaps the actor.
-        // A channel close is an end-of-stream signal, not a lifetime guarantee for the actor.
-        spawn([this, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+        // The channel awaiter's liveness guard protects channel storage, but it still returns
+        // an already committed message after channel destruction. Actor cancellation stops the
+        // loop before forwarding such a message or reading any actor member.
+        spawn([consumer = _consumer, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
-            while (auto msg = co_await _consumer.receive()) {
+            while (auto msg = co_await consumer->receive()) {
+                if (ctx.cancelled())
+                    break;
                 cout << name << " received on '" << msg->channel << "': " << msg->payload << std::endl;
 
                 if (coordinator != qb::ActorId()) {
@@ -273,20 +273,16 @@ public:
     on(const SubscribeEvent &event) {
         std::string channel = event.channel.c_str();
 
-        // Same rule as the receive loop: everything the coroutine only READS is captured by
-        // value before the first `co_await`, and the coordinator is addressed by id.
-        //
-        // The one thing that cannot be captured is the WRITE — `_subscribed_channels` has to
-        // be the actor's own vector, and it is touched after `co_await _consumer.subscribe()`.
-        // That is safe for a different reason than the reads: `_consumer` is a member, so
-        // `~Actor` destroys it with its pending-reply queue and the reply callback is dropped
-        // UNINVOKED — the coroutine never resumes at all, rather than resuming on a dead actor.
-        // Note this differs from the receive loop above, which can resume after destruction.
-        spawn([this, channel, name = _name, coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+        // The receive loop retains the consumer after actor reap. A pending subscribe can thus
+        // complete too; check cancellation before writing the actor's channel list.
+        spawn([this, consumer = _consumer, channel, name = _name,
+               coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << name << " subscribing to channel: " << channel << std::endl;
 
-            auto r = co_await _consumer.subscribe(channel);
+            auto r = co_await consumer->subscribe(channel);
+            if (ctx.cancelled())
+                co_return;
             if (r.ok()) {
                 cout << name << " subscribed to channel: " << channel << std::endl;
                 _subscribed_channels.push_back(channel);
@@ -304,12 +300,10 @@ public:
         auto cout = qb::io::cout();
         cout << _name << " shutting down, unsubscribing from " << _subscribed_channels.size() << " channels" << std::endl;
 
-        // `disconnect()` closes the channel before returning, but the parked receive loop
-        // resumes on a later scheduler pass. `kill()` may reap this actor before then, so
-        // the loop uses copied values and the channel awaiter's liveness guard rather than
-        // reading actor state after suspension. See `onInit()` for that lifetime rule.
+        // `disconnect()` closes the channel before returning, but a committed message can
+        // still resume later. The loop retains its consumer and checks cancellation.
         // Do not assume synchronous coroutine resumption in this handler.
-        _consumer.disconnect();
+        _consumer->disconnect();
 
         kill();
     }

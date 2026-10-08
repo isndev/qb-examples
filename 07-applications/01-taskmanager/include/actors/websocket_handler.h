@@ -23,10 +23,9 @@
  * ## Lifecycle
  * `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the owner
  * then spawns `consume_loop()` as an actor-scoped coroutine. `shutdown()` ends that
- * loop: its `disconnect()` closes the consumer's message channel, and a closed channel
- * resumes a parked `receive()` with `std::nullopt`. The close only SCHEDULES that
- * resume, and the owner calls `kill()` in the same handler — so the reap at the end of
- * that pass destroys the actor first, and the loop resumes after the actor is gone.
+ * loop: its `disconnect()` closes the consumer's message channel and schedules a
+ * parked receiver. The owner can be reaped before that receiver resumes. The loop
+ * retains the consumer and checks the owner's cancellation token before broadcasting.
  */
 #pragma once
 
@@ -35,6 +34,7 @@
 #include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/json.h>
+#include <memory>
 #include "ws_session.h"
 
 namespace taskmanager {
@@ -63,13 +63,15 @@ public:
     /**
      * @brief Drain published messages, broadcasting each to WS clients, until the
      *        subscriber disconnects.
-     * @details Ends when the message channel closes: `shutdown()`'s `disconnect()` closes
-     *          it, and so do a dropped link and `~RedisCoroConsumer`. On shutdown the owner
-     *          is killed in the same pass, so the loop resumes one last time with
-     *          `std::nullopt` after that actor is gone. Nothing after the loop may touch
-     *          `this`; see the definition.
+     * @details Retains the subscriber across suspension. An already committed message
+     *          can resume after the owner is reaped; the cancellation token prevents
+     *          access to the dead session pool in that case.
      */
-    qb::io::async::task<void> consume_loop();
+    qb::io::async::task<void> consume_loop(qb::io::async::cancellation_token stop);
+
+    ~WebSocketHandler() {
+        shutdown();
+    }
 
     /**
      * @brief Drop the subscriber connection (idempotent), which ends `consume_loop()`.
@@ -102,9 +104,9 @@ public:
     }
 
 private:
-    TaskManager                &_manager;
-    qb::io::uri                 _redis_uri;
-    qb::redis::tcp::co_consumer _sub; ///< coroutine Pub/Sub subscriber
+    TaskManager                                 &_manager;
+    qb::io::uri                                  _redis_uri;
+    std::shared_ptr<qb::redis::tcp::co_consumer> _sub; ///< retained by consume_loop across actor teardown
 };
 
 } // namespace actors

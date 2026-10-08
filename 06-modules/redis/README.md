@@ -99,13 +99,13 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   actors.
 * **Key Components**: `PublisherActor`, `SubscriberActor` (using `qb::redis::tcp::co_consumer`), `CoordinatorActor`.
 * **QB/QBM Redis Features**: `qb::Actor`, `qb::Main`, `co_await client.publish(channel, message)`
-  (`04-pubsub.cpp:173`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
-  (`:208`) — with `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>` (`:289`) and a
-  `while (auto msg = co_await _consumer.receive()) { ... }` loop (`:259`) instead of a message callback. Read that
-  loop's capture list: it takes `this` only for the consumer it awaits, and copies everything it *reads*
-  (`name = _name`, `coordinator = _coordinator_id`) before the first `co_await`. The loop resumes when
-  `~RedisCoroConsumer` closes the message channel — i.e. while the actor is being destroyed — so a member read after
-  the resume is a use-after-free, and was one.
+  (`04-pubsub.cpp:172`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
+  (`:207`) — with `co_await consumer->subscribe(channel)` → `Reply<qb::redis::subscription>` (`:283`) and a
+  `while (auto msg = co_await consumer->receive()) { ... }` loop (`:257`) instead of a message callback. The
+  loop retains the consumer in its coroutine frame and copies `name` and `coordinator` before suspension.
+  Disconnect closes the channel and schedules a parked receiver, but a message already committed to
+  its awaiter can still be returned after actor reap. The loop checks actor-scope cancellation before
+  forwarding that message; the retained consumer makes the next `receive()` safe.
   Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1854-1855`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-pubsub`

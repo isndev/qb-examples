@@ -148,10 +148,11 @@ POST /tasks
 ### `WebSocketHandler`  _(inner component, not an actor)_
 
 - Inherits `qb::io::use<T>::tcp::io_handler<WsSession>` (session pool)
-- Owns a `qb::redis::tcp::co_consumer` (coroutine Redis SUB)
+- Shares ownership of a `qb::redis::tcp::co_consumer` with the receive loop (coroutine Redis SUB)
 - `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the actor
-  then spawns `consume_loop()`, which `shutdown()`'s `disconnect()` ends (a channel
-  `receive()` is not cancellation-aware: `kill()` alone would not)
+  then spawns `consume_loop()`. `shutdown()` disconnects and closes the channel; a
+  committed message can still resume after actor reap, so the loop retains the
+  consumer and checks the actor's cancellation token before broadcasting.
 
 ### `WsSession`  _(declaration + impl)_
 

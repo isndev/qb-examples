@@ -35,15 +35,15 @@ WsSession::send_json(const qb::json &msg) {
 WebSocketHandler::WebSocketHandler(AuctionManager &manager, qb::io::uri redis_uri)
     : _manager(manager)
     , _redis_uri(std::move(redis_uri))
-    , _sub(_redis_uri) {}
+    , _sub(std::make_shared<qb::redis::tcp::co_consumer>(_redis_uri)) {}
 
 qb::io::async::task<bool>
 WebSocketHandler::connect_subscriber() {
-    if (!co_await _sub.connect()) {
+    if (!co_await _sub->connect()) {
         qb::io::cerr() << "[WebSocketHandler] Redis SUB connect failed\n";
         co_return false;
     }
-    auto sub = co_await _sub.subscribe(std::string{"auction:events"});
+    auto sub = co_await _sub->subscribe(std::string{"auction:events"});
     if (!sub.ok()) {
         qb::io::cerr() << "[WebSocketHandler] subscribe failed: " << sub.error() << "\n";
         co_return false;
@@ -52,23 +52,33 @@ WebSocketHandler::connect_subscriber() {
     co_return true;
 }
 
+namespace {
 qb::io::async::task<void>
-WebSocketHandler::consume_loop() {
-    while (auto msg = co_await _sub.receive()) {
+consume_messages(WebSocketHandler *handler, std::shared_ptr<qb::redis::tcp::co_consumer> sub, qb::io::async::cancellation_token stop) {
+    while (auto msg = co_await sub->receive()) {
+        if (stop.is_cancelled())
+            break;
         try {
             auto data = qb::json::parse(msg->payload);
-            qb::io::cout() << "[WebSocketHandler] broadcasting " << data.value("type", "?") << " to " << client_count() << " clients\n";
-            broadcast_to_all(data);
+            qb::io::cout() << "[WebSocketHandler] broadcasting " << data.value("type", "?") << " to " << handler->client_count()
+                           << " clients\n";
+            handler->broadcast_to_all(data);
         } catch (const std::exception &e) {
             qb::io::cerr() << "[WebSocketHandler] bad Redis message: " << e.what() << "\n";
         }
     }
-    qb::io::cout() << "[WebSocketHandler] consume loop ended\n"; // MUST touch no member: the actor is already gone
+    qb::io::cout() << "[WebSocketHandler] consume loop ended\n";
+}
+} // namespace
+
+qb::io::async::task<void>
+WebSocketHandler::consume_loop(qb::io::async::cancellation_token stop) {
+    return consume_messages(this, _sub, std::move(stop));
 }
 
 void
 WebSocketHandler::shutdown() {
-    _sub.disconnect();
+    _sub->disconnect();
 }
 
 void

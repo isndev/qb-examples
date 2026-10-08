@@ -60,8 +60,10 @@ TaskManager::onInit() {
     // 3. WebSocket Redis subscriber + actor-scoped consume loop.
     if (!co_await _ws_handler.connect_subscriber())
         co_return false;
-    spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-        co_await _ws_handler.consume_loop(); // ends at shutdown() — see websocket_handler.h
+    spawn([this](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+        if (ctx.cancelled())
+            co_return;
+        co_await _ws_handler.consume_loop(ctx.token()); // retains SUB until shutdown drain completes
     });
 
     // 4. HTTP routes — only now that every backend is up.

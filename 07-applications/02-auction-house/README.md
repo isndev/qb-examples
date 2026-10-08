@@ -221,7 +221,8 @@ Open browser: http://localhost:8080
    no transaction spans coroutine suspension. The bid row stores a unique request UUID and the
    accepted response's time-left value. A lost PostgreSQL reply is reconciled by UUID on a fresh
    connection, and a failed reconciliation returns 503 instead of claiming a price conflict.
-4. **Coroutine Pub/Sub**: `qb::redis::tcp::co_consumer` + `while (co_await receive()) broadcast(...)`
+4. **Coroutine Pub/Sub**: `qb::redis::tcp::co_consumer` retained by the receive loop; after a
+   committed message resumes, the actor's cancellation token guards WebSocket broadcast.
 5. **Pre-engine bootstrap**: `qb::io::async::run_sync` runs the idempotent `init_db.sql` via coroutine `execute_file()`
 6. **Actor Topology**: TcpListener on dedicated core, workers distributed
 7. **CRTP Sessions** + **Socket Transfer** (HTTP → WebSocket upgrade via `extractSession()`)
