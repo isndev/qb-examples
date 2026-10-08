@@ -42,6 +42,12 @@ plumbing do not qualify.
   clients now exits cleanly. The example also uses qb's synchronized console output so its
   main thread and HTTP worker do not race while printing startup and session lines.
   A live-client shutdown check runs against the built example.
+- **Auction House records only an accepted bid under overlapping requests (Huly QB-801).**
+  The old `BEGIN`/insert/update/commit sequence spanned several coroutine suspensions on
+  one worker's PostgreSQL connection; a rejected bid could be committed by a concurrent
+  handler. One guarded SQL statement now updates the lot and inserts the bid together.
+  The live application check covers overlapping sessions on one and separate workers,
+  one stored row, rollback on insert failure, and a valid follow-up bid.
 - **`02-io/05-custom-protocol`'s disconnect handlers run (Huly QB-252).** Both were declared
   `on(qb::io::async::event::disconnected &)`, a non-const lvalue reference, which never binds the rvalue the event
   is dispatched as: neither was ever called, so the client could not leave its loop when the server went. They take

@@ -8,8 +8,9 @@ coroutines**.
 
 - **Coroutine everything**: `onInit()` `co_await`s its DB/Redis/WS backends before
   activating (discover-before-activate); every route handler `co_await`s the database
-  and Redis directly; the bid path is a single linear transaction (`begin` → insert →
-  update → `commit`) instead of nested callbacks; Redis Pub/Sub is a
+  and Redis directly; the bid path updates the lot and records its bid in one
+  database statement, so overlapping handlers cannot share a transaction;
+  Redis Pub/Sub is a
   `co_await receive()` loop (`qb::redis::tcp::co_consumer`).
 - **Real-Time Bidding**: Instant bid updates via WebSocket broadcast
 - **Multi-Core Architecture**: TcpListener + 3 AuctionManager workers
@@ -87,6 +88,12 @@ cd scripts
 ./test_routes.sh http://localhost:9090
 ```
 
+From the qb-dev root, with the application stopped and PostgreSQL/Redis running:
+
+```bash
+python3 examples/07-applications/02-auction-house/scripts/check_bid_atomicity.py --build-dir build/presets/dev
+```
+
 Tests cover:
 
 - Health check
@@ -96,6 +103,12 @@ Tests cover:
 - Users API (info, stats)
 - WebSocket upgrade
 - 404 error handling
+
+`check_bid_atomicity.py` starts the built application, opens persistent sessions
+on the same and different workers, sends overlapping bids, and reads the database
+to assert one accepted response, one rejected response, one bid row and the right
+price. It also verifies rollback after a failed insert and a valid follow-up bid.
+It deletes its own temporary lots before exiting.
 
 ### Access
 
@@ -145,7 +158,8 @@ Open browser: http://localhost:8080
 │   ├── init_db.sql           # Database schema (auto-executed via execute_file())
 │   └── static/
 ├── scripts/
-│   └── test_routes.sh        # API testing script
+│   ├── test_routes.sh        # API smoke checks
+│   └── check_bid_atomicity.py # overlapping bids and database state
 ├── include/auction_house/
 │   ├── events.h              # NewConnectionEvent
 │   ├── models/
@@ -173,7 +187,7 @@ Open browser: http://localhost:8080
 
 1. **Coroutine `onInit`**: `co_await` DB + Redis + WS before activating (discover-before-activate)
 2. **Coroutine handlers**: `task<void>(ctx)` lambdas passed directly to the router, `co_await`ing the database and Redis
-3. **Coroutine transaction**: bidding = `begin` → insert → update → `commit`, linear, not nested callbacks
+3. **Atomic bid statement**: a guarded lot update feeds the bid insert; no transaction spans coroutine suspension
 4. **Coroutine Pub/Sub**: `qb::redis::tcp::co_consumer` + `while (co_await receive()) broadcast(...)`
 5. **Pre-engine bootstrap**: `qb::io::async::run_sync` runs the idempotent `init_db.sql` via coroutine `execute_file()`
 6. **Actor Topology**: TcpListener on dedicated core, workers distributed
@@ -182,9 +196,8 @@ Open browser: http://localhost:8080
 
 ## 📊 Performance
 
-- **Latency**: <10ms for bid processing
-- **Throughput**: 10,000+ concurrent WebSocket connections
-- **Scaling**: Add more AuctionManager workers on additional cores
+- **Bid database work**: one statement and one round trip for the accepted bid; cache invalidation and broadcast follow.
+- **Scaling**: AuctionManager workers can run on separate cores. Measure latency and connection capacity on the target host before setting a limit.
 
 ## 🛠️ Tech Stack
 

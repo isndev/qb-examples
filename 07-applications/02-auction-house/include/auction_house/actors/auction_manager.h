@@ -17,7 +17,7 @@
  *
  * Every route handler is a coroutine (a `task<void>(ctx)` lambda passed directly
  * to the router) that `co_await`s the database and Redis directly — the bidding
- * path becomes a single linear transaction instead of nested callbacks.
+ * path uses one atomic SQL statement instead of a transaction split by awaits.
  */
 #pragma once
 

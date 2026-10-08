@@ -2,9 +2,9 @@
  * @file src/actors/auction_manager.cpp
  * @brief AuctionManager coroutine lifecycle, HTTP API, DB, Redis, WebSocket.
  *
- * Everything network-facing is a coroutine. The bidding path — insert bid +
- * update lot price + commit — is a single linear transaction instead of the
- * former three nested callbacks.
+ * Everything network-facing is a coroutine. A bid and its lot-price update
+ * execute as one SQL statement, so concurrent coroutines cannot share a
+ * multi-command transaction on the worker's one PostgreSQL connection.
  *
  * The schema is bootstrapped once at process start (main.cpp::init_db); each
  * worker only connects and prepares statements here.
@@ -168,19 +168,13 @@ AuctionManager::prepare_statements() {
     if (!co_await prep("select_user_by_id", "SELECT" + user_cols + "FROM users WHERE id = $1;", qb::pg::type_oid_sequence{oid::int4}))
         co_return false;
 
-    if (!co_await prep("insert_bid",
-                       "INSERT INTO bids (lot_id, bidder_id, amount)"
-                       " VALUES ($1, $2, $3::numeric) RETURNING id, bid_time;",
-                       qb::pg::type_oid_sequence{oid::int4, oid::int4, oid::text}))
-        co_return false;
-
-    // The bid guard lives HERE, in the statement's own WHERE, not in the handler.
-    // `$1::numeric > current_price` makes "is this bid high enough?" and "raise the price"
-    // one atomic statement: a bid at or below the current price updates 0 rows, and two
-    // concurrent legitimate bids on different workers cannot interleave a read with a
-    // write. A C++-side pre-read would reject the obvious bypass and still lose that race.
-    if (!co_await prep("update_lot_price",
-                       "UPDATE lots SET current_price = $1::numeric, updated_at = NOW()"
+    // One statement owns both effects. UPDATE takes the lot's row lock and rechecks
+    // the price guard after a concurrent winner commits; INSERT reads its RETURNING
+    // row and therefore runs only for an accepted bid. Any INSERT error rolls back
+    // the UPDATE with the statement, without a transaction spanning co_await points.
+    if (!co_await prep("place_bid",
+                       "WITH accepted AS ("
+                       " UPDATE lots SET current_price = $1::numeric, updated_at = NOW()"
                        " WHERE id = $2 AND end_time > NOW() AND $1::numeric > current_price"
                        " RETURNING id, title, description, category, image_url,"
                        "   start_price::float8 AS start_price,"
@@ -189,8 +183,14 @@ AuctionManager::prepare_statements() {
                        "   seller_id, status,"
                        "   EXTRACT(EPOCH FROM start_time)::bigint AS start_time,"
                        "   EXTRACT(EPOCH FROM end_time)::bigint AS end_time,"
-                       "   created_at::text AS created_at, updated_at::text AS updated_at;",
-                       qb::pg::type_oid_sequence{oid::text, oid::int4}))
+                       "   created_at::text AS created_at, updated_at::text AS updated_at"
+                       "), recorded AS ("
+                       " INSERT INTO bids (lot_id, bidder_id, amount)"
+                       " SELECT id, $3, $1::numeric FROM accepted"
+                       " RETURNING id, lot_id"
+                       ") SELECT accepted.*, recorded.id AS bid_id"
+                       " FROM accepted JOIN recorded ON recorded.lot_id = accepted.id;",
+                       qb::pg::type_oid_sequence{oid::text, oid::int4, oid::int4}))
         co_return false;
 
     if (!co_await prep("select_user_stats",
@@ -382,26 +382,14 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     oss << std::fixed << std::setprecision(2) << amount;
     const std::string amount_str = oss.str();
 
-    // One linear transaction: insert the bid, bump the lot price, commit.
-    if (!(co_await _db->begin()).ok()) {
-        ctx->internal_server_error("Could not begin transaction");
-        co_return;
-    }
-
-    auto ins = co_await _db->execute("insert_bid", qb::pg::params{lot_id, bidder_id, amount_str});
-    if (!ins.ok() || ins.result().empty()) {
-        (void) co_await _db->rollback();
+    auto placed = co_await _db->execute("place_bid", qb::pg::params{amount_str, lot_id, bidder_id});
+    if (!placed.ok()) {
         ctx->json({{"error", "Bid failed - lot may have ended"}}, qb::http::status::CONFLICT);
         co_return;
     }
-    const int32_t bid_id = ins.result()[0]["id"].as<int32_t>();
-
-    auto upd = co_await _db->execute("update_lot_price", qb::pg::params{amount_str, lot_id});
-    if (!upd.ok() || upd.result().empty()) {
-        // Zero rows updated: the guarded WHERE rejected the bid. Roll back, so the bid row
-        // inserted above is discarded too, then read the lot to report WHICH clause said no
-        // instead of guessing in the error message.
-        (void) co_await _db->rollback();
+    if (placed.result().empty()) {
+        // The guarded UPDATE accepted no row and the dependent INSERT ran zero times.
+        // Read the current lot only to explain the rejection, never to authorize it.
         auto cur = co_await _db->execute("select_lot_by_id", qb::pg::params{lot_id});
         if (!cur.ok() || cur.result().empty()) {
             ctx->not_found("Lot not found");
@@ -417,12 +405,9 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
         }
         co_return;
     }
-    if (!(co_await _db->commit()).ok()) {
-        ctx->internal_server_error("Commit failed");
-        co_return;
-    }
 
-    models::Lot lot(upd.result()[0]);
+    const int32_t bid_id = placed.result()[0]["bid_id"].as<int32_t>();
+    models::Lot   lot(placed.result()[0]);
     co_await invalidate_lot_cache(lot_id);
 
     models::BidResult result;
