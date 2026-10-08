@@ -35,6 +35,13 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **The WebSocket chat server stops cleanly with connected users (Huly QB-830).** A session
+  destructor broadcast a departure while the server's session map was being destroyed,
+  recursively destroying sessions until the process crashed. Ordinary disconnection now
+  announces one departure while the server is alive; shutdown with 0, 1 or 2 announced
+  clients now exits cleanly. The example also uses qb's synchronized console output so its
+  main thread and HTTP worker do not race while printing startup and session lines.
+  A live-client shutdown check runs against the built example.
 - **`02-io/05-custom-protocol`'s disconnect handlers run (Huly QB-252).** Both were declared
   `on(qb::io::async::event::disconnected &)`, a non-const lvalue reference, which never binds the rvalue the event
   is dispatched as: neither was ever called, so the client could not leave its loop when the server went. They take

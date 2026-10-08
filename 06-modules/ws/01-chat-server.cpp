@@ -31,6 +31,7 @@
 #include <functional>
 #include <qb/main.h>
 #include <qb/actor.h>
+#include <qb/io.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/parse.h>   // qb::to_number
 #include <qb/system/time.h>
@@ -121,12 +122,12 @@ public:
             if (auto it = _message_handlers.find(type); it != _message_handlers.end()) {
                 it->second(message_json);
             } else {
-                std::cout << "Unknown message type: " << type << std::endl;
+                qb::io::cout() << "Unknown message type: " << type << std::endl;
                 send_error("Unknown message type: " + type);
             }
         } catch (const std::exception &e) {
-            std::cout << "Error parsing WebSocket message: " << e.what() << std::endl;
-            std::cout << "Raw message data: " << std::string_view{event.data, event.size} << std::endl;
+            qb::io::cout() << "Error parsing WebSocket message: " << e.what() << std::endl;
+            qb::io::cout() << "Raw message data: " << std::string_view{event.data, event.size} << std::endl;
             send_error("Invalid message format");
         }
     }
@@ -140,10 +141,16 @@ public:
         return _user_announced;
     }
 
+    void
+    mark_connected() noexcept {
+        _counted_connected = true;
+    }
+
 private:
     // Member variables
-    std::string                                       _username       = "Anonymous";
-    bool                                              _user_announced = false;
+    std::string                                       _username          = "Anonymous";
+    bool                                              _user_announced    = false;
+    bool                                              _counted_connected = false;
     qb::unordered_map<std::string, message_handler_t> _message_handlers;
 
     // ========================================================================
@@ -266,22 +273,22 @@ private:
     // ========================================================================
     void
     log_chat_message(const std::string &username, const std::string &message) {
-        std::cout << "[CHAT] " << username << ": " << message << std::endl;
+        qb::io::cout() << "[CHAT] " << username << ": " << message << std::endl;
     }
 
     void
     log_user_joined(const std::string &username) {
-        std::cout << "[JOIN] " << username << " joined the chat" << std::endl;
+        qb::io::cout() << "[JOIN] " << username << " joined the chat" << std::endl;
     }
 
     void
     log_username_change(const std::string &old_name, const std::string &new_name) {
-        std::cout << "[USERNAME] " << old_name << " is now " << new_name << std::endl;
+        qb::io::cout() << "[USERNAME] " << old_name << " is now " << new_name << std::endl;
     }
 
     void
     log_user_left(const std::string &username) {
-        std::cout << "[LEAVE] " << username << " left the chat" << std::endl;
+        qb::io::cout() << "[LEAVE] " << username << " left the chat" << std::endl;
     }
 
     // ========================================================================
@@ -329,7 +336,7 @@ private:
     void broadcast_message(const std::string &message, ChatSession *exclude);
 
 public:
-    ~ChatSession();
+    void on(qb::io::async::event::disconnected &&);
 };
 
 // ============================================================================
@@ -358,7 +365,7 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
 
-        std::cout << "Starting HTTP Server..." << std::endl;
+        qb::io::cout() << "Starting HTTP Server..." << std::endl;
 
         ensure_static_directory_exists();
         setup_middleware();
@@ -370,21 +377,21 @@ public:
             co_return false;
         }
 
-        std::cout << "HTTP Server running on http://localhost:" << _port << std::endl;
+        qb::io::cout() << "HTTP Server running on http://localhost:" << _port << std::endl;
         co_return true;
     }
 
     void
     on(HttpSession &session) {
-        std::cout << "[HTTP] New HTTP connection established" << std::endl;
+        qb::io::cout() << "[HTTP] New HTTP connection established" << std::endl;
     }
 
 private:
     void
     ensure_static_directory_exists() {
         if (!std::filesystem::exists(_static_root)) {
-            std::cerr << "Static root directory does not exist: " << _static_root << std::endl;
-            std::cerr << "Creating directory..." << std::endl;
+            qb::io::cerr() << "Static root directory does not exist: " << _static_root << std::endl;
+            qb::io::cerr() << "Creating directory..." << std::endl;
             std::filesystem::create_directories(_static_root);
         }
     }
@@ -393,8 +400,8 @@ private:
     start_listening() {
         const std::string bind_address = "tcp://0.0.0.0:" + std::to_string(_port);
         if (!listen({bind_address})) {
-            std::cerr << "Failed to start HTTP server on port " << _port << std::endl;
-            std::cerr << "Port may already be in use. Try a different port." << std::endl;
+            qb::io::cerr() << "Failed to start HTTP server on port " << _port << std::endl;
+            qb::io::cerr() << "Port may already be in use. Try a different port." << std::endl;
             return false;
         }
         start();
@@ -435,7 +442,7 @@ private:
                         level_str = "ERROR";
                         break;
                 }
-                std::cout << "[HTTP:" << level_str << "] " << message << std::endl;
+                qb::io::cout() << "[HTTP:" << level_str << "] " << message << std::endl;
             },
             qb::http::LogLevel::Info, qb::http::LogLevel::Debug);
     }
@@ -518,7 +525,7 @@ private:
     template <typename ContextPtr>
     void
     handle_websocket_upgrade(ContextPtr ctx) {
-        std::cout << "[HTTP] WebSocket upgrade requested, transferring to ChatServer..." << std::endl;
+        qb::io::cout() << "[HTTP] WebSocket upgrade requested, transferring to ChatServer..." << std::endl;
 
         auto session_ptr = ctx->session();
         auto session_id  = session_ptr->id();
@@ -526,10 +533,10 @@ private:
         auto [transport, success] = extractSession(session_id);
 
         if (success) {
-            std::cout << "[HTTP] Session extracted successfully, sending to ChatServer" << std::endl;
+            qb::io::cout() << "[HTTP] Session extracted successfully, sending to ChatServer" << std::endl;
             transfer_session_to_websocket(std::move(transport), ctx);
         } else {
-            std::cerr << "[HTTP] Failed to extract session for WebSocket upgrade" << std::endl;
+            qb::io::cerr() << "[HTTP] Failed to extract session for WebSocket upgrade" << std::endl;
             send_websocket_upgrade_error(ctx);
         }
     }
@@ -562,13 +569,13 @@ public:
     // `handler.on(event)` from outside the class (qb/system/event/router.h).
     void
     on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
+        qb::io::cout() << "Signal " << event.signum << " received." << std::endl;
         push<qb::KillEvent>(id());
     }
 
     void
     on(const qb::KillEvent &event) noexcept {
-        std::cout << "HTTP Server shutting down..." << std::endl;
+        qb::io::cout() << "HTTP Server shutting down..." << std::endl;
         this->kill();
     }
 };
@@ -581,6 +588,7 @@ class ChatServer
     , public qb::io::use<ChatServer>::tcp::io_handler<ChatSession> {
 private:
     size_t _connected_users = 0;
+    bool   _shutting_down   = false;
 
 public:
     explicit ChatServer() = default;
@@ -594,19 +602,19 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
         registerEvent<TransferToWebSocketEvent>(*this);
-        std::cout << "Starting WebSocket Chat Server..." << std::endl;
+        qb::io::cout() << "Starting WebSocket Chat Server..." << std::endl;
         co_return true;
     }
 
     void
     on(TransferToWebSocketEvent &event) {
-        std::cout << "[WS] Received session transfer from HTTP server" << std::endl;
+        qb::io::cout() << "[WS] Received session transfer from HTTP server" << std::endl;
 
         // registerSession returns nullptr when the session limit is reached
         // (the incoming socket is closed for us in that case).
         auto *chat_session = registerSession(std::move(event.data->transport));
         if (!chat_session) {
-            std::cerr << "[WS] Session limit reached, rejecting WebSocket upgrade." << std::endl;
+            qb::io::cerr() << "[WS] Session limit reached, rejecting WebSocket upgrade." << std::endl;
             return;
         }
 
@@ -616,31 +624,37 @@ public:
             // Handshake successful, send the 101 response to finalize.
             *chat_session << event.data->response;
 
+            chat_session->mark_connected();
             ++_connected_users;
-            std::cout << "[WS] WebSocket protocol switch successful" << std::endl;
-            std::cout << "[WS] User connected. Total WebSocket users: " << _connected_users << std::endl;
+            qb::io::cout() << "[WS] WebSocket protocol switch successful" << std::endl;
+            qb::io::cout() << "[WS] User connected. Total WebSocket users: " << _connected_users << std::endl;
         } else {
             // The handshake failed (e.g., it wasn't a valid WebSocket request).
-            std::cerr << "[WS] WebSocket handshake failed, disconnecting." << std::endl;
+            qb::io::cerr() << "[WS] WebSocket handshake failed, disconnecting." << std::endl;
             chat_session->disconnect();
         }
     }
 
     void
     on(ChatSession &session) {
-        std::cout << "[WS] New WebSocket session registered" << std::endl;
+        qb::io::cout() << "[WS] New WebSocket session registered" << std::endl;
     }
 
     void
     user_disconnected() {
         if (_connected_users > 0)
             --_connected_users;
-        std::cout << "[WS] User disconnected. Total WebSocket users: " << _connected_users << std::endl;
+        qb::io::cout() << "[WS] User disconnected. Total WebSocket users: " << _connected_users << std::endl;
     }
 
     size_t
     get_connected_users() const {
         return _connected_users;
+    }
+
+    bool
+    is_shutting_down() const noexcept {
+        return _shutting_down;
     }
 
 public:
@@ -650,13 +664,14 @@ public:
     // `handler.on(event)` from outside the class (qb/system/event/router.h).
     void
     on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
+        qb::io::cout() << "Signal " << event.signum << " received." << std::endl;
         push<qb::KillEvent>(id());
     }
 
     void
     on(const qb::KillEvent &event) noexcept {
-        std::cout << "WebSocket Chat Server shutting down..." << std::endl;
+        qb::io::cout() << "WebSocket Chat Server shutting down..." << std::endl;
+        _shutting_down = true;
         this->kill();
     }
 };
@@ -672,15 +687,22 @@ ChatSession::broadcast_message(const std::string &message, ChatSession *exclude)
     server().stream_if([exclude](const ChatSession &session) { return &session != exclude; }, ws_message);
 }
 
-ChatSession::~ChatSession() {
-    if (_user_announced && !_username.empty()) {
+void
+ChatSession::on(qb::io::async::event::disconnected &&) {
+    if (!_counted_connected)
+        return;
+
+    _counted_connected = false;
+    auto &owner        = server();
+    owner.user_disconnected();
+    if (_user_announced && !_username.empty() && !owner.is_shutting_down()) {
+        _user_announced = false;
         log_user_left(_username);
 
         auto response        = create_message(MessageType::USER_LEFT);
         response["username"] = _username;
 
         broadcast_to_others(response.dump());
-        server().user_disconnected();
     }
 }
 
@@ -693,9 +715,9 @@ main(int argc, char *argv[]) {
 
     auto [static_root, port] = parse_command_line_arguments(argc, argv);
 
-    std::cout << "QB Separated HTTP/WebSocket Chat Server Configuration:\n";
-    std::cout << "  Port: " << port << "\n";
-    std::cout << "  Static files: " << static_root << "\n\n";
+    qb::io::cout() << "QB Separated HTTP/WebSocket Chat Server Configuration:\n";
+    qb::io::cout() << "  Port: " << port << "\n";
+    qb::io::cout() << "  Static files: " << static_root << "\n\n";
 
     auto chat_server_id = engine.addActor<ChatServer>(0);
     engine.addActor<HttpServer>(0, static_root, port, chat_server_id);
@@ -705,7 +727,7 @@ main(int argc, char *argv[]) {
     engine.join();
 
     if (engine.hasError()) {
-        std::cerr << "Engine error occurred" << std::endl;
+        qb::io::cerr() << "Engine error occurred" << std::endl;
         return 1;
     }
 
@@ -730,11 +752,11 @@ parse_command_line_arguments(int argc, char *argv[]) {
         } else if (arg == "--static-root" && i + 1 < argc) {
             static_root = argv[++i];
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [options]\n";
-            std::cout << "Options:\n";
-            std::cout << "  --port PORT          Set server port (default: 8080)\n";
-            std::cout << "  --static-root PATH   Set static files directory (default: ./resources/chat)\n";
-            std::cout << "  --help, -h           Show this help message\n";
+            qb::io::cout() << "Usage: " << argv[0] << " [options]\n";
+            qb::io::cout() << "Options:\n";
+            qb::io::cout() << "  --port PORT          Set server port (default: 8080)\n";
+            qb::io::cout() << "  --static-root PATH   Set static files directory (default: ./resources/chat)\n";
+            qb::io::cout() << "  --help, -h           Show this help message\n";
             exit(0);
         }
     }
@@ -747,21 +769,21 @@ parse_command_line_arguments(int argc, char *argv[]) {
 
 void
 print_server_info(uint16_t port) {
-    std::cout << "\n=== QB Separated HTTP/WebSocket Chat Server ===\n";
-    std::cout << "Architecture:\n";
-    std::cout << "  HttpServer  - Handles static files and API endpoints\n";
-    std::cout << "  ChatServer  - Handles WebSocket sessions via io_handler\n";
-    std::cout << "  Event Transfer - HTTP sessions transferred to WebSocket via Actor events\n\n";
+    qb::io::cout() << "\n=== QB Separated HTTP/WebSocket Chat Server ===\n";
+    qb::io::cout() << "Architecture:\n";
+    qb::io::cout() << "  HttpServer  - Handles static files and API endpoints\n";
+    qb::io::cout() << "  ChatServer  - Handles WebSocket sessions via io_handler\n";
+    qb::io::cout() << "  Event Transfer - HTTP sessions transferred to WebSocket via Actor events\n\n";
 
-    std::cout << "Server running at: http://localhost:" << port << "\n";
-    std::cout << "Chat interface: http://localhost:" << port << "/\n";
-    std::cout << "WebSocket endpoint: ws://localhost:" << port << "/ws\n\n";
+    qb::io::cout() << "Server running at: http://localhost:" << port << "\n";
+    qb::io::cout() << "Chat interface: http://localhost:" << port << "/\n";
+    qb::io::cout() << "WebSocket endpoint: ws://localhost:" << port << "/ws\n\n";
 
-    std::cout << "Features:\n";
-    std::cout << "  ✓ Separated HTTP/WebSocket server responsibilities\n";
-    std::cout << "  ✓ Actor-based session transfer\n";
-    std::cout << "  ✓ io_handler for WebSocket session management\n";
-    std::cout << "  ✓ Clean message dispatch system\n";
-    std::cout << "  ✓ Modular and maintainable code structure\n";
-    std::cout << "  ✓ Real-time chat functionality\n\n";
+    qb::io::cout() << "Features:\n";
+    qb::io::cout() << "  ✓ Separated HTTP/WebSocket server responsibilities\n";
+    qb::io::cout() << "  ✓ Actor-based session transfer\n";
+    qb::io::cout() << "  ✓ io_handler for WebSocket session management\n";
+    qb::io::cout() << "  ✓ Clean message dispatch system\n";
+    qb::io::cout() << "  ✓ Modular and maintainable code structure\n";
+    qb::io::cout() << "  ✓ Real-time chat functionality\n\n";
 }

@@ -90,7 +90,7 @@ public:
 };
 ```
 
-> The real definitions are `01-chat-server.cpp:352-353` and `:588-589`, and `02-chat-client.cpp:190-191` and
+> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:190-191` and
 > `:497-498` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
@@ -146,8 +146,18 @@ public:
     void on(ws_protocol::message &&event) {
         // ... process incoming WebSocket messages ...
     }
+
+    void on(qb::io::async::event::disconnected &&) {
+        // Notify peers while ChatServer still owns its session registry.
+    }
 };
 ```
+
+The session destructor does not broadcast. Normal connection loss announces one departure
+before the server removes that session; server shutdown only releases its sessions. The
+`check-chat-shutdown.py` run covers 0, 1 and 2 announced clients at SIGTERM, one ordinary
+departure among two clients, and a connected but unannounced client. The example writes
+through `qb::io::cout()` / `qb::io::cerr()` so startup and worker output remain synchronized.
 
 ---
 
@@ -286,7 +296,7 @@ cmake --build --preset release --target qb-example-modules-ws-chat-client
 
 No `--static-root` is needed: the build stages `resources/chat/` next to the binary and the server
 resolves its default `./resources/chat` against the executable's own directory
-(`qb::io::sys::resolve_resource`, `01-chat-server.cpp:744`), so it runs from any working directory.
+(`qb::io::sys::resolve_resource`, `01-chat-server.cpp:766`), so it runs from any working directory.
 An explicit `--static-root` is honoured and resolved the same way.
 
 * **Web Chat**: `http://localhost:8080/`
