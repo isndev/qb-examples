@@ -54,7 +54,7 @@
  * `co_await qb::io::async::sleep(400ms)` — the free function, without `ctx.` — registers no
  * hook. Kill the actor and that frame sleeps out its full duration and resumes into a world
  * where its actor no longer exists. The framework says as much about its own teardown
- * ("cancel_all cannot wake a plain sleep()", `scheduler.h:726`). Section 6 runs the two side
+ * ("cancel_all cannot wake a plain sleep()", `scheduler.h:951-952`). Section 6 runs the two side
  * by side and prints when each woke.
  *
  * Nothing is corrupted by it here, because that body only prints. `ctx.push(...)` or
