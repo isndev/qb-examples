@@ -48,6 +48,12 @@ plumbing do not qualify.
   handler. One guarded SQL statement now updates the lot and inserts the bid together.
   The live application check covers overlapping sessions on one and separate workers,
   one stored row, rollback on insert failure, and a valid follow-up bid.
+- **Auction House refuses bids on cancelled or not-yet-open lots (Huly QB-914).** The
+  guarded update now requires `status = 'active'` and `start_time <= NOW()` alongside
+  the existing end-time and price checks; neither a lot's price nor bid history changes.
+- **Auction House reports the stored price after rounding (Huly QB-915).** The HTTP
+  response and WebSocket event use the price returned by PostgreSQL, so an offer
+  such as 110.009 reports 110.01, matching the committed row.
 - **`02-io/05-custom-protocol`'s disconnect handlers run (Huly QB-252).** Both were declared
   `on(qb::io::async::event::disconnected &)`, a non-const lvalue reference, which never binds the rvalue the event
   is dispatched as: neither was ever called, so the client could not leave its loop when the server went. They take

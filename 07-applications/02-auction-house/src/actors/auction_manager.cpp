@@ -175,7 +175,8 @@ AuctionManager::prepare_statements() {
     if (!co_await prep("place_bid",
                        "WITH accepted AS ("
                        " UPDATE lots SET current_price = $1::numeric, updated_at = NOW()"
-                       " WHERE id = $2 AND end_time > NOW() AND $1::numeric > current_price"
+                       " WHERE id = $2 AND status = 'active' AND start_time <= NOW()"
+                       "   AND end_time > NOW() AND $1::numeric > current_price"
                        " RETURNING id, title, description, category, image_url,"
                        "   start_price::float8 AS start_price,"
                        "   current_price::float8 AS current_price,"
@@ -384,7 +385,7 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
 
     auto placed = co_await _db->execute("place_bid", qb::pg::params{amount_str, lot_id, bidder_id});
     if (!placed.ok()) {
-        ctx->json({{"error", "Bid failed - lot may have ended"}}, qb::http::status::CONFLICT);
+        ctx->json({{"error", "Bid could not be placed"}}, qb::http::status::CONFLICT);
         co_return;
     }
     if (placed.result().empty()) {
@@ -401,7 +402,7 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
             why << "Bid must be higher than the current price of " << std::fixed << std::setprecision(2) << current.current_price;
             ctx->json({{"error", why.str()}}, qb::http::status::CONFLICT);
         } else {
-            ctx->json({{"error", "Bid failed - lot may have ended"}}, qb::http::status::CONFLICT);
+            ctx->json({{"error", "Bid failed - lot is not open or price changed"}}, qb::http::status::CONFLICT);
         }
         co_return;
     }
@@ -414,7 +415,7 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     result.success   = true;
     result.message   = "Bid placed successfully";
     result.bid_id    = bid_id;
-    result.new_price = amount;
+    result.new_price = lot.current_price;
     result.time_left = lot.time_left;
     ctx->json(result.to_json(), qb::http::status::CREATED);
 
@@ -423,7 +424,7 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     models::LotEvent event;
     event.action    = "bid";
     event.lot_id    = lot_id;
-    event.new_price = amount;
+    event.new_price = lot.current_price;
     event.bidder    = (user.ok() && !user.result().empty()) ? user.result()[0]["username"].as<std::string>() : std::to_string(bidder_id);
     event.time_left = lot.time_left;
     event.timestamp = std::time(nullptr);

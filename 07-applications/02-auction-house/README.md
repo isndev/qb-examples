@@ -13,6 +13,8 @@ coroutines**.
   Redis Pub/Sub is a
   `co_await receive()` loop (`qb::redis::tcp::co_consumer`).
 - **Real-Time Bidding**: Instant bid updates via WebSocket broadcast
+- **Bid eligibility**: Only active lots whose start time has arrived and end time has
+  not passed can receive a bid. Responses and broadcasts use the stored price.
 - **Multi-Core Architecture**: TcpListener + 3 AuctionManager workers
 - **Cache Strategy**: Redis cache-aside with automatic invalidation
 - **Pub/Sub Events**: Redis for real-time client notifications
@@ -105,10 +107,15 @@ Tests cover:
 - 404 error handling
 
 `check_bid_atomicity.py` starts the built application, opens persistent sessions
-on the same and different workers, sends overlapping bids, and reads the database
-to assert one accepted response, one rejected response, one bid row and the right
-price. It also verifies rollback after a failed insert and a valid follow-up bid.
-It deletes its own temporary lots before exiting.
+on the same and different workers, then holds a temporary PostgreSQL row lock
+until both bid requests are logged by HTTP middleware and one update is waiting
+on the lock. It reads the database to assert one accepted response, one rejected
+response, one bid row and the right price. The gate proves both requests reached
+the server while a bid statement was blocked; it cannot inspect whether the second
+handler has already entered the PostgreSQL client's internal queue. The script
+also verifies rollback after a failed insert and a valid follow-up bid.
+It checks cancelled and future-start lots, plus the rounded price returned for a
+fractional-cent offer. It deletes its own temporary lots before exiting.
 
 ### Access
 
@@ -187,7 +194,8 @@ Open browser: http://localhost:8080
 
 1. **Coroutine `onInit`**: `co_await` DB + Redis + WS before activating (discover-before-activate)
 2. **Coroutine handlers**: `task<void>(ctx)` lambdas passed directly to the router, `co_await`ing the database and Redis
-3. **Atomic bid statement**: a guarded lot update feeds the bid insert; no transaction spans coroutine suspension
+3. **Atomic bid statement**: an active, started lot update guarded by end time and price feeds the bid insert;
+   no transaction spans coroutine suspension, and the returned row supplies the published price
 4. **Coroutine Pub/Sub**: `qb::redis::tcp::co_consumer` + `while (co_await receive()) broadcast(...)`
 5. **Pre-engine bootstrap**: `qb::io::async::run_sync` runs the idempotent `init_db.sql` via coroutine `execute_file()`
 6. **Actor Topology**: TcpListener on dedicated core, workers distributed

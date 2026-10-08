@@ -2,8 +2,11 @@
 """Run overlapping bids through the auction example and inspect PostgreSQL state.
 
 Four persistent HTTP sessions are opened in round-robin order. Sessions 0 and 3
-must land on the same worker; sending from both at once exercises the worker's
-single database connection. A second pair covers separate workers.
+must land on the same worker. A separate PostgreSQL session locks the test lot
+until both bid requests have entered the server and one UPDATE is waiting on
+that lock; this exercises the worker's single database connection. A second
+pair covers separate workers. Additional cases pin bid eligibility, rounding,
+and rollback against stored rows.
 """
 
 import argparse
@@ -38,7 +41,10 @@ def binary_from_roster(build_dir):
 
 def pg_environment():
     env = os.environ.copy()
+    for name in ("PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE"):
+        env.pop(name, None)
     env["PGHOST"] = env.get("PG_HOST", "127.0.0.1")
+    env["PGPORT"] = "5432"  # auction main.cpp uses this fixed database port
     env["PGUSER"] = env.get("PG_USER", "auction_user")
     env["PGDATABASE"] = env.get("PG_DB", "auction_house")
     env["PGPASSWORD"] = env.get("PG_PASS", "auction_pass")
@@ -46,7 +52,9 @@ def pg_environment():
 
 
 def sql(statement, env):
-    result = subprocess.run(["psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", statement],
+    result = subprocess.run(["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", "5432",
+                             "-U", env["PGUSER"], "-d", env["PGDATABASE"],
+                             "-v", "ON_ERROR_STOP=1", "-c", statement],
                             env=env, text=True, capture_output=True, timeout=8, check=True)
     return result.stdout.strip()
 
@@ -84,15 +92,28 @@ class App:
                 self.cv.wait(min(remaining, 0.2))
             return self.workers[count - 1]
 
+    def wait_bid_requests(self, lot_id, count, timeout=8):
+        marker = f"[HTTP] Request: POST /api/lots/{lot_id}/bids"
+        deadline = time.monotonic() + timeout
+        with self.cv:
+            while sum(marker in line for line in self.lines) < count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or self.proc.poll() is not None:
+                    raise AssertionError(f"expected {count} bid requests to reach HTTP middleware for lot {lot_id}")
+                self.cv.wait(min(remaining, 0.2))
+
     def wait_ready(self):
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline and self.proc.poll() is None:
             try:
                 conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=2)
+                with self.cv:
+                    count = len(self.workers) + 1
                 conn.request("GET", "/health")
                 response = conn.getresponse()
                 body = json.loads(response.read())
                 conn.close()
+                self.wait_workers(count)  # consume this readiness connection's log before opening another
                 if response.status == 200 and body.get("db_ready") and body.get("redis_ready"):
                     return
             except (OSError, ValueError, http.client.HTTPException):
@@ -109,7 +130,11 @@ class App:
         response.read()
         if response.status != 200 or conn.sock is None:
             raise AssertionError("health request did not leave a persistent HTTP session")
-        return conn, self.wait_workers(next_count)
+        worker = self.wait_workers(next_count)
+        with self.cv:
+            if len(self.workers) != next_count:
+                raise AssertionError("another HTTP session arrived while identifying this worker")
+        return conn, worker
 
     def stop(self):
         if self.proc.poll() is not None:
@@ -135,11 +160,15 @@ class App:
             return "\n".join(self.lines[-25:])
 
 
-def create_lot(env, suffix):
+def create_lot(env, suffix, status="active", future_start=False):
     title = f"qb-bid-check-{os.getpid()}-{time.time_ns()}-{suffix}"
-    statement = ("INSERT INTO lots (title, description, category, start_price, current_price, seller_id, end_time) "
+    if status not in ("active", "cancelled"):
+        raise AssertionError(f"unsupported test status: {status}")
+    start_time = "NOW() + INTERVAL '30 minutes'" if future_start else "NOW() - INTERVAL '1 minute'"
+    statement = ("INSERT INTO lots (title, description, category, start_price, current_price, seller_id, status, start_time, end_time) "
                  f"VALUES ('{title}', 'bid atomicity check', 'general', 100, 100, "
-                 "(SELECT id FROM users WHERE username = 'alice'), NOW() + INTERVAL '1 hour') RETURNING id")
+                 f"(SELECT id FROM users WHERE username = 'alice'), '{status}', {start_time}, "
+                 "NOW() + INTERVAL '1 hour') RETURNING id")
     return int(sql(statement, env))
 
 
@@ -160,18 +189,94 @@ def post_bid(conn, lot_id, bidder_id, amount):
     return response.status, payload
 
 
-def concurrent_bids(first, second, lot_id):
+class LotLock:
+    """Hold a test lot's row lock in an independent PostgreSQL transaction."""
+
+    def __init__(self, env, lot_id):
+        self.proc = subprocess.Popen(
+            ["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", "5432",
+             "-U", env["PGUSER"], "-d", env["PGDATABASE"], "-v", "ON_ERROR_STOP=1"],
+            env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self.lines = []
+        self.cv = threading.Condition()
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
+        try:
+            self.proc.stdin.write(f"BEGIN;\nSELECT id FROM lots WHERE id={lot_id} FOR UPDATE;\n\\echo LOT_LOCKED\n")
+            self.proc.stdin.flush()
+            self.wait_line("LOT_LOCKED")
+        except Exception:
+            if self.proc.poll() is None:
+                self.proc.kill()
+            self.proc.wait(timeout=3)
+            self.reader.join(timeout=1)
+            raise
+
+    def _read(self):
+        for line in self.proc.stdout:
+            with self.cv:
+                self.lines.append(line.rstrip())
+                self.cv.notify_all()
+
+    def wait_line(self, marker, timeout=8):
+        deadline = time.monotonic() + timeout
+        with self.cv:
+            while not any(marker in line for line in self.lines):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or self.proc.poll() is not None:
+                    raise AssertionError(f"could not lock test lot: {self.lines[-10:]}")
+                self.cv.wait(min(remaining, 0.2))
+
+    def release(self):
+        if self.proc.poll() is None:
+            self.proc.stdin.write("COMMIT;\n\\q\n")
+            self.proc.stdin.flush()
+            self.proc.stdin.close()
+        try:
+            code = self.proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait(timeout=3)
+            raise AssertionError("lot-lock transaction did not exit")
+        self.reader.join(timeout=1)
+        if code != 0:
+            raise AssertionError(f"lot-lock transaction failed: {self.lines[-10:]}")
+
+
+def wait_for_lock_waiter(env, timeout=8):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        waiting = sql("SELECT COUNT(*) FROM pg_stat_activity "
+                      "WHERE datname=current_database() AND wait_event_type='Lock'", env)
+        if int(waiting) > 0:
+            return
+        time.sleep(0.05)
+    raise AssertionError("no auction worker reached the locked UPDATE")
+
+
+def concurrent_bids(first, second, lot_id, app, env):
     barrier = threading.Barrier(3)
 
     def send(conn, bidder):
         barrier.wait()
         return post_bid(conn, lot_id, bidder, 110)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        a = pool.submit(send, first, 2)
-        b = pool.submit(send, second, 3)
-        barrier.wait()
-        result = [a.result(timeout=10), b.result(timeout=10)]
+    lock = LotLock(env, lot_id)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            a = pool.submit(send, first, 2)
+            b = pool.submit(send, second, 3)
+            barrier.wait()
+            try:
+                wait_for_lock_waiter(env)
+                app.wait_bid_requests(lot_id, 2)
+            finally:
+                lock.release()
+            result = [a.result(timeout=10), b.result(timeout=10)]
+    finally:
+        if lock.proc.poll() is None:
+            lock.release()
     if sorted(status for status, _ in result) != [201, 409]:
         raise AssertionError(f"expected one accepted and one rejected bid, got {result}")
     return result
@@ -194,7 +299,7 @@ def main():
         try:
             if sessions[0][1] != sessions[3][1]:
                 raise AssertionError(f"first and fourth sessions differ: {[worker for _, worker in sessions]}")
-            concurrent_bids(sessions[0][0], sessions[3][0], same_lot)
+            concurrent_bids(sessions[0][0], sessions[3][0], same_lot, app, env)
         finally:
             for conn, _ in sessions:
                 conn.close()
@@ -203,7 +308,7 @@ def main():
         print("PASS same worker: 201/409, one bid row, price 110.00")
 
         # An INSERT failure must roll back the preceding UPDATE in that statement.
-        bad = http.client.HTTPConnection("127.0.0.1", 8080, timeout=8)
+        bad, _ = app.session()
         try:
             status, _ = post_bid(bad, same_lot, 999999, 120)
             if status != 409 or state(env, same_lot) != ("110.00", 1):
@@ -221,13 +326,36 @@ def main():
         try:
             if cross[0][1] == cross[1][1]:
                 raise AssertionError("cross-worker sessions unexpectedly share a worker")
-            concurrent_bids(cross[0][0], cross[1][0], other_lot)
+            concurrent_bids(cross[0][0], cross[1][0], other_lot, app, env)
         finally:
             for conn, _ in cross:
                 conn.close()
         if state(env, other_lot) != ("110.00", 1):
             raise AssertionError(f"cross-worker bids left {state(env, other_lot)}")
         print("PASS distinct workers: 201/409, one bid row, price 110.00")
+
+        for label, options in (("cancelled", {"status": "cancelled"}), ("not started", {"future_start": True})):
+            blocked_lot = create_lot(env, label.replace(" ", "-"), **options)
+            lot_ids.append(blocked_lot)
+            conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=8)
+            try:
+                status, _ = post_bid(conn, blocked_lot, 2, 110)
+            finally:
+                conn.close()
+            if status != 409 or state(env, blocked_lot) != ("100.00", 0):
+                raise AssertionError(f"{label} lot accepted a bid: status={status}, state={state(env, blocked_lot)}")
+            print(f"PASS {label} lot: 409, price 100.00, zero bid rows")
+
+        rounded_lot = create_lot(env, "fractional-cents")
+        lot_ids.append(rounded_lot)
+        conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=8)
+        try:
+            status, payload = post_bid(conn, rounded_lot, 2, 110.009)
+        finally:
+            conn.close()
+        if status != 201 or state(env, rounded_lot) != ("110.01", 1) or abs(payload.get("new_price", 0) - 110.01) > 1e-9:
+            raise AssertionError(f"rounded bid reply disagrees with row: status={status}, body={payload}, state={state(env, rounded_lot)}")
+        print("PASS fractional cents: response and stored price both 110.01")
         app.stop()
     except Exception as exc:
         raise AssertionError(f"{exc}\n{app.tail()}") from exc

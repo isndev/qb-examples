@@ -96,11 +96,15 @@ class Server:
     def stop(self):
         self.proc.send_signal(signal.SIGTERM)
         try:
-            return self.proc.wait(timeout=5)
+            code = self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=3)
             raise AssertionError("chat server did not stop within five seconds")
+        self.reader.join(timeout=1)
+        if self.reader.is_alive():
+            raise AssertionError("chat output was not fully read after server exit")
+        return code
 
     def close(self):
         for peer in self.clients:
