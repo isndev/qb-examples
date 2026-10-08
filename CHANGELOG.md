@@ -35,6 +35,10 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Redis Pub/Sub lesson describes both channel-close paths (Huly QB-252).**
+  Disconnect closes a live consumer's receive channel; actor teardown can close it first
+  when shutdown immediately kills the actor. The lesson no longer claims that only the
+  destructor wakes the parked receive loop.
 - **The WebSocket chat server stops cleanly with connected users (Huly QB-830).** A session
   destructor broadcast a departure while the server's session map was being destroyed,
   recursively destroying sessions until the process crashed. Ordinary disconnection now
