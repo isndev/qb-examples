@@ -37,7 +37,7 @@
  * 1. `RetryPolicy{}` defaults to `max_attempts = -1` — UNLIMITED. As a startup policy that turns
  *    "the database is misconfigured" into "the process hangs and prints nothing". Bound it.
  * 2. A dropped connection does NOT strand your `co_await`. The client fails every pending reply
- *    (`redis.h:1011-1027`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
+ *    (`redis.h:1013-1029`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
  *    false` and `raw() == nullptr`. That null is the discriminator between "the link died" and
  *    "the value was nil" — the same one `05-transactions` needs to tell a WATCH abort from a
  *    parse error. (The DESTRUCTOR path is the other one: destroying the client discards its
