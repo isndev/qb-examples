@@ -20,6 +20,7 @@ import socket
 import subprocess
 import threading
 import time
+import uuid
 from pathlib import Path
 
 
@@ -44,7 +45,7 @@ def pg_environment():
     for name in ("PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE"):
         env.pop(name, None)
     env["PGHOST"] = env.get("PG_HOST", "127.0.0.1")
-    env["PGPORT"] = "5432"  # auction main.cpp uses this fixed database port
+    env["PGPORT"] = env.get("PG_PORT", "5432")
     env["PGUSER"] = env.get("PG_USER", "auction_user")
     env["PGDATABASE"] = env.get("PG_DB", "auction_house")
     env["PGPASSWORD"] = env.get("PG_PASS", "auction_pass")
@@ -52,7 +53,7 @@ def pg_environment():
 
 
 def sql(statement, env):
-    result = subprocess.run(["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", "5432",
+    result = subprocess.run(["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", env["PGPORT"],
                              "-U", env["PGUSER"], "-d", env["PGDATABASE"],
                              "-v", "ON_ERROR_STOP=1", "-c", statement],
                             env=env, text=True, capture_output=True, timeout=8, check=True)
@@ -180,8 +181,9 @@ def state(env, lot_id):
     return price, int(count)
 
 
-def post_bid(conn, lot_id, bidder_id, amount):
-    body = json.dumps({"bidder_id": bidder_id, "amount": amount}).encode()
+def post_bid(conn, lot_id, bidder_id, amount, request_id=None):
+    body = json.dumps({"bidder_id": bidder_id, "amount": amount,
+                       "request_id": request_id or str(uuid.uuid4())}).encode()
     conn.request("POST", f"/api/lots/{lot_id}/bids", body=body,
                  headers={"Content-Type": "application/json", "Connection": "keep-alive"})
     response = conn.getresponse()
@@ -194,7 +196,7 @@ class LotLock:
 
     def __init__(self, env, lot_id):
         self.proc = subprocess.Popen(
-            ["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", "5432",
+            ["psql", "-X", "-q", "-t", "-A", "-h", env["PGHOST"], "-p", env["PGPORT"],
              "-U", env["PGUSER"], "-d", env["PGDATABASE"], "-v", "ON_ERROR_STOP=1"],
             env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -356,6 +358,35 @@ def main():
         if status != 201 or state(env, rounded_lot) != ("110.01", 1) or abs(payload.get("new_price", 0) - 110.01) > 1e-9:
             raise AssertionError(f"rounded bid reply disagrees with row: status={status}, body={payload}, state={state(env, rounded_lot)}")
         print("PASS fractional cents: response and stored price both 110.01")
+
+        replay_lot = create_lot(env, "replay")
+        lot_ids.append(replay_lot)
+        request_id = str(uuid.uuid4())
+        conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=8)
+        try:
+            missing = json.dumps({"bidder_id": 2, "amount": 110}).encode()
+            conn.request("POST", f"/api/lots/{replay_lot}/bids", body=missing,
+                         headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            response.read()
+            if response.status != 400 or state(env, replay_lot) != ("100.00", 0):
+                raise AssertionError("bid without request_id was not rejected before DB mutation")
+            first_status, first_body = post_bid(conn, replay_lot, 2, 110, request_id)
+            if first_status != 201:
+                raise AssertionError(f"first keyed bid failed: {first_status}, {first_body}")
+            status, _ = post_bid(conn, replay_lot, 3, 120)
+            if status != 201:
+                raise AssertionError("follow-on bid failed")
+            sql(f"UPDATE lots SET end_time=NOW() - INTERVAL '1 second' WHERE id={replay_lot}", env)
+            repeated_status, repeated_body = post_bid(conn, replay_lot, 2, 110, request_id)
+            if repeated_status != 201 or repeated_body != first_body or state(env, replay_lot) != ("120.00", 2):
+                raise AssertionError(f"repeat did not preserve first response: {repeated_status}, {repeated_body}")
+            conflict_status, _ = post_bid(conn, replay_lot, 2, 130, request_id)
+            if conflict_status != 409 or state(env, replay_lot) != ("120.00", 2):
+                raise AssertionError("reused request_id changed price or bid history")
+            print("PASS request identity: missing 400, exact replay 201, changed payload 409")
+        finally:
+            conn.close()
         app.stop()
     except Exception as exc:
         raise AssertionError(f"{exc}\n{app.tail()}") from exc

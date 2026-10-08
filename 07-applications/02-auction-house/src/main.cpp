@@ -92,9 +92,10 @@ main(int argc, char *argv[]) {
     const char *pg_user = std::getenv("PG_USER") ? std::getenv("PG_USER") : "auction_user";
     const char *pg_pass = std::getenv("PG_PASS") ? std::getenv("PG_PASS") : "auction_pass";
     const char *pg_db   = std::getenv("PG_DB") ? std::getenv("PG_DB") : "auction_house";
+    const char *pg_port = std::getenv("PG_PORT") ? std::getenv("PG_PORT") : "5432";
 
     const qb::io::uri listen_uri{"tcp://0.0.0.0:" + std::to_string(PORT)};
-    const qb::io::uri pg_uri{std::string("tcp://") + pg_user + ":" + pg_pass + "@" + pg_host + ":5432[" + pg_db + "]"};
+    const qb::io::uri pg_uri{std::string("tcp://") + pg_user + ":" + pg_pass + "@" + pg_host + ":" + pg_port + "[" + pg_db + "]"};
     const qb::io::uri redis_uri{"tcp://localhost:6379"};
 
     // Find static resources

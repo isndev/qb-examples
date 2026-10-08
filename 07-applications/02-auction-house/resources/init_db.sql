@@ -103,6 +103,11 @@ CREATE TABLE IF NOT EXISTS bids
     is_winning BOOLEAN DEFAULT false
     );
 
+-- Existing demo databases have bids without request identities. Keep those rows;
+-- every new HTTP bid supplies both columns and can be reconciled after reply loss.
+ALTER TABLE bids ADD COLUMN IF NOT EXISTS request_id UUID;
+ALTER TABLE bids ADD COLUMN IF NOT EXISTS response_time_left INTEGER;
+
 CREATE TABLE IF NOT EXISTS auction_results
 (
     id
@@ -138,13 +143,15 @@ CREATE INDEX IF NOT EXISTS idx_lots_end_time ON lots(end_time);
 CREATE INDEX IF NOT EXISTS idx_bids_lot_id ON bids(lot_id);
 CREATE INDEX IF NOT EXISTS idx_bids_bidder ON bids(bidder_id);
 CREATE INDEX IF NOT EXISTS idx_bids_time ON bids(bid_time DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bids_request_id ON bids(request_id);
 
 -- ── Idempotent seed data ────────────────────────────────────────────────────
--- Remove all expired + ended lots to keep the demo clean across restarts.
--- Cascades to bids (ON DELETE CASCADE).
+-- Keep lots with bids so their request identities and accepted responses remain
+-- replayable after a restart. Only empty expired demo lots are recycled.
 DELETE
-FROM lots
-WHERE end_time < NOW();
+FROM lots l
+WHERE l.end_time < NOW()
+  AND NOT EXISTS (SELECT 1 FROM bids b WHERE b.lot_id = l.id);
 
 -- Users — never changes
 INSERT INTO users (username, email, balance)

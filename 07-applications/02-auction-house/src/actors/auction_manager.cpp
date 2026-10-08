@@ -11,6 +11,8 @@
  */
 
 #include "auction_house/actors/auction_manager.h"
+#include <cmath>
+#include <cctype>
 #include <ctime>
 #include <qbm/http/middleware/all.h>
 #include <iomanip>
@@ -19,6 +21,25 @@
 
 namespace auction_house {
 namespace actors {
+
+namespace {
+
+bool
+valid_request_id(const std::string &id) {
+    if (id.size() != 36)
+        return false;
+    for (size_t i = 0; i < id.size(); ++i) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (id[i] != '-')
+                return false;
+        } else if (!std::isxdigit(static_cast<unsigned char>(id[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 // ─── Constructor ────────────────────────────────────────────────────────────
 
@@ -186,12 +207,20 @@ AuctionManager::prepare_statements() {
                        "   EXTRACT(EPOCH FROM end_time)::bigint AS end_time,"
                        "   created_at::text AS created_at, updated_at::text AS updated_at"
                        "), recorded AS ("
-                       " INSERT INTO bids (lot_id, bidder_id, amount)"
-                       " SELECT id, $3, $1::numeric FROM accepted"
-                       " RETURNING id, lot_id"
-                       ") SELECT accepted.*, recorded.id AS bid_id"
+                       " INSERT INTO bids (lot_id, bidder_id, amount, request_id, response_time_left)"
+                       " SELECT id, $3, $1::numeric, $4::uuid,"
+                       "   GREATEST(0, end_time - EXTRACT(EPOCH FROM NOW())::bigint)::integer FROM accepted"
+                       " RETURNING id, lot_id, response_time_left"
+                       ") SELECT accepted.*, recorded.id AS bid_id, recorded.response_time_left"
                        " FROM accepted JOIN recorded ON recorded.lot_id = accepted.id;",
-                       qb::pg::type_oid_sequence{oid::text, oid::int4, oid::int4}))
+                       qb::pg::type_oid_sequence{oid::text, oid::int4, oid::int4, oid::text}))
+        co_return false;
+
+    if (!co_await prep("select_bid_by_request",
+                       "SELECT id, lot_id, bidder_id, amount::text AS amount_text,"
+                       " amount::float8 AS amount, response_time_left"
+                       " FROM bids WHERE request_id = $1::uuid;",
+                       qb::pg::type_oid_sequence{oid::text}))
         co_return false;
 
     if (!co_await prep("select_user_stats",
@@ -208,6 +237,24 @@ AuctionManager::prepare_statements() {
         co_return false;
 
     co_return true;
+}
+
+qb::io::async::task<bool>
+AuctionManager::restore_database() {
+    if (_db_reconnecting)
+        co_return false;
+    if (_db_ready && _db->is_connection_usable())
+        co_return true;
+    _db_reconnecting = true;
+    _db_ready        = false;
+    _db->prepare_reconnect();
+    const bool connected = co_await _db->connect(_pg_uri.source());
+    const bool prepared  = connected && co_await prepare_statements();
+    if (connected && !prepared)
+        _db->disconnect();
+    _db_ready        = prepared;
+    _db_reconnecting = false;
+    co_return prepared;
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
@@ -247,7 +294,7 @@ AuctionManager::handle_health(ctx_t ctx) {
         {"status", "ok"},
         {"service", "auction_house"},
         {"version", "1.0.0"},
-        {"db_ready", _db_ready},
+        {"db_ready", _db_ready && _db->is_connection_usable()},
         {"redis_ready", _redis_ready},
         {"ws_clients", _ws_handler.client_count()},
         {"timestamp", std::time(nullptr)}
@@ -283,6 +330,10 @@ AuctionManager::handle_list_lots(ctx_t ctx) {
         co_return;
     }
 
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto res = co_await _db->execute("select_active_lots", qb::pg::params{});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
@@ -319,6 +370,10 @@ AuctionManager::handle_get_lot(ctx_t ctx) {
         }
     }
 
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto res = co_await _db->execute("select_lot_by_id", qb::pg::params{lot_id});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
@@ -345,6 +400,10 @@ AuctionManager::handle_get_lot_bids(ctx_t ctx) {
     }
     const int32_t lot_id = *lot_id_opt;
 
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto res = co_await _db->execute("select_lot_bids", qb::pg::params{lot_id});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
@@ -363,16 +422,24 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     }
     const int32_t lot_id = *lot_id_opt;
 
-    double  amount;
-    int32_t bidder_id;
+    double      amount;
+    int32_t     bidder_id;
+    std::string request_id;
     try {
-        auto json = qb::json::parse(ctx->request().body().as<std::string>());
-        amount    = json.value("amount", 0.0);
-        bidder_id = json.value("bidder_id", 0);
-        if (amount <= 0 || bidder_id <= 0) {
+        auto json  = qb::json::parse(ctx->request().body().as<std::string>());
+        amount     = json.value("amount", 0.0);
+        bidder_id  = json.value("bidder_id", 0);
+        request_id = json.value("request_id", std::string{});
+        if (!std::isfinite(amount) || amount <= 0 || bidder_id <= 0) {
             ctx->bad_request("Invalid bid amount or bidder_id");
             co_return;
         }
+        if (!valid_request_id(request_id)) {
+            ctx->bad_request("request_id must be a UUID (36 hexadecimal characters with hyphens)");
+            co_return;
+        }
+        for (char &ch : request_id)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     } catch (const std::exception &e) {
         ctx->bad_request(e.what());
         co_return;
@@ -383,16 +450,69 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     oss << std::fixed << std::setprecision(2) << amount;
     const std::string amount_str = oss.str();
 
-    auto placed = co_await _db->execute("place_bid", qb::pg::params{amount_str, lot_id, bidder_id});
-    if (!placed.ok()) {
-        ctx->json({{"error", "Bid could not be placed"}}, qb::http::status::CONFLICT);
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable; retry with the same request_id"}}, qb::http::status::SERVICE_UNAVAILABLE);
         co_return;
     }
-    if (placed.result().empty()) {
+
+    auto placed = co_await _db->execute("place_bid", qb::pg::params{amount_str, lot_id, bidder_id, request_id});
+    if (!placed.ok() || placed.result().empty()) {
+        // A failed reply may follow a committed statement. A second connection is
+        // required when the original transport broke; absence is only certain after
+        // a successful lookup. The unique index also resolves concurrent retries.
+        qb::pg::Reply<qb::pg::resultset> previous;
+        if (placed.ok()) {
+            previous = co_await _db->execute("select_bid_by_request", qb::pg::params{request_id});
+        } else {
+            qb::pg::tcp::database probe;
+            if (co_await probe.connect(_pg_uri.source())) {
+                auto found = co_await probe.query("SELECT id, lot_id, bidder_id, amount::text AS amount_text,"
+                                                  " amount::float8 AS amount, response_time_left"
+                                                  " FROM bids WHERE request_id = $1::uuid;",
+                                                  request_id);
+                if (found.ok())
+                    previous = qb::pg::Reply<qb::pg::resultset>::success(found.result().deep_snapshot());
+                probe.disconnect();
+            }
+        }
+        if (!previous.ok()) {
+            ctx->json({{"error", "Bid outcome could not be confirmed; retry with the same request_id"}}, qb::http::status::SERVICE_UNAVAILABLE);
+            co_return;
+        }
+        if (!previous.result().empty()) {
+            const auto &row = previous.result()[0];
+            if (row["lot_id"].as<int32_t>() != lot_id || row["bidder_id"].as<int32_t>() != bidder_id
+                || row["amount_text"].as<std::string>() != amount_str) {
+                ctx->json({{"error", "request_id already belongs to a different bid"}}, qb::http::status::CONFLICT);
+                co_return;
+            }
+            models::BidResult replay;
+            replay.success    = true;
+            replay.message    = "Bid placed successfully";
+            replay.bid_id     = row["id"].as<int32_t>();
+            replay.new_price  = row["amount"].as<double>();
+            replay.time_left  = row["response_time_left"].as<int32_t>();
+            replay.request_id = request_id;
+            co_await invalidate_lot_cache(lot_id);
+            ctx->json(replay.to_json(), qb::http::status::CREATED);
+            co_return;
+        }
+        if (!placed.ok()) {
+            if (placed.error().sqlstate == qb::pg::sqlstate::foreign_key_violation) {
+                ctx->json({{"error", "Bidder does not exist"}}, qb::http::status::CONFLICT);
+                co_return;
+            }
+            ctx->json({{"error", "Bid outcome unknown; retry with the same request_id"}}, qb::http::status::SERVICE_UNAVAILABLE);
+            co_return;
+        }
         // The guarded UPDATE accepted no row and the dependent INSERT ran zero times.
         // Read the current lot only to explain the rejection, never to authorize it.
         auto cur = co_await _db->execute("select_lot_by_id", qb::pg::params{lot_id});
-        if (!cur.ok() || cur.result().empty()) {
+        if (!cur.ok()) {
+            ctx->json({{"error", "Bid outcome could not be confirmed; retry with the same request_id"}}, qb::http::status::SERVICE_UNAVAILABLE);
+            co_return;
+        }
+        if (cur.result().empty()) {
             ctx->not_found("Lot not found");
             co_return;
         }
@@ -407,16 +527,18 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
         co_return;
     }
 
-    const int32_t bid_id = placed.result()[0]["bid_id"].as<int32_t>();
+    const int32_t bid_id             = placed.result()[0]["bid_id"].as<int32_t>();
+    const int32_t response_time_left = placed.result()[0]["response_time_left"].as<int32_t>();
     models::Lot   lot(placed.result()[0]);
     co_await invalidate_lot_cache(lot_id);
 
     models::BidResult result;
-    result.success   = true;
-    result.message   = "Bid placed successfully";
-    result.bid_id    = bid_id;
-    result.new_price = lot.current_price;
-    result.time_left = lot.time_left;
+    result.success    = true;
+    result.message    = "Bid placed successfully";
+    result.bid_id     = bid_id;
+    result.new_price  = lot.current_price;
+    result.time_left  = response_time_left;
+    result.request_id = request_id;
     ctx->json(result.to_json(), qb::http::status::CREATED);
 
     // Response is already sent — resolve the bidder name and broadcast the event.
@@ -434,6 +556,10 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
 
 qb::io::async::task<void>
 AuctionManager::handle_list_users(ctx_t ctx) {
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto res = co_await _db->execute("select_all_users", qb::pg::params{});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
@@ -455,6 +581,10 @@ AuctionManager::handle_get_user(ctx_t ctx) {
     }
     const int32_t user_id = *user_id_opt;
 
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto res = co_await _db->execute("select_user_by_id", qb::pg::params{user_id});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
@@ -477,6 +607,10 @@ AuctionManager::handle_get_user_stats(ctx_t ctx) {
     }
     const int32_t user_id = *user_id_opt;
 
+    if ((!_db_ready || !_db->is_connection_usable()) && !co_await restore_database()) {
+        ctx->json({{"error", "Database unavailable"}}, qb::http::status::SERVICE_UNAVAILABLE);
+        co_return;
+    }
     auto user = co_await _db->execute("select_user_by_id", qb::pg::params{user_id});
     if (!user.ok()) {
         ctx->internal_server_error(user.error().what());

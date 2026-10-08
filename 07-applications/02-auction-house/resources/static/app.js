@@ -30,6 +30,22 @@ let activeSort = 'ending';
 
 let selectedLotId = null;    // lot open in drawer
 let countdownTimer = null;    // setInterval handle for drawer countdown
+const PENDING_BID_KEY = 'auction-house-pending-bid';
+let pendingBid = null;
+try {
+    pendingBid = JSON.parse(localStorage.getItem(PENDING_BID_KEY));
+} catch (_) {
+    pendingBid = null;
+}
+
+function savePendingBid() {
+    try {
+        if (pendingBid)
+            localStorage.setItem(PENDING_BID_KEY, JSON.stringify(pendingBid));
+        else
+            localStorage.removeItem(PENDING_BID_KEY);
+    } catch (_) { /* Storage may be disabled; the current tab still keeps the key. */ }
+}
 
 let ws = null;
 let wsReconnects = 0;
@@ -72,7 +88,33 @@ const els = {
 async function init() {
     setupEventListeners();
     await Promise.all([loadUsers(), loadLots()]);
+    await reconcilePendingBid();
     connectWebSocket();
+}
+
+async function reconcilePendingBid() {
+    if (!pendingBid) return;
+    try {
+        const bid = pendingBid;
+        const {status, data} = await apiFetch(`/api/lots/${bid.lotId}/bids`, {
+            method: 'POST',
+            body: JSON.stringify({amount: bid.amount, bidder_id: bid.bidderId, request_id: bid.requestId}),
+        });
+        if (status >= 500 || (status < 400 && !(status === 201 && data?.success))) {
+            toast('Bid outcome still unknown. Retry the same bid later.', 'warn');
+            return;
+        }
+        pendingBid = null;
+        savePendingBid();
+        if (status === 201 && data?.success) {
+            updateLotPrice(bid.lotId, data.new_price, false);
+            toast(`Bid of $${Number(data.new_price).toLocaleString()} confirmed.`, 'success');
+        } else {
+            toast(data?.error || 'Previous bid was not accepted.', 'warn');
+        }
+    } catch (_) {
+        toast('Bid outcome still unknown. Retry the same bid later.', 'warn');
+    }
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -99,7 +141,7 @@ async function loadUsers() {
         `<option value="${u.id}">${u.username}</option>`
     ).join('');
 
-    selectUser(users[0]);
+    selectUser(users.find(user => user.id === pendingBid?.bidderId) || users[0]);
 }
 
 function selectUser(user) {
@@ -223,7 +265,8 @@ function openDrawer(lotId) {
     els.drawerPrice.textContent = `$${Number(lot.current_price).toLocaleString()}`;
 
     // Show/hide bid form
-    if (isEnded) {
+    const resolvingBid = pendingBid?.lotId === lotId;
+    if (isEnded && !resolvingBid) {
         els.bidFormBlock.classList.add('hidden');
         els.bidEndedNotice.classList.remove('hidden');
     } else {
@@ -233,10 +276,13 @@ function openDrawer(lotId) {
 
         // Pre-fill with minimum bid
         const minBid = Math.ceil(lot.current_price * 1.05 / 100) * 100;
-        els.bidAmount.value = minBid;
+        els.bidAmount.value = resolvingBid ? pendingBid.amount : minBid;
+        els.placeBidBtn.textContent = resolvingBid ? 'Retry Bid' : 'Place Bid';
     }
 
     hideBidResult();
+    if (resolvingBid)
+        showBidResult('This bid has an unknown outcome. Retry to confirm it.', 'error');
 
     // Start countdown
     startCountdown(lot);
@@ -408,21 +454,46 @@ async function placeBid() {
         showBidResult('Enter a valid amount.', 'error');
         return;
     }
-    if (lot && amount <= lot.current_price) {
+    if (pendingBid && (pendingBid.lotId !== selectedLotId || pendingBid.bidderId !== currentUser.id || pendingBid.amount !== amount)) {
+        showBidResult('A previous bid has an unknown outcome. Retry that same bid to confirm it first.', 'error');
+        return;
+    }
+    if (!pendingBid && lot && amount <= lot.current_price) {
         showBidResult(`Must be higher than $${Number(lot.current_price).toLocaleString()}.`, 'error');
         return;
+    }
+
+    if (!pendingBid) {
+        pendingBid = {lotId: selectedLotId, bidderId: currentUser.id, amount, requestId: crypto.randomUUID()};
+        savePendingBid();
     }
 
     els.placeBidBtn.disabled = true;
     els.placeBidBtn.textContent = 'Placing…';
 
-    const {ok, status, data} = await apiFetch(`/api/lots/${selectedLotId}/bids`, {
-        method: 'POST',
-        body: JSON.stringify({amount, bidder_id: currentUser.id}),
-    });
+    let reply;
+    try {
+        reply = await apiFetch(`/api/lots/${pendingBid.lotId}/bids`, {
+            method: 'POST',
+            body: JSON.stringify({amount: pendingBid.amount, bidder_id: pendingBid.bidderId,
+                request_id: pendingBid.requestId}),
+        });
+    } catch (_) {
+        els.placeBidBtn.disabled = false;
+        els.placeBidBtn.textContent = 'Retry Bid';
+        showBidResult('Bid outcome unknown. Retry this bid to confirm it.', 'error');
+        return;
+    }
+    const {ok, status, data} = reply;
 
     els.placeBidBtn.disabled = false;
-    els.placeBidBtn.textContent = 'Place Bid';
+    const definitive = (status === 201 && data?.success) || (status >= 400 && status < 500);
+    els.placeBidBtn.textContent = definitive ? 'Place Bid' : 'Retry Bid';
+
+    if (definitive) {
+        pendingBid = null;
+        savePendingBid();
+    }
 
     if (ok && data?.success) {
         // 201 Created
