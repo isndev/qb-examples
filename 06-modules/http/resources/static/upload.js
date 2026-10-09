@@ -75,14 +75,26 @@ function loadFilesList() {
     fetch('/api/files')
         .then(response => response.json())
         .then(data => {
-            console.log('API Response:', data); // Debug
-
             if (!data.files || data.files.length === 0) {
-                filesDiv.innerHTML = '<p><em>No files uploaded yet.</em></p>';
+                const empty = document.createElement('p');
+                const message = document.createElement('em');
+                message.textContent = 'No files uploaded yet.';
+                empty.appendChild(message);
+                filesDiv.replaceChildren(empty);
                 return;
             }
 
-            let html = '<table><thead><tr><th>Filename</th><th>Size</th><th>Type</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>';
+            const table = document.createElement('table');
+            const head = document.createElement('thead');
+            const heading = document.createElement('tr');
+            ['Filename', 'Size', 'Type', 'Uploaded', 'Actions'].forEach(label => {
+                const cell = document.createElement('th');
+                cell.textContent = label;
+                heading.appendChild(cell);
+            });
+            head.appendChild(heading);
+            table.appendChild(head);
+            const body = document.createElement('tbody');
 
             data.files.forEach(file => {
                 const fileSize = QBHttpUtils.formatFileSize(file.size);
@@ -101,21 +113,52 @@ function loadFilesList() {
                     tags = file.metadata.tags || [];
                 }
 
-                const descriptionHtml = description ? '<br><small>' + description + '</small>' : '';
-                const tagsHtml = tags.length > 0 ? '<br><small>Tags: ' + tags.join(', ') + '</small>' : '';
+                const row = document.createElement('tr');
+                const nameCell = document.createElement('td');
+                const name = document.createElement('strong');
+                name.textContent = file.filename;
+                nameCell.appendChild(name);
+                if (description) {
+                    const detail = document.createElement('small');
+                    detail.textContent = description;
+                    nameCell.appendChild(document.createElement('br'));
+                    nameCell.appendChild(detail);
+                }
+                if (tags.length > 0) {
+                    const detail = document.createElement('small');
+                    detail.textContent = 'Tags: ' + tags.join(', ');
+                    nameCell.appendChild(document.createElement('br'));
+                    nameCell.appendChild(detail);
+                }
+                row.appendChild(nameCell);
+                [fileSize, mimeType, uploadDate].forEach(value => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value;
+                    row.appendChild(cell);
+                });
 
-                html += '<tr><td><strong>' + file.filename + '</strong>' + descriptionHtml + tagsHtml + '</td>';
-                html += '<td>' + fileSize + '</td>';
-                html += '<td>' + mimeType + '</td>';
-                html += '<td>' + uploadDate + '</td>';
-                html += '<td>';
-                html += '<a href="/uploads/' + file.filename + '" class="btn" target="_blank">Download</a> ';
-                html += '<button class="btn btn-danger delete-btn" data-filename="' + file.filename + '">Delete</button>';
-                html += '</td></tr>';
+                const actions = document.createElement('td');
+                const download = document.createElement('a');
+                download.href = '/uploads/' + encodeURIComponent(file.filename);
+                download.className = 'btn';
+                download.target = '_blank';
+                download.rel = 'noopener';
+                download.textContent = 'Download';
+                actions.appendChild(download);
+                actions.appendChild(document.createTextNode(' '));
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'btn btn-danger delete-btn';
+                remove.dataset.filename = file.filename;
+                remove.textContent = 'Delete';
+                actions.appendChild(remove);
+                row.appendChild(actions);
+                body.appendChild(row);
             });
 
-            html += '</tbody></table>';
-            filesDiv.innerHTML = html;
+            table.appendChild(body);
+            filesDiv.replaceChildren(table);
 
             // Attach event listeners to delete buttons (event delegation)
             attachDeleteHandlers();
@@ -123,7 +166,10 @@ function loadFilesList() {
         })
         .catch(error => {
             console.error('Load files error:', error);
-            filesDiv.innerHTML = '<p class="alert alert-danger">Error loading files: ' + error.message + '</p>';
+            const message = document.createElement('p');
+            message.className = 'alert alert-danger';
+            message.textContent = 'Error loading files: ' + error.message;
+            filesDiv.replaceChildren(message);
         });
 }
 
@@ -174,4 +220,4 @@ function deleteFile(filename) {
 // Load files list on page load
 document.addEventListener('DOMContentLoaded', function () {
     loadFilesList();
-}); 
+});

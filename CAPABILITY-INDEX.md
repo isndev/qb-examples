@@ -1322,7 +1322,7 @@ can disagree.
 - **`06-modules/http/06-validation.cpp`** — 22 capabilities
   - The `qb::http::validation` namespace, which this file previously included five headers of and used zero times: a JSON-schema validator, typed query/path/header parameter rules, a sanitizer that runs BEFORE validation, the error shape you read them out of, and the middleware that wires all of it in front of a router.
 - **`06-modules/http/07-auth-jwt.cpp`** — 12 capabilities
-  - JWT authentication end to end: an auth::Manager that signs and verifies, the middleware that puts an auth::User in the context, and the routes that read it back out.
+  - JWT authentication in an in-memory demo: an auth::Manager that signs and verifies, the middleware that puts an auth::User in the context, and the routes that read it back out.
 - **`06-modules/http/08-static-files.cpp`** — 12 capabilities
   - Serving a directory: the shipped static-files middleware, compression and security headers over it, and an upload endpoint beside it.
 - **`06-modules/http/09-coroutine-handlers.cpp`** — 11 capabilities

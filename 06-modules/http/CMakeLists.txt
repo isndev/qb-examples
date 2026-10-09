@@ -75,7 +75,7 @@ qb_example(SOURCE 03-controllers.cpp DEPENDS qbm-http)
 qb_example(SOURCE 04-middleware.cpp DEPENDS qbm-http)
 qb_example(SOURCE 05-rest-api-json.cpp DEPENDS qbm-http TARGET_VAR _tgt_rest)
 qb_example(SOURCE 06-validation.cpp DEPENDS qbm-http)
-qb_example(SOURCE 07-auth-jwt.cpp DEPENDS qbm-http REQUIRES ssl)
+qb_example(SOURCE 07-auth-jwt.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_auth)
 qb_example(SOURCE 08-static-files.cpp DEPENDS qbm-http TARGET_VAR _tgt_static)
 qb_example(SOURCE 09-coroutine-handlers.cpp DEPENDS qbm-http)
 qb_example(SOURCE 10-client.cpp DEPENDS qbm-http)
@@ -118,4 +118,25 @@ if(QB_BUILD_TESTS)
     set_tests_properties(qb-examples-test-integration-http-regressions PROPERTIES
             LABELS "tier:integration;module:qb-examples;serial"
             RUN_SERIAL TRUE TIMEOUT 60)
+
+    add_test(NAME qb-examples-test-integration-http-upload-special
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_http_account_upload.py"
+                    upload "$<TARGET_FILE:${_tgt_static}>")
+    set_tests_properties(qb-examples-test-integration-http-upload-special PROPERTIES
+            LABELS "tier:integration;module:qb-examples;serial"
+            RUN_SERIAL TRUE TIMEOUT 60 ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+
+    if(DEFINED _tgt_auth)
+        add_test(NAME qb-examples-test-integration-http-account
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_http_account_upload.py"
+                        auth "$<TARGET_FILE:${_tgt_auth}>")
+        set_tests_properties(qb-examples-test-integration-http-account PROPERTIES
+                LABELS "tier:integration;module:qb-examples;serial;ssl"
+                RUN_SERIAL TRUE TIMEOUT 60 ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+    endif()
+
+    add_test(NAME qb-examples-test-unit-http-upload-dom
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_upload_dom.py")
+    set_tests_properties(qb-examples-test-unit-http-upload-dom PROPERTIES
+            LABELS "tier:unit;module:qb-examples" TIMEOUT 30 SKIP_RETURN_CODE 77)
 endif()

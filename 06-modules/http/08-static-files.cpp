@@ -16,7 +16,7 @@
  * - Serving static files (HTML, CSS, JS, images) using StaticFilesMiddleware
  * - Configuring MIME types, caching, and security options
  * - Directory browsing with custom listings
- * - File upload API with validation
+ * - File upload API with validation and persisted comma-separated tags
  * - Combining static content with dynamic REST API
  * - Security features (path traversal protection, safe file types)
  * - Performance optimizations (ETag, conditional requests, compression)
@@ -44,6 +44,7 @@
 #include <qbm/http/middleware/logging.h>
 #include <qbm/http/middleware/security_headers.h>
 #include <qbm/http/headers.h> // Pour parse_header_attributes
+#include <qbm/http/utility.h>
 #include "upload_write.h"
 
 // Route parameters are already percent-decoded. Restrict a stored filename to
@@ -53,6 +54,36 @@
 is_single_filename_component(std::string_view filename) noexcept {
     return !filename.empty() && filename != "." && filename != ".." && filename.find_first_of("/\\:") == std::string_view::npos
            && filename.find('\0') == std::string_view::npos;
+}
+
+[[nodiscard]] static std::string
+upload_url(std::string_view filename) {
+    return "/uploads/" + qb::http::utility::uri_encode_component(filename);
+}
+
+// Validate the raw field before splitting it, and stop before collecting a
+// seventeenth tag. The multipart parser owns the input body; this only copies
+// the bounded tags that will be stored in metadata.
+[[nodiscard]] static bool
+parse_upload_tags(std::string_view input, std::vector<std::string> &tags) {
+    if (input.size() > 1024) {
+        return false;
+    }
+    tags.clear();
+    while (true) {
+        const auto comma = input.find(',');
+        const auto tag   = qb::http::utility::trim_http_whitespace(input.substr(0, comma));
+        if (!tag.empty()) {
+            if (tag.size() > 64 || tags.size() >= 16) {
+                return false;
+            }
+            tags.emplace_back(tag);
+        }
+        if (comma == std::string_view::npos) {
+            return true;
+        }
+        input.remove_prefix(comma + 1);
+    }
 }
 
 // File metadata structure
@@ -317,7 +348,7 @@ private:
                         std::string filename = entry.path().filename().string();
 
                         qb::json file_info = {
-                            {"filename", filename}, {"size", std::filesystem::file_size(entry)}, {"path", "/uploads/" + filename}
+                            {"filename", filename}, {"size", std::filesystem::file_size(entry)}, {"path", upload_url(filename)}
                         };
 
                         // Add metadata if available
@@ -399,10 +430,13 @@ private:
             // Parse multipart form data
             auto multipart = ctx->request().body().as<qb::http::Multipart>();
 
-            std::string uploaded_filename;
-            std::string description;
-            std::string file_content;
-            std::string content_type = "application/octet-stream";
+            std::string              uploaded_filename;
+            std::string              description;
+            std::vector<std::string> tags;
+            bool                     tags_supplied = false;
+            bool                     tags_valid    = true;
+            std::string              file_content;
+            std::string              content_type = "application/octet-stream";
 
             // Process each part
             for (const auto &part : multipart.parts()) {
@@ -423,8 +457,24 @@ private:
                     } else if (field_name == "description") {
                         // This is the description field
                         description = part.body;
+                    } else if (field_name == "tags") {
+                        tags_supplied = true;
+                        tags_valid    = parse_upload_tags(part.body, tags);
+                        if (!tags_valid) {
+                            break;
+                        }
                     }
                 }
+            }
+
+            if (!tags_valid) {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{
+                    {"error", "Invalid tags"}, {"message", "Use up to 16 comma-separated tags of at most 64 bytes each (1024 bytes total)"}
+                };
+                ctx->complete();
+                return;
             }
 
             if (uploaded_filename.empty() || file_content.empty()) {
@@ -498,7 +548,7 @@ private:
             metadata.size          = file_content.size();
             metadata.last_modified = std::filesystem::last_write_time(filepath);
             metadata.description   = description.empty() ? "Uploaded via API" : description;
-            metadata.tags          = {"uploaded", "api"};
+            metadata.tags          = tags_supplied ? std::move(tags) : std::vector<std::string>{"uploaded", "api"};
 
             _file_metadata[safe_filename] = metadata;
 
@@ -509,13 +559,13 @@ private:
                 {"size", metadata.size},
                 {"content_type", content_type},
                 {"description", metadata.description},
-                {"path", "/uploads/" + safe_filename},
+                {"path", upload_url(safe_filename)},
                 {"message", "File uploaded successfully"}
             };
 
             ctx->response().status() = qb::http::Status::CREATED;
             ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().add_header("Location", "/api/files/" + safe_filename);
+            ctx->response().add_header("Location", "/api/files/" + qb::http::utility::uri_encode_component(safe_filename));
             ctx->response().body() = response;
             ctx->complete();
 

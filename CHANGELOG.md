@@ -35,6 +35,13 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **HTTP account registration and login use the same demo password check (Huly QB-790).**
+  Newly registered accounts accept their chosen password and reject another; seeded accounts keep their
+  documented credentials. This in-memory example stores plain-text passwords and does not model production storage.
+- **The HTTP upload page preserves special filenames and entered metadata (Huly QB-823).**
+  It renders filenames, descriptions, tags and MIME types as text, encodes download/delete URL segments, and
+  stores comma-separated form tags instead of replacing them with fixed values. Upload and list response paths
+  and the `Location` header also encode the filename. Oversized tag fields are rejected before splitting or saving.
 - **The Redis cardinality example handles refused or short `BITFIELD` replies (Huly QB-828).**
   It prints `n/a` for an unavailable counter, completes cleanup and exits with a failed verdict
   instead of reading past the reply vector and crashing. The normal run now requires the

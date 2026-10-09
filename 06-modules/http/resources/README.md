@@ -61,6 +61,9 @@ The `08-static-files.cpp` server is configured to:
    requests resolving outside it (including through symlinks) receive 403.
 4. Offer API endpoints like `/api/upload` and `/api/files` that are typically interacted with from `upload.html`.
    A file URL parameter must decode to one filename component; invalid names return 400.
+   The form's optional comma-separated tags are stored with each upload (up to 16 tags, 64 bytes each,
+   1024 bytes for the whole field). If omitted, the demo uses `uploaded,api`. File paths returned by the
+   API and links in the page encode each filename as one URL segment.
 
 ## Running the Static File Demo (`08-static-files.cpp`)
 
