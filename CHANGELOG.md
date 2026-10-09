@@ -42,6 +42,11 @@ plumbing do not qualify.
   It renders filenames, descriptions, tags and MIME types as text, encodes download/delete URL segments, and
   stores comma-separated form tags instead of replacing them with fixed values. Upload and list response paths
   and the `Location` header also encode the filename. Oversized tag fields are rejected before splitting or saving.
+- **The Redis sliding-window example admits atomically and checks writes (Huly QB-826, QB-827).**
+  One EVAL now purges, counts, adds a unique member and sets expiry on the server. Competing
+  callers cannot consume the same slot; a failed add or expiry reports an error, with an expiry
+  failure attempting to remove the added member. A disposable-Redis test covers concurrent calls,
+  same-millisecond entries, expired windows, denied commands and failed EVAL/TTL replies.
 - **The Redis cardinality example handles refused or short `BITFIELD` replies (Huly QB-828).**
   It prints `n/a` for an unavailable counter, completes cleanup and exits with a failed verdict
   instead of reading past the reply vector and crashing. The normal run now requires the

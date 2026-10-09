@@ -180,15 +180,23 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
 
 * **Purpose**: the structure that keeps the ORDER for you (a leaderboard: "top 3" is a range read,
   not a sort; "what rank am I" is a lookup), the same structure scored by TIME (a sliding-window rate
-  limiter in three commands and no timer), the expiry rules, and the cursor SCAN you must use instead
+  limiter with one atomic EVAL and no client timer), the expiry rules, and the cursor SCAN you must use instead
   of `KEYS`.
 * **QB/QBM Redis Features**: `zadd`/`zincrby`/`zcard`/`zscore`/`zrevrange`/`zrevrank`/`zrangebyscore`/
-  `zremrangebyscore`/`zrem`, `qb::redis::score_member`, the interval types and `LimitOptions`;
+  `zrem`, `eval<long long>`, `qb::redis::score_member`, the interval types and `LimitOptions`;
   `expire`/`ttl`/`persist`/`setex`; `scan` + `qb::redis::scan<>`.
 * **Two measured gotchas**: `LeftBoundedInterval<double>` accepts only `OPEN` and `RIGHT_OPEN` and
   THROWS `qb::redis::Error` on `CLOSED` (`redis.cpp:127-141`) — for `[300, +inf)` the open side is the
   right one. And a plain `SET` CLEARS a key's TTL while `INCR` keeps it; `-1` means "no expiry" and
   `-2` means "no key", which are two different answers.
+* **Admission contract**: Redis atomically purges old entries, counts, adds a distinct member with
+  `ZADD NX`, and sets `PEXPIRE`. The helper distinguishes a checked admission (1), a quota refusal
+  (0), and a command error. If expiry fails after an add, the script attempts to remove that
+  member and returns an error; a failed or ambiguous reply does not admit the request. If cleanup
+  is also denied, an entry may remain. One EVAL
+  is one round trip and sends the script body each time. The script uses one declared key, so its
+  operations stay in one Cluster slot; the client must connect to the owning node because the
+  qbm-redis client does not follow `MOVED` or `ASK` redirects.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-sorted-sets-and-ttl`
 
 ---

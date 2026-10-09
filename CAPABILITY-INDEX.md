@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**103 programs, 7 tiers, 835 distinct capabilities, 1664 claims.**
+**103 programs, 7 tiers, 833 distinct capabilities, 1663 claims.**
 
 ## 1. By capability
 
@@ -145,7 +145,7 @@ can disagree.
 | `enqueue` | `07-applications/03-market-data-hub/src/main.cpp` |
 | `error` | `02-io/13-tls-certificate-renewal.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `eval<bool>` | `06-modules/redis/07-scripting.cpp` |
-| `eval<long long>` | `06-modules/redis/07-scripting.cpp` |
+| `eval<long long>` | `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `eval<std::string>` | `06-modules/redis/07-scripting.cpp` |
 | `evalRo<std::string>` | `06-modules/redis/07-scripting.cpp` |
 | `evalsha<bool>` | `06-modules/redis/07-scripting.cpp` |
@@ -442,7 +442,6 @@ can disagree.
 | `zincrby` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrangebyscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrem` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
-| `zremrangebyscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrevrange` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zrevrank` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `zscore` | `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/13-geospatial.cpp` |
@@ -1155,7 +1154,6 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::redis::BoundedInterval<double>` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `qb::redis::GeoUnit` | `06-modules/redis/13-geospatial.cpp` |
 | `qb::redis::LeftBoundedInterval<double>` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
 | `qb::redis::LimitOptions` | `06-modules/redis/08-sorted-sets-and-ttl.cpp` |
@@ -1373,8 +1371,8 @@ can disagree.
   - Redis Streams as a work queue and as a log: producers XADD; a consumer group SPLITS the entries between its competing consumers while a SECOND group gets its own independent copy; XACK empties the pending list; a plain XREAD needs no group at all; XTRIM bounds the stream.
 - **`06-modules/redis/07-scripting.cpp`** — 24 capabilities
   - Running your logic INSIDE Redis, in the three forms the server offers: an anonymous EVAL, a cached script called by SHA, and a named 7.0 Function. Includes the trap that decides whether an EVALSHA deployment survives a restart — NOSCRIPT.
-- **`06-modules/redis/08-sorted-sets-and-ttl.cpp`** — 30 capabilities
-  - The sorted set as the structure that keeps the ORDER for you — a leaderboard and a sliding-window rate limiter — plus expiry (EXPIRE/TTL/PERSIST and which writes clear a TTL) and the cursor SCAN you must reach for instead of KEYS.
+- **`06-modules/redis/08-sorted-sets-and-ttl.cpp`** — 29 capabilities
+  - The sorted set as the structure that keeps the ORDER for you — a leaderboard and a sliding-window rate limiter with one atomic EVAL — plus expiry (EXPIRE/TTL/PERSIST and which writes clear a TTL) and the cursor SCAN you must reach for instead of KEYS.
 - **`06-modules/redis/09-reliability.cpp`** — 29 capabilities
   - What every other Redis example assumes away: that the server can be unreachable, can drop your connection, and can make you wait. Bounded connect retry, auto-reconnect, what happens to a command that was IN FLIGHT when the link died, blocking commands that park a coroutine without blocking the loop, INFO as a health probe — and TLS.
 - **`06-modules/redis/10-cache-actor.cpp`** — 8 capabilities
