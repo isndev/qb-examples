@@ -97,6 +97,12 @@ python3 examples/07-applications/02-auction-house/scripts/check_bid_atomicity.py
 python3 examples/07-applications/02-auction-house/scripts/check_bid_reply_loss.py --build-dir build/presets/dev
 ```
 
+With Auction House running, check the HTTP/WS handoff from the qb-dev root:
+
+```bash
+python3 examples/07-applications/scripts/test_ws_handoff.py
+```
+
 Tests cover:
 
 - Health check
@@ -104,7 +110,7 @@ Tests cover:
 - Lots API (list, get, bids)
 - Bids API (place bid)
 - Users API (info, stats)
-- WebSocket upgrade
+- WebSocket upgrade and rejected handoff
 - 404 error handling
 
 `check_bid_atomicity.py` starts the built application, opens persistent sessions
@@ -159,6 +165,10 @@ Open browser: http://localhost:8080
 ### WebSocket
 
 - `GET /ws` - WebSocket upgrade for real-time updates
+
+Incomplete handshake headers receive HTTP 400 before socket transfer. Once
+the socket leaves the HTTP pool, a rejected WebSocket handshake closes it;
+the HTTP context cannot send another response over that socket.
 
 ## 🔌 WebSocket Messages
 

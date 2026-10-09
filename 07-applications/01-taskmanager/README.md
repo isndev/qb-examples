@@ -322,5 +322,5 @@ curl -s -X DELETE http://localhost:8080/tasks/1 | jq
 websocat ws://localhost:8080/ws
 
 # HTTP response ownership and WebSocket handoff (running server required)
-python3 scripts/test_ws_handoff.py
+python3 ../scripts/test_ws_handoff.py
 ```

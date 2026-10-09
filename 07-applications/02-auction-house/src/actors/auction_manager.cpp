@@ -303,18 +303,39 @@ AuctionManager::handle_health(ctx_t ctx) {
 qb::io::async::task<void>
 AuctionManager::handle_ws_upgrade(ctx_t ctx) {
     try {
-        auto [sock, ok] = this->extractSession(ctx->session()->id());
-        if (!ok) {
-            ctx->internal_server_error("Session extraction failed");
+        // Reject incomplete handshakes while HTTP still owns the response pipe.
+        // The WebSocket protocol checks the key itself after handoff.
+        const auto &request = ctx->request();
+        if (request.method() != HTTP_GET || !request.upgrade || !qb::protocol::detail::iequal_ascii(request.header("Upgrade"), "websocket")
+            || !qb::protocol::detail::has_token_ci(request.header("Connection"), "Upgrade")
+            || qb::protocol::detail::trim_ows(request.header("Sec-WebSocket-Key")).empty()
+            || !qb::protocol::detail::iequal_ascii(qb::protocol::detail::trim_ows(request.header("Sec-WebSocket-Version")), "13")) {
+            ctx->bad_request("WebSocket upgrade failed");
             co_return;
         }
-        if (_ws_handler.upgrade_connection(std::move(sock), ctx->request(), ctx->response()))
-            ctx->suppress_response();
-        else
-            ctx->bad_request("WebSocket upgrade failed");
+
+        const auto session = ctx->session();
+        if (!session) {
+            ctx->internal_server_error("HTTP session unavailable");
+            co_return;
+        }
+
+        // The extracted event cancels the HTTP context. Finalize it first so
+        // cancellation cannot send a response over the transferred socket.
+        ctx->suppress_response();
+        auto [sock, ok] = this->extractSession(session->id());
+        if (!ok) {
+            qb::io::cerr() << "[AuctionManager] WS session extraction failed\n";
+            co_return;
+        }
+        if (!_ws_handler.upgrade_connection(std::move(sock), request, ctx->response())) {
+            sock.close();
+            qb::io::cerr() << "[AuctionManager] WS upgrade failed after handoff\n";
+        }
     } catch (const std::exception &e) {
         qb::io::cerr() << "[AuctionManager] WS upgrade exception: " << e.what() << "\n";
-        ctx->internal_server_error("WebSocket upgrade error");
+        if (!ctx->is_completed())
+            ctx->internal_server_error("WebSocket upgrade error");
     }
     co_return;
 }

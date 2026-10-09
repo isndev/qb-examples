@@ -95,9 +95,14 @@ WebSocketHandler::upgrade_connection(qb::io::tcp::socket &&sock, const qb::http:
         qb::io::cerr() << "[WebSocketHandler] upgrade failed (session limit reached)\n";
         return false;
     }
-    if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
-        *ws_session << response; // 101 Switching Protocols
-        return true;
+    try {
+        if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
+            *ws_session << response; // 101 Switching Protocols
+            return true;
+        }
+    } catch (...) {
+        ws_session->disconnect();
+        throw;
     }
     ws_session->disconnect();
     return false;

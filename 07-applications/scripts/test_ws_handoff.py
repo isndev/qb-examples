@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test TaskManager's HTTP-to-WebSocket handoff against a running server."""
+"""Smoke-test either application example's HTTP-to-WebSocket handoff."""
 
 import json
 import socket
@@ -45,7 +45,11 @@ upgrade_headers = (
     "Sec-WebSocket-Version: 13\r\n"
 )
 reply, closed = exchange(upgrade_headers + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n")
-if closed or not reply.startswith(b"HTTP/1.1 101 ") or b"Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" not in reply:
+accept = next(
+    (line.split(b":", 1)[1].strip() for line in reply.split(b"\r\n") if line.lower().startswith(b"sec-websocket-accept:")),
+    b"",
+)
+if closed or not reply.startswith(b"HTTP/1.1 101 ") or accept != b"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=":
     raise RuntimeError(f"valid upgrade should return the RFC 6455 handshake: {reply!r}")
 print("valid GET /ws: 101 with correct accept key")
 
