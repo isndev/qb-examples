@@ -24,14 +24,13 @@
  *         -   `co_await _redis.set(key, value)`
  *         -   `co_await _redis.incr("async:counter")`
  *         -   `co_await _redis.get(key)` (to retrieve the set value)
- *     -   Tracks the number of completed operations and sends a `WorkCompletedEvent`
- *         to the `MainActor` when a target count is reached.
+ *     -   Sends one `WorkCompletedEvent` per request, including failures.
  *     -   Handles a `ShutdownEvent` for cleanup and termination.
  * 2.  `MainActor`:
  *     -   Creates an instance of `RedisWorkerActor` (using `addRefActor`).
- *     -   Sends a configurable number of `RedisDataEvent`s to the worker actor.
- *     -   Waits for the `WorkCompletedEvent` from the worker.
- *     -   After receiving completion, schedules its own termination.
+ *     -   Sends five `RedisDataEvent`s to the worker actor.
+ *     -   Counts all five results, then requests worker cleanup.
+ *     -   After cleanup, schedules its own termination and reports the result to main().
  *
  * QB/QBM Redis Features Demonstrated:
  * - `qb::io::async::task<bool>` onInit() coroutine pattern.
@@ -41,13 +40,18 @@
  * - Two ways of waiting, and when each is correct: `spawn(...)` + `co_await ctx.sleep(d)` + a
  *   self-addressed tick event when the wait must end in a call ON THE ACTOR, and a bare
  *   `qb::io::async::callback(fn, d)` when the body captures nothing from it. The difference is
- *   lifetime, not style — see `MainActor::on(WorkCompletedEvent&)`.
+ *   lifetime, not style — see `MainActor::on(WorkerStoppedEvent&)`.
  * - Actor communication (`push`, `addRefActor`, `spawn`).
  */
 
 #include <chrono>
+#include <atomic>
+#include <array>
+#include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <qbm/redis/redis.h>
 #include <qb/actor.h>
@@ -56,8 +60,13 @@
 #include <qb/main.h>
 #include <qb/string.h>
 
-// Redis Configuration - must be in initializer list format
-#define REDIS_URI {"tcp://localhost:6379"}
+// The default keeps the corpus unchanged; the override lets the regression test use a
+// disposable Redis instance instead of the developer's server.
+qb::io::uri
+redis_uri() {
+    const char *configured = std::getenv("QB_EXAMPLE_REDIS_URI");
+    return qb::io::uri{std::string{configured ? configured : "tcp://localhost:6379"}};
+}
 
 // Custom events for our example
 struct ShutdownEvent : qb::Event {
@@ -65,9 +74,15 @@ struct ShutdownEvent : qb::Event {
 };
 
 struct WorkCompletedEvent : qb::Event {
-    int operations_completed;
-    explicit WorkCompletedEvent(int completed)
-        : operations_completed(completed) {}
+    bool succeeded;
+    explicit WorkCompletedEvent(bool ok)
+        : succeeded(ok) {}
+};
+
+struct WorkerStoppedEvent : qb::Event {
+    bool cleanup_succeeded;
+    explicit WorkerStoppedEvent(bool ok)
+        : cleanup_succeeded(ok) {}
 };
 
 /**
@@ -91,30 +106,30 @@ struct SelfShutdownTick : qb::Event {};
 struct RedisDataEvent : qb::Event {
     qb::string<64>               key;
     std::shared_ptr<std::string> value; // a stored value has no bound: box it
+    int                          slot;
 
-    RedisDataEvent(std::string_view k, std::string v)
+    RedisDataEvent(std::string_view k, std::string v, int index)
         : key(k)
-        , value(std::make_shared<std::string>(std::move(v))) {}
+        , value(std::make_shared<std::string>(std::move(v)))
+        , slot(index) {}
 };
 
 // Actor that performs Redis operations using the coroutine API
 class RedisWorkerActor : public qb::Actor {
 private:
-    qb::redis::tcp::client _redis{REDIS_URI};
-    int                    _completed_operations = 0;
-    int                    _target_operations;
+    qb::redis::tcp::client _redis{redis_uri()};
+    std::array<bool, 5>    _stored{};
     qb::ActorId            _coordinator_id;
 
 public:
-    RedisWorkerActor(int target_ops = 5, qb::ActorId coordinator = qb::ActorId())
-        : _target_operations(target_ops)
-        , _coordinator_id(coordinator) {}
+    explicit RedisWorkerActor(qb::ActorId coordinator)
+        : _coordinator_id(coordinator) {}
 
     // onInit is now a coroutine — co_await the connection, co_return the result
     qb::io::async::task<bool>
     onInit() override {
         auto cout = qb::io::cout();
-        cout << "RedisWorkerActor initialized. Will process " << _target_operations << " operations." << std::endl;
+        cout << "RedisWorkerActor initialized." << std::endl;
 
         // Register for events before the first co_await
         registerEvent<RedisDataEvent>(*this);
@@ -124,19 +139,25 @@ public:
 
         if (!co_await _redis.connect()) {
             qb::io::cerr() << "Failed to connect to Redis" << std::endl;
+            push<WorkerStoppedEvent>(_coordinator_id, false);
             co_return false;
         }
 
         cout << "Redis connection successful!" << std::endl;
 
-        // Clean up existing keys with prefix 'async:'
+        // Clear the example's counter from any previous interrupted run.
         auto del_result = co_await _redis.del("async:counter");
-        (void) del_result;
-        cout << "Cleaned up existing keys with prefix 'async:'" << std::endl;
+        if (!del_result.ok()) {
+            qb::io::cerr() << "Failed to clear counter" << std::endl;
+            push<WorkerStoppedEvent>(_coordinator_id, false);
+            co_return false;
+        }
+        cout << "Cleared existing async:counter" << std::endl;
 
         // Initialize a counter for our example
         if (!(co_await _redis.set("async:counter", "0")).ok()) {
             qb::io::cerr() << "Failed to initialize counter" << std::endl;
+            push<WorkerStoppedEvent>(_coordinator_id, false);
             co_return false;
         }
         cout << "Initialized counter to 0" << std::endl;
@@ -149,6 +170,7 @@ public:
         // Spawn a coroutine to handle async Redis operations for this event
         std::string key   = event.key.c_str();
         std::string value = event.value ? *event.value : std::string{};
+        int         slot  = event.slot;
 
         // Member access after `co_await _redis...` is safe HERE, and the reason is OWNERSHIP,
         // not `spawn`'s scope. `spawn` cancels only at scope-routed suspensions (`ctx.sleep`,
@@ -160,43 +182,37 @@ public:
         // no resume, ASan silent. The cost is an orphaned frame, not a use-after-free. Give
         // the client a lifetime that outlives the actor (a `shared_ptr`, a service actor) and
         // this exact body becomes one, because then the reply DOES arrive.
-        spawn([this, key, value](qb::ScopedCoroContext) -> qb::io::async::task<void> {
+        spawn([this, key, value, slot](qb::ScopedCoroContext) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << "Storing data at key: " << key << std::endl;
 
             // SET operation
             if (!(co_await _redis.set(key, value)).ok()) {
                 qb::io::cerr() << "SET failed for key: " << key << std::endl;
+                push<WorkCompletedEvent>(_coordinator_id, false);
                 co_return;
             }
+            _stored[slot] = true;
             cout << "Data stored successfully at key: " << key << std::endl;
 
             // INCR counter atomically
             auto incr_r = co_await _redis.incr("async:counter");
             if (incr_r.ok()) {
                 cout << "Counter incremented to: " << incr_r.result() << std::endl;
+            } else {
+                qb::io::cerr() << "INCR failed for key: " << key << std::endl;
             }
-
-            // Track operation completion
-            _completed_operations++;
-            cout << "Completed " << _completed_operations << " of " << _target_operations << " operations" << std::endl;
 
             // GET the current value to demonstrate retrieval
-            auto get_r = co_await _redis.get(key);
-            if (get_r.ok() && get_r.result().has_value()) {
+            auto       get_r   = co_await _redis.get(key);
+            const bool read_ok = get_r.ok() && get_r.result().has_value() && *get_r.result() == value;
+            if (read_ok) {
                 cout << "Current value of " << key << ": " << *get_r.result() << std::endl;
+            } else {
+                qb::io::cerr() << "GET failed for key: " << key << std::endl;
             }
 
-            // If we've reached our target, notify coordinator and self-shutdown
-            if (_completed_operations >= _target_operations) {
-                cout << "Reached target number of operations, notifying coordinator" << std::endl;
-
-                if (_coordinator_id != qb::ActorId()) {
-                    push<WorkCompletedEvent>(_coordinator_id, _completed_operations);
-                }
-
-                push<ShutdownEvent>(id());
-            }
+            push<WorkCompletedEvent>(_coordinator_id, incr_r.ok() && read_ok);
         });
     }
 
@@ -212,14 +228,26 @@ public:
                 cout << "Final counter value: " << *get_r.result() << std::endl;
             }
 
-            // Delete every key this program wrote. `onInit` only ever cleared `async:counter`,
-            // so `async:data:1..5` survived every run — the corpus rule is that a program leaves
-            // the server as it found it, and a key that outlives the run is server-side state
-            // charged to whoever looks at that database next.
-            auto removed = co_await _redis.del("async:counter", "async:data:1", "async:data:2", "async:data:3", "async:data:4", "async:data:5");
-            cout << "Deleted " << (removed.ok() ? removed.result() : -1) << " key(s) written by this run" << std::endl;
+            // Delete only successful SETs. A restricted ACL may deny async:data:* entirely,
+            // while still allowing cleanup of the initialized counter.
+            bool cleanup_ok    = get_r.ok() && get_r.result().has_value();
+            int  removed_count = 0;
+            for (std::size_t slot = 0; slot < _stored.size(); ++slot) {
+                if (!_stored[slot])
+                    continue;
+                auto removed = co_await _redis.del("async:data:" + std::to_string(slot + 1));
+                cleanup_ok &= removed.ok();
+                if (removed.ok())
+                    removed_count += static_cast<int>(removed.result());
+            }
+            auto removed_counter = co_await _redis.del("async:counter");
+            cleanup_ok &= removed_counter.ok();
+            if (removed_counter.ok())
+                removed_count += static_cast<int>(removed_counter.result());
+            cout << "Deleted " << removed_count << " key(s) written by this run" << std::endl;
 
             cout << "RedisWorkerActor shutting down" << std::endl;
+            push<WorkerStoppedEvent>(_coordinator_id, cleanup_ok);
             kill();
         });
     }
@@ -228,11 +256,18 @@ public:
 // Main coordinator actor that creates worker and sends data
 class MainActor : public qb::Actor {
 private:
-    qb::ActorId _worker_id;
-    int         _target_operations = 5;
-    bool        _work_completed    = false;
+    qb::ActorId        _worker_id;
+    int                _target_operations = 5;
+    int                _completed_results = 0;
+    bool               _all_work_ok       = true;
+    bool               _shutdown_started  = false;
+    bool               _worker_stopped    = false;
+    std::atomic<bool> &_run_ok;
 
 public:
+    explicit MainActor(std::atomic<bool> &run_ok)
+        : _run_ok(run_ok) {}
+
     qb::io::async::task<bool>
     onInit() override {
         auto cout = qb::io::cout();
@@ -241,10 +276,11 @@ public:
         // Register for events before any co_await
         registerEvent<qb::KillEvent>(*this);
         registerEvent<WorkCompletedEvent>(*this);
+        registerEvent<WorkerStoppedEvent>(*this);
         registerEvent<SelfShutdownTick>(*this);
 
         // Create worker actor on the same core, passing our ID so it can notify us
-        auto worker_handle = addRefActor<RedisWorkerActor>(_target_operations, id());
+        auto worker_handle = addRefActor<RedisWorkerActor>(id());
 
         if (!worker_handle.valid()) {
             qb::io::cerr() << "Failed to create worker actor" << std::endl;
@@ -260,11 +296,11 @@ public:
             std::string value = "This is async test data #" + std::to_string(i);
 
             cout << "Sending data operation " << i << " to worker" << std::endl;
-            push<RedisDataEvent>(_worker_id, key, value);
+            push<RedisDataEvent>(_worker_id, key, value, i - 1);
 
             // This one may stay a bare `callback(fn, d)`: the body captures `i` by value and
             // touches no actor state, so it is correct whether or not this actor still exists
-            // when the timer fires. Compare `on(WorkCompletedEvent&)` below, where it would not be.
+            // when the timer fires. Compare `on(WorkerStoppedEvent&)` below, where it would not be.
             qb::io::async::callback(
                 [i]() {
                     auto cout2 = qb::io::cout();
@@ -280,10 +316,23 @@ public:
     void
     on(const WorkCompletedEvent &event) {
         auto cout = qb::io::cout();
-        cout << "MainActor: Received work completed notification. " << event.operations_completed << " operations processed." << std::endl;
+        _all_work_ok &= event.succeeded;
+        ++_completed_results;
+        cout << "MainActor: Received work result " << _completed_results << " of " << _target_operations
+             << (event.succeeded ? " (ok)" : " (failed)") << std::endl;
+        if (_completed_results == _target_operations && !_shutdown_started) {
+            _shutdown_started = true;
+            push<ShutdownEvent>(_worker_id);
+        }
+    }
 
-        _work_completed = true;
-
+    void
+    on(const WorkerStoppedEvent &event) {
+        if (_worker_stopped)
+            return;
+        _worker_stopped   = true;
+        _shutdown_started = true;
+        _run_ok.store(_completed_results == _target_operations && _all_work_ok && event.cleanup_succeeded);
         // Schedule our own termination with a small delay. The wait belongs to this actor's
         // cancellation scope; the `kill()` happens in the handler, which only ever runs on a
         // live actor. `callback([this]{ kill(); }, 1s)` would leave a loop-owned timer holding a
@@ -318,7 +367,8 @@ main() {
 
     qb::Main engine;
 
-    auto main_actor_id = engine.addActor<MainActor>(0);
+    std::atomic<bool> run_ok{false};
+    auto              main_actor_id = engine.addActor<MainActor>(0, std::ref(run_ok));
     if (main_actor_id == 0) {
         qb::io::cerr() << "Failed to create main actor" << std::endl;
         return 1;
@@ -330,6 +380,10 @@ main() {
     engine.join();
 
     cout << "Engine stopped, all actors terminated" << std::endl;
+    if (!run_ok.load()) {
+        qb::io::cerr() << "Redis Async Operations Example failed" << std::endl;
+        return 1;
+    }
     cout << "Redis Async Operations Example completed" << std::endl;
 
     return 0;

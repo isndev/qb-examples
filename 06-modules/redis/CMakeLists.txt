@@ -76,7 +76,7 @@ qb_example(SOURCE 06-streams.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 07-scripting.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 08-sorted-sets-and-ttl.cpp DEPENDS qbm-redis TARGET_VAR sorted_sets_example)
 qb_example(SOURCE 09-reliability.cpp DEPENDS qbm-redis)
-qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis TARGET_VAR cache_actor_example)
 qb_example(SOURCE 11-callbacks-and-consumers.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 12-cardinality-and-bitmaps.cpp DEPENDS qbm-redis TARGET_VAR cardinality_example)
 if(QB_BUILD_TESTS)
@@ -96,11 +96,16 @@ if(QB_BUILD_TESTS)
         add_test(NAME qb-examples-test-system-redis-sliding-window
                  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check-sorted-sets-window.py"
                          "$<TARGET_FILE:${sorted_sets_example}>" "${_redis_test_server}")
+        add_test(NAME qb-examples-test-system-redis-cache-actor-results
+                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check-cache-actor-results.py"
+                         "$<TARGET_FILE:${cache_actor_example}>" "${_redis_test_server}")
     else()
         message(STATUS "Redis example tests registered as SKIP: Python3 interpreter unavailable")
         add_test(NAME qb-examples-test-system-redis-bitfield-replies
                  COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
         add_test(NAME qb-examples-test-system-redis-sliding-window
+                 COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
+        add_test(NAME qb-examples-test-system-redis-cache-actor-results
                  COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
     endif()
     set_tests_properties(qb-examples-test-system-redis-bitfield-replies PROPERTIES
@@ -108,6 +113,9 @@ if(QB_BUILD_TESTS)
                          LABELS "tier:system;module:qb-examples")
     set_tests_properties(qb-examples-test-system-redis-sliding-window PROPERTIES
                          TIMEOUT 60 SKIP_RETURN_CODE 77 SKIP_REGULAR_EXPRESSION "^SKIP:"
+                         LABELS "tier:system;module:qb-examples")
+    set_tests_properties(qb-examples-test-system-redis-cache-actor-results PROPERTIES
+                         TIMEOUT 30 SKIP_RETURN_CODE 77 SKIP_REGULAR_EXPRESSION "^SKIP:"
                          LABELS "tier:system;module:qb-examples")
 endif()
 qb_example(SOURCE 13-geospatial.cpp DEPENDS qbm-redis)

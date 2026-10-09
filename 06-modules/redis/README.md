@@ -232,8 +232,14 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
   Nothing here is a blocking call: `onInit()` is a `qb::io::async::task<bool>` that does `co_await _redis.connect()`,
   and each `RedisDataEvent` spawns a coroutine that does `co_await _redis.set(...)`, `co_await _redis.incr(...)`,
   `co_await _redis.get(...)`, reading `Reply<T>::ok()` / `result()` between steps
-  (`10-cache-actor.cpp:114-115`, `:125`, `:163`, `:168-176`).
+  (`10-cache-actor.cpp:118-120`, `:129-140`, `:170-185`, `:189-215`).
+  Each request sends exactly one success or failure result. The coordinator waits for all five,
+  asks the worker to remove only keys it wrote, and exits nonzero if any request or cleanup failed
+  (`10-cache-actor.cpp:317-335`). `QB_EXAMPLE_REDIS_URI` selects a test server; the default is
+  `tcp://localhost:6379`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cache-actor`
+* **Regression test**: `ctest --preset release -R qb-examples-test-system-redis-cache-actor-results`
+  runs five accepted, four accepted plus one denied, and five denied SETs against a disposable Redis.
 
 ---
 

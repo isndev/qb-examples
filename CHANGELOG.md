@@ -48,6 +48,9 @@ plumbing do not qualify.
   the old socket; `/connect` is refused until a pending Close has fully left the socket. The next
   handshake starts with clean buffers, a fresh HTTP parser and a new key. A loopback check
   covers backpressure, both reconnection paths and bounded exit.
+- **Redis cache actor finishes after denied writes (Huly QB-829).** Each of five requests
+  reports one result even when SET fails. The coordinator waits for all five, lets the worker
+  clean up, and exits with failure instead of hanging or printing a success verdict.
 - **HTTP account registration and login use the same demo password check (Huly QB-790).**
   Newly registered accounts accept their chosen password and reject another; seeded accounts keep their
   documented credentials. This in-memory example stores plain-text passwords and does not model production storage.
