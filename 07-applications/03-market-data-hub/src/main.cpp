@@ -111,12 +111,17 @@ constexpr std::uint16_t kPort = 18432;
 /// The foreign thread. It knows nothing about actors, cores or events — it produces `Tick`s into a
 /// bounded ring, exactly as a vendor SDK callback would.
 void
-feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &subscriber_ready) {
+feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &subscriber_ready, std::atomic<bool> &stop_requested) {
     // Wait for the wire's other end before producing anything. Without this the first ~10000
     // quotes are published into an empty session list — measured — and the record count at the
     // end becomes a number about startup timing rather than about the pipeline.
-    while (!subscriber_ready.load(std::memory_order_acquire))
+    while (!subscriber_ready.load(std::memory_order_acquire)) {
+        if (stop_requested.load(std::memory_order_acquire)) {
+            feeding.store(false, std::memory_order_release);
+            return;
+        }
         std::this_thread::yield();
+    }
 
     std::mt19937                           rng(12345); // fixed seed: the run is reproducible
     std::uniform_real_distribution<double> drift(-0.5, 0.5);
@@ -132,8 +137,15 @@ feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &subsc
             Tick t{now_ns(), static_cast<std::uint32_t>(i), static_cast<std::uint32_t>(s), price[s], static_cast<std::uint32_t>(lots(rng))};
             // A full ring returns false. Yielding is the honest thing for a producer that cannot
             // drop: growing the queue would only move the failure somewhere less visible.
-            while (!ring.enqueue(t))
+            while (!ring.enqueue(t)) {
+                // A stopped engine cannot drain the ring. Only check the stop flag on this
+                // backpressure path; successful enqueues keep the ordinary tick path unchanged.
+                if (stop_requested.load(std::memory_order_acquire)) {
+                    feeding.store(false, std::memory_order_release);
+                    return;
+                }
                 std::this_thread::yield();
+            }
             ++produced;
         }
     }
@@ -151,6 +163,7 @@ main() {
     qb::lockfree::spsc::ringbuffer<Tick, 4096> ring;
     std::atomic<bool>                          feeding{true};
     std::atomic<bool>                          subscriber_ready{false};
+    std::atomic<bool>                          stop_feed{false};
     Report                                     report;
 
     qb::Main engine;
@@ -177,14 +190,23 @@ main() {
     qb::io::cout() << "market-data-hub: " << kSymbols << " symbols, " << kTotalTicks << " ticks, " << kAggregators << " shards, on "
                    << engine.usedCoreSet().size() << " cores\n\n";
 
-    // `start()` is ASYNC (that is its default) and returns as soon as the cores are up. The feed
-    // thread is launched AFTER it on purpose: its timestamps are the start of every latency
-    // measurement below, and starting it first would charge engine startup to the first ticks.
+    // `start()` returns after the core startup barrier. Launch the feed only if every actor
+    // initialized: a failed publisher never sets subscriber_ready, so a thread started after
+    // that failure would wait forever. On the normal path, launch AFTER startup so feed
+    // timestamps do not include engine initialization.
     engine.start();
 
-    std::thread feed(feed_thread, std::ref(ring), std::ref(feeding), std::ref(subscriber_ready));
-    engine.join(); // returns when the publisher calls qb::Main::stop()
-    feed.join();
+    std::thread feed;
+    if (!engine.hasError())
+        feed = std::thread(feed_thread, std::ref(ring), std::ref(feeding), std::ref(subscriber_ready), std::ref(stop_feed));
+    else
+        feeding.store(false, std::memory_order_release);
+
+    // Returns on failed startup or when the publisher calls qb::Main::stop().
+    engine.join();
+    stop_feed.store(true, std::memory_order_release); // release either wait if the engine stopped early
+    if (feed.joinable())
+        feed.join();
 
     // The exit code is the engine's own verdict. A pipeline that failed to start must not report
     // success — the publisher's onInit returns false when its bind fails, and that lands here.

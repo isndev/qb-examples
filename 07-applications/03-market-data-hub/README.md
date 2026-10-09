@@ -47,6 +47,10 @@ machines.
 * Publishing before a subscriber has attached sends those frames nowhere, so the feed thread waits
   for one. Without that gate the first ~10 000 quotes were lost and the final count measured
   startup timing rather than the pipeline.
+* A failed publisher bind is reported before the foreign feed starts, so the process exits with
+  a failure instead of waiting for a subscriber that cannot connect. If an already-running
+  engine stops while the feed is waiting on a full ring, the stop flag lets it join. The flag
+  is read only on the two waiting paths, not on a successful tick enqueue.
 
 ## Build and run
 
@@ -54,4 +58,6 @@ machines.
 cmake --preset release
 cmake --build --preset release --target qb-example-applications-market-data-hub
 ./build/presets/release/examples/07-applications/03-market-data-hub/qb-example-applications-market-data-hub
+python3 examples/07-applications/03-market-data-hub/scripts/check_startup_failure.py \
+  ./build/presets/release/examples/07-applications/03-market-data-hub/qb-example-applications-market-data-hub
 ```
