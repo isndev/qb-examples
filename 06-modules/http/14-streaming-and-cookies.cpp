@@ -335,7 +335,7 @@ run_message_surface(bool &running, bool &ok) {
                        << " locally; over the wire the server decoded " << server_saw << ")\n";
 
     // MEASURED, and it is the one thing to get right here: the ONE-SHOT VERBS COMPRESS FOR YOU.
-    // `qb::http::POST` (1.1/http.h:729-734) and `qb::http1::Client` (1.1/client.cpp:122) both do
+    // `qb::http::POST` (1.1/http.h:765-769) and `qb::http1::Client` (1.1/client.cpp:122) both do
     // `if (has_header("Content-Encoding")) body().compress(...)` just before sending. So the
     // body above is assigned PLAIN on purpose: calling compress() yourself as well encodes it
     // TWICE. Measured on this tree — 9000 bytes -> 108 gzip -> 109 on the wire (gzip of gzip),

@@ -262,8 +262,8 @@ public:
     // Handle a close frame from the client
     void on(ws_protocol::close &&event) {
         // `CloseStatus` is a SCOPED enum (`enum class CloseStatus : std::uint16_t`,
-        // qbm/http/src/qbm/http/ws/ws.h:210) — there is no implicit conversion, so the cast
-        // is required. `opcode` above is a plain `enum opcode : unsigned char` (ws.h:74),
+        // qbm/http/src/qbm/http/ws/ws.h:213) — there is no implicit conversion, so the cast
+        // is required. `opcode` above is a plain `enum opcode : unsigned char` (ws.h:77),
         // which is why THAT comparison needs no cast.
         uint16_t status = static_cast<uint16_t>(qb::http::ws::CloseStatus::Normal);
         std::string_view reason;

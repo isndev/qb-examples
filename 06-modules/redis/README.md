@@ -106,7 +106,7 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   Disconnect closes the channel and schedules a parked receiver, but a message already committed to
   its awaiter can still be returned after actor reap. The loop checks actor-scope cancellation before
   forwarding that message; the retained consumer makes the next `receive()` safe.
-  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1854-1855`): `cb_consumer` is the
+  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:2073-2074`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-pubsub`
 

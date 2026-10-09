@@ -118,7 +118,7 @@ public:
         // MEASURED, AND NOT WHAT THE PHASE TABLE SUGGESTS. Before the first `co_await` this
         // actor still reports `is_active() == true`, because `_activated` starts true and the
         // engine only clears it once the init frame has actually SUSPENDED
-        // (`VirtualCore.cpp:547`, reached from `__drive_init__` after the resume returns
+        // (`VirtualCore.cpp:740`, reached from `__drive_init__` after the resume returns
         // "still running"). "Activating" is therefore a state an actor enters at its first
         // suspension, not one it is born in — which is exactly right for the synchronous
         // majority, whose `onInit` never suspends and never sees `false`.
@@ -173,15 +173,15 @@ public:
         qb::io::cout() << "[client] two pings pushed BEFORE the DB was ready; handle.get() is nullptr: " << (db.get() == nullptr ? "yes" : "no")
                        << ", but handle.id() already routes\n";
 
-        // ONE CLOCK TRAP, MEASURED. `Actor::time()` is the VirtualCore's CACHED loop clock,
-        // refreshed once per loop pass (`VirtualCore.cpp:666`) — and its initial value is 0
-        // (`VirtualCore.h:428`). At engine start `onInit` runs BEFORE the core's first pass,
-        // so it reads 0 here and an elapsed-time subtraction against it yields the whole UNIX
-        // epoch. It is exactly right everywhere the loop is already turning, which is every
-        // other use of it in this corpus; for a startup measurement use a real clock.
+        // ONE CLOCK CHOICE. `Actor::time()` reads a real wall-clock instant on first use,
+        // including during the pre-loop `onInit` phase, and caches it for that pass
+        // (`VirtualCore.h:657-669`, `VirtualCore.cpp:1405-1411`). It is suitable for a
+        // timestamp here; use steady_clock for the elapsed startup wait measured below so
+        // a wall-clock adjustment cannot change the duration. The first read also fixes the
+        // shared sample for every other actor that asks during this pre-loop phase.
         qb::io::cout() << "[client] Actor::time() before the core's first loop pass reads " << time()
-                       << " ns — the cached loop clock has not been set yet, so time a startup wait with "
-                          "steady_clock instead\n";
+                       << " ns — a real pass-zero wall-clock sample; measure startup waits with "
+                          "steady_clock\n";
 
         const auto t0 = std::chrono::steady_clock::now();
         const bool ok = co_await db.ready_async(context());
