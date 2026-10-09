@@ -550,8 +550,8 @@ private:
                 return;
             }
 
-            auto  json_body = ctx->request().body().as<qb::json>();
-            Book &book      = it->second;
+            auto json_body = ctx->request().body().as<qb::json>();
+            Book book      = it->second;
 
             // Partially update only provided fields
             if (json_body.contains("title"))
@@ -570,10 +570,10 @@ private:
                 book.categories = json_body["categories"];
 
             qb::json response = {{"message", "Book partially updated successfully"}, {"book", book.to_json()}};
-
-            ctx->response().status() = qb::http::Status::OK;
             ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() = response;
+            ctx->response().body()   = std::move(response);
+            it->second               = std::move(book);
+            ctx->response().status() = qb::http::Status::OK;
             ctx->complete();
 
         } catch (const std::exception &e) {

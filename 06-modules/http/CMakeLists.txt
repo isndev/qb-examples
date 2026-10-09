@@ -73,7 +73,7 @@ qb_example(SOURCE 01-hello-server.cpp DEPENDS qbm-http)
 qb_example(SOURCE 02-routing.cpp DEPENDS qbm-http)
 qb_example(SOURCE 03-controllers.cpp DEPENDS qbm-http)
 qb_example(SOURCE 04-middleware.cpp DEPENDS qbm-http)
-qb_example(SOURCE 05-rest-api-json.cpp DEPENDS qbm-http)
+qb_example(SOURCE 05-rest-api-json.cpp DEPENDS qbm-http TARGET_VAR _tgt_rest)
 qb_example(SOURCE 06-validation.cpp DEPENDS qbm-http)
 qb_example(SOURCE 07-auth-jwt.cpp DEPENDS qbm-http REQUIRES ssl)
 qb_example(SOURCE 08-static-files.cpp DEPENDS qbm-http TARGET_VAR _tgt_static)
@@ -106,3 +106,16 @@ qb_stage_example_resources(
 
 list(LENGTH _qb_http_resource_targets _n)
 qb_status_message("HTTP examples: ${_n} target(s) staged with resources")
+
+if(QB_BUILD_TESTS)
+    qb_add_test(MODULE qb-examples TIER unit NAME http-upload-write
+            SOURCES scripts/upload_write_test.cpp)
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME qb-examples-test-integration-http-regressions
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_http_regressions.py"
+                    "$<TARGET_FILE:${_tgt_rest}>" "$<TARGET_FILE:${_tgt_static}>")
+    set_tests_properties(qb-examples-test-integration-http-regressions PROPERTIES
+            LABELS "tier:integration;module:qb-examples;serial"
+            RUN_SERIAL TRUE TIMEOUT 60)
+endif()

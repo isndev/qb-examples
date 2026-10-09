@@ -40,6 +40,14 @@ plumbing do not qualify.
   connect failure or disconnect before the end marker stops the engine, releases the
   feed's subscriber/full-ring waits, and returns a failed verdict. A disconnect after
   the marker remains a normal completion. The 20,000-tick pipeline is unchanged.
+- **The HTTP static-files example confines `/browse` to its configured static root (Huly QB-792).**
+  Raw and percent-encoded parent paths, plus outward symlinks, now receive 403; ordinary child
+  directories and inward symlinks remain browsable.
+- **The HTTP upload example keeps same-name uploads distinct and checks stored bytes (Huly QB-791).**
+  A per-server sequence prevents rapid uploads from truncating one another; failed writes,
+  flushes, closes, or an incomplete stored size no longer receive 201 or metadata.
+- **The HTTP Book PATCH and file metadata update commit only a fully valid change (Huly QB-788).**
+  If a later field has the wrong JSON type, the 400 response leaves the existing object unchanged.
 - **Redis Pub/Sub lesson describes disconnect and deferred resumption (Huly QB-252).**
   Disconnect closes the receive channel before shutdown kills the actor, but the parked
   coroutine resumes on a later scheduler pass and may outlive the actor. The lesson no

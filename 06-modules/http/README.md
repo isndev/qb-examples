@@ -114,6 +114,7 @@ Below is a list of the available examples and the key features they showcase:
 * **Features**:
     * Full CRUD operations for books.
     * JSON request body parsing and response serialization.
+    * A PATCH with invalid fields returns 400 without changing the stored Book.
     * Using `qb::json` (nlohmann::json).
     * Standard middleware stack, installed in this order (`05-rest-api-json.cpp:116-163`): CORS, Compression,
       SecurityHeaders, Logging, RateLimit. There is no timing middleware in this example.
@@ -178,7 +179,7 @@ Below is a list of the available examples and the key features they showcase:
 * **Features**:
     * `qb::http::StaticFilesMiddleware` for serving files from a directory (`./resources/static`).
     * Serving uploaded files from a separate directory (`./uploads`).
-    * Directory browsing (`/browse`).
+    * Directory browsing (`/browse`) confined to the static root, including through symlinks.
     * File upload API (`POST /api/upload`) handling `multipart/form-data`.
     * API for listing, retrieving metadata, and deleting files.
     * MIME type detection, ETag, Last-Modified headers.
@@ -186,10 +187,10 @@ Below is a list of the available examples and the key features they showcase:
 * **Key Endpoints**:
     * `GET /static/*path`: Serves files from `resources/static`.
     * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
-    * `GET /browse`, `GET /browse/*path`: Directory listing for uploads.
+    * `GET /browse`, `GET /browse/*path`: Directory listing for the static root; paths that resolve outside it return 403.
     * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`
-    * `POST /api/upload`
-    * `PUT /api/files/:filename/metadata`
+    * `POST /api/upload`: Stores each upload under a distinct name and reports 201 only after a complete write.
+    * `PUT /api/files/:filename/metadata`: Applies a valid update as one change; a 400 leaves metadata unchanged.
 
 ### 9. `09-coroutine-handlers.cpp`
 

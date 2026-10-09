@@ -30,6 +30,9 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <cstdint>
+#include <ctime>
+#include <system_error>
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/parse.h>   // qb::to_number (non-throwing string-to-number)
@@ -40,6 +43,7 @@
 #include <qbm/http/middleware/logging.h>
 #include <qbm/http/middleware/security_headers.h>
 #include <qbm/http/headers.h> // Pour parse_header_attributes
+#include "upload_write.h"
 
 // File metadata structure
 struct FileMetadata {
@@ -84,6 +88,7 @@ private:
     std::filesystem::path                        _static_root;
     std::filesystem::path                        _upload_dir;
     qb::unordered_map<std::string, FileMetadata> _file_metadata;
+    std::uint64_t                                _next_upload_id = 0;
 
 public:
     explicit StaticFileServer(std::filesystem::path static_root = "./resources/static", std::filesystem::path upload_dir = "./uploads")
@@ -406,6 +411,16 @@ private:
                 return;
             }
 
+            // A stored name must remain one path component on every platform.
+            if (uploaded_filename.find_first_of("/\\") != std::string::npos || uploaded_filename.find('\0') != std::string::npos
+                || uploaded_filename == "." || uploaded_filename == "..") {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{{"error", "Invalid filename"}};
+                ctx->complete();
+                return;
+            }
+
             // Additional size check after parsing
             if (file_content.size() > MAX_FILE_SIZE) {
                 ctx->response().status() = qb::http::Status::PAYLOAD_TOO_LARGE;
@@ -420,9 +435,16 @@ private:
                 return;
             }
 
-            // Generate safe filename
-            std::string           safe_filename = "upload_" + std::to_string(std::time(nullptr)) + "_" + uploaded_filename;
-            std::filesystem::path filepath      = _upload_dir / safe_filename;
+            // One actor handles these requests in order. Include a sequence and skip
+            // names already on disk so two same-name uploads (or a restart within one
+            // second) cannot truncate an earlier file.
+            const std::string     prefix = "upload_" + std::to_string(std::time(nullptr)) + "_";
+            std::string           safe_filename;
+            std::filesystem::path filepath;
+            do {
+                safe_filename = prefix + std::to_string(_next_upload_id++) + "_" + uploaded_filename;
+                filepath      = _upload_dir / safe_filename;
+            } while (std::filesystem::exists(filepath));
 
             // Write file to disk
             std::ofstream outfile(filepath, std::ios::binary);
@@ -434,8 +456,20 @@ private:
                 return;
             }
 
-            outfile.write(file_content.data(), file_content.size());
+            const bool write_ok = write_upload_contents(outfile, file_content);
             outfile.close();
+
+            std::error_code file_error;
+            const auto      stored_size = std::filesystem::file_size(filepath, file_error);
+            if (!write_ok || !outfile || file_error || stored_size != file_content.size()) {
+                std::error_code cleanup_error;
+                std::filesystem::remove(filepath, cleanup_error);
+                ctx->response().status() = qb::http::Status::INTERNAL_SERVER_ERROR;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{{"error", "Failed to save file"}, {"message", "File write was incomplete"}};
+                ctx->complete();
+                return;
+            }
 
             // Store metadata
             FileMetadata metadata;
@@ -524,18 +558,20 @@ private:
                 return;
             }
 
-            // Update metadata
+            // Stage every conversion before changing the stored metadata.
+            FileMetadata updated = it->second;
             if (body_json.contains("description")) {
-                it->second.description = body_json["description"];
+                updated.description = body_json["description"];
             }
             if (body_json.contains("tags")) {
-                it->second.tags = body_json["tags"];
+                updated.tags = body_json["tags"];
             }
 
-            ctx->response().status() = qb::http::Status::OK;
+            qb::json response = {{"success", true}, {"message", "Metadata updated successfully"}, {"metadata", updated.to_json()}};
             ctx->response().add_header("Content-Type", "application/json");
-            ctx->response().body() =
-                qb::json{{"success", true}, {"message", "Metadata updated successfully"}, {"metadata", it->second.to_json()}};
+            ctx->response().body()   = std::move(response);
+            it->second               = std::move(updated);
+            ctx->response().status() = qb::http::Status::OK;
             ctx->complete();
 
         } catch (const std::exception &e) {
@@ -548,14 +584,30 @@ private:
 
     void
     handle_browse_directory(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        std::string           path_param  = ctx->path_param("path");
-        std::filesystem::path browse_path = _static_root;
-
-        if (!path_param.empty()) {
-            browse_path /= path_param;
-        }
+        std::string path_param = ctx->path_param("path");
 
         try {
+            const auto root        = std::filesystem::canonical(_static_root);
+            const auto requested   = std::filesystem::path(path_param);
+            const auto browse_path = std::filesystem::weakly_canonical(root / requested);
+
+            // The router has already percent-decoded path_param. Compare path
+            // components after resolving symlinks, rather than string prefixes
+            // ("static-other" must not count as a child of "static").
+            auto root_part = root.begin();
+            auto path_part = browse_path.begin();
+            while (root_part != root.end() && path_part != browse_path.end() && *root_part == *path_part) {
+                ++root_part;
+                ++path_part;
+            }
+            if (requested.is_absolute() || root_part != root.end()) {
+                ctx->response().status() = qb::http::Status::FORBIDDEN;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{{"error", "Path outside static root"}};
+                ctx->complete();
+                return;
+            }
+
             if (!std::filesystem::exists(browse_path) || !std::filesystem::is_directory(browse_path)) {
                 ctx->response().status() = qb::http::Status::NOT_FOUND;
                 ctx->response().add_header("Content-Type", "application/json");
@@ -616,8 +668,8 @@ private:
         std::cout << "  DEL  /api/files/:name   - Delete uploaded file\n\n";
 
         std::cout << "Directory Browsing:\n";
-        std::cout << "  GET  /browse            - Browse upload directory (HTML)\n";
-        std::cout << "  GET  /browse/*path      - Browse subdirectories (HTML)\n\n";
+        std::cout << "  GET  /browse            - List static root (JSON)\n";
+        std::cout << "  GET  /browse/*path      - List a static subdirectory (JSON)\n\n";
 
         std::cout << "Features demonstrated:\n";
         std::cout << "  • Static file serving with path prefixes\n";
