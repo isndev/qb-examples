@@ -233,10 +233,10 @@ TaskManager::handle_ws_upgrade(ctx_t ctx) {
         // Reject incomplete handshakes while HTTP still owns the response pipe.
         // The WebSocket protocol checks the key itself after handoff.
         const auto &request = ctx->request();
-        if (request.method() != HTTP_GET || !request.upgrade || !qb::http::ws::detail::iequal_ascii(request.header("Upgrade"), "websocket")
-            || !qb::http::ws::detail::has_token_ci(request.header("Connection"), "Upgrade")
-            || qb::http::ws::detail::trim_ows(request.header("Sec-WebSocket-Key")).empty()
-            || !qb::http::ws::detail::iequal_ascii(qb::http::ws::detail::trim_ows(request.header("Sec-WebSocket-Version")), "13")) {
+        if (request.method() != HTTP_GET || !request.upgrade || !qb::protocol::detail::iequal_ascii(request.header("Upgrade"), "websocket")
+            || !qb::protocol::detail::has_token_ci(request.header("Connection"), "Upgrade")
+            || qb::protocol::detail::trim_ows(request.header("Sec-WebSocket-Key")).empty()
+            || !qb::protocol::detail::iequal_ascii(qb::protocol::detail::trim_ows(request.header("Sec-WebSocket-Version")), "13")) {
             ctx->bad_request("WebSocket upgrade failed");
             co_return;
         }
