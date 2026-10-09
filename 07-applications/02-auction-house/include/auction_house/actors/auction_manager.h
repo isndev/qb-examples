@@ -62,6 +62,7 @@ private:
     // ── Coroutine init helpers ────────────────────────────────────────────────
 
     qb::io::async::task<bool> prepare_statements();
+    qb::io::async::task<bool> restore_database();
     void                      setup_routes();
     void                      shutdown_resources();
 
@@ -93,6 +94,7 @@ private:
     WebSocketHandler                       _ws_handler;
 
     bool _db_ready{false};
+    bool _db_reconnecting{false};
     bool _redis_ready{false};
 };
 

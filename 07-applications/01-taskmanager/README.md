@@ -103,11 +103,15 @@ Client TCP connect
 ```
 GET /ws
   └─ TaskManager::handle_ws_upgrade
-      └─ extractSession(http_session_id)       ← steals TCP socket from HTTP pool
+      ├─ reject incomplete handshake headers   ← HTTP still owns the response pipe
+      └─ suppress_response + extractSession     ← transfers TCP socket from HTTP pool
           └─ WebSocketHandler::upgrade_connection(socket, req, resp)
               └─ registerSession(socket)        ← WsSession created
                   └─ switch_protocol<ws>()     ← WS handshake → 101 response
 ```
+
+Once the socket leaves the HTTP pool, a rejected handshake closes that socket;
+the HTTP context cannot send another response over it.
 
 ### Real-time event flow (after a mutation)
 
@@ -148,10 +152,11 @@ POST /tasks
 ### `WebSocketHandler`  _(inner component, not an actor)_
 
 - Inherits `qb::io::use<T>::tcp::io_handler<WsSession>` (session pool)
-- Owns a `qb::redis::tcp::co_consumer` (coroutine Redis SUB)
+- Shares ownership of a `qb::redis::tcp::co_consumer` with the receive loop (coroutine Redis SUB)
 - `connect_subscriber()` is `co_await`ed from `TaskManager::onInit()`; the actor
-  then spawns `consume_loop()`, which `shutdown()`'s `disconnect()` ends (a channel
-  `receive()` is not cancellation-aware: `kill()` alone would not)
+  then spawns `consume_loop()`. `shutdown()` disconnects and closes the channel; a
+  committed message can still resume after actor reap, so the loop retains the
+  consumer and checks the actor's cancellation token before broadcasting.
 
 ### `WsSession`  _(declaration + impl)_
 
@@ -315,4 +320,7 @@ curl -s -X DELETE http://localhost:8080/tasks/1 | jq
 
 # WebSocket (requires websocat)
 websocat ws://localhost:8080/ws
+
+# HTTP response ownership and WebSocket handoff (running server required)
+python3 ../scripts/test_ws_handoff.py
 ```

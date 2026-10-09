@@ -21,6 +21,7 @@
  * @expect "[bitop] BITOP ran set algebra INSIDE the server: AND = retained users, OR = reach,"
  * @expect "[bitpos] BITPOS finds the first 0 or 1 without reading the string back — the O(1)-ish"
  * @expect "[bitfield] BITFIELD packs SEVERAL counters into one string at sub-byte widths, and"
+ * @expect "           (two u8 counters in "
  * @expect "[choose] pick by the question, not by taste: HLL when you cannot enumerate the ids and"
  * @expect "=== cardinality and bitmaps complete: every key is deleted, on this path and on the"
  *
@@ -66,12 +67,14 @@
  * Build:
  *   cmake --preset release
  *   cmake --build --preset release --target qb-example-modules-redis-cardinality-and-bitmaps
- * Run (needs a Redis on 127.0.0.1:6379):
+ * Run (defaults to Redis on 127.0.0.1:6379; QB_EXAMPLE_REDIS_URI overrides it):
  *   ./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cardinality-and-bitmaps
  */
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <vector>
 #include <qb/io/async.h>
@@ -79,8 +82,6 @@
 #include <qbm/redis/redis.h>
 
 namespace {
-
-#define REDIS_URI {"tcp://localhost:6379"}
 
 constexpr const char *K_HLL_ALL = "qb:example:card:hll:all";
 constexpr const char *K_SET_ALL = "qb:example:card:set:all";
@@ -116,9 +117,11 @@ run_cardinality(bool &running, bool &ok) {
         }
     } stop{running};
 
-    qb::redis::tcp::client redis{REDIS_URI};
+    const char            *configured_uri = std::getenv("QB_EXAMPLE_REDIS_URI");
+    const std::string      redis_uri      = configured_uri ? configured_uri : "tcp://localhost:6379";
+    qb::redis::tcp::client redis{qb::io::uri{redis_uri}};
     if (!co_await redis.connect()) {
-        qb::io::cerr() << "Failed to connect to Redis at tcp://localhost:6379" << std::endl;
+        qb::io::cerr() << "Failed to connect to Redis at " << redis_uri << std::endl;
         co_return;
     }
     qb::io::cout() << "Connected to Redis successfully!\n\n";
@@ -288,15 +291,20 @@ run_cardinality(bool &running, bool &ok) {
     auto                           saturated = co_await redis.bitfield(K_FIELDS, saturating);
     auto                           packed    = co_await redis.strlen(K_FIELDS);
 
-    const bool field_ok = fields.ok() && fields.result().size() == 3 && fields.result()[2].value_or(-1) == 10 && saturated.ok()
-                          && saturated.result().size() == 1 && saturated.result()[0].value_or(-1) == 255 && packed.ok() && packed.result() == 2;
+    // A failed or malformed reply carries no indexed value to print. Use the same guards for
+    // the verdict and the lesson's measured line, including a short but otherwise OK array.
+    const std::optional<long long> first_counter     = fields.ok() && fields.result().size() == 3 ? fields.result()[2] : std::nullopt;
+    const std::optional<long long> saturated_counter = saturated.ok() && saturated.result().size() == 1 ? saturated.result()[0] : std::nullopt;
+    const bool                     field_ok          = first_counter == 10 && saturated_counter == 255 && packed.ok() && packed.result() == 2;
 
     qb::io::cout() << "[bitfield] BITFIELD packs SEVERAL counters into one string at sub-byte widths, and\n"
                       "           OVERFLOW SAT clamps rather than wraps — which is the behaviour a rate counter\n"
                       "           wants and the behaviour plain INCR cannot give you\n";
     qb::io::cout() << "           (two u8 counters in " << (packed.ok() ? packed.result() : -1) << " bytes: #0 read back as "
-                   << fields.result()[2].value_or(-1) << ", then +250 SATURATED at " << saturated.result()[0].value_or(-1)
-                   << " instead of wrapping to 4)\n\n";
+                   << (first_counter ? std::to_string(*first_counter) : "n/a") << ", then +250 SATURATED at "
+                   << (saturated_counter ? std::to_string(*saturated_counter) : "n/a") << " instead of wrapping to 4)\n\n";
+    if (!field_ok)
+        qb::io::cerr() << "[bitfield] UNEXPECTED: BITFIELD replies or packed size did not match\n";
 
     qb::io::cout() << "[choose] pick by the question, not by taste: HLL when you cannot enumerate the ids and\n"
                       "         a fraction of a percent is fine; a bitmap when the ids are dense integers and you\n"
@@ -309,9 +317,13 @@ run_cardinality(bool &running, bool &ok) {
 
     ok = hll_ok && merge_ok && bits_ok && bitop_ok && pos_ok && field_ok && removed == 12 && gone.ok() && gone.result() == 0;
 
-    qb::io::cout() << "=== cardinality and bitmaps complete: every key is deleted, on this path and on the\n"
-                      "    failure path above ("
-                   << removed << " removed, " << gone.result() << " of the probed keys still present) ===\n";
+    if (ok)
+        qb::io::cout() << "=== cardinality and bitmaps complete: every key is deleted, on this path and on the\n"
+                          "    failure path above ("
+                       << removed << " removed, " << gone.result() << " of the probed keys still present) ===\n";
+    else
+        qb::io::cerr() << "=== cardinality and bitmaps failed (" << removed << " removed, "
+                       << (gone.ok() ? std::to_string(gone.result()) : "n/a") << " of the probed keys still present) ===\n";
     co_return;
 }
 

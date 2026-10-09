@@ -1,8 +1,8 @@
 /**
  * @file examples/06-modules/http/07-auth-jwt.cpp
  * @tier 06-modules
- * @teaches JWT authentication end to end: an auth::Manager that signs and verifies, the middleware
- *          that puts an auth::User in the context, and the routes that read it back out.
+ * @teaches JWT authentication in an in-memory demo: an auth::Manager that signs and verifies, the
+ *          middleware that puts an auth::User in the context, and the routes that read it back out.
  * @demonstrates qb::http::auth::Manager, qb::http::auth::Options, qb::http::auth::User,
  *               qb::http::AuthMiddleware<S>, router(), use, group, post, get, compile,
  *               qb::http::Status::UNAUTHORIZED, qb::http::Status::FORBIDDEN
@@ -16,7 +16,7 @@
  * - User authentication with login/logout endpoints
  * - Role-based access control (RBAC)
  * - Protected routes requiring authentication
- * - User management with different permission levels
+ * - Demo-only plaintext passwords for seeded and registered users
  * - Integration with QB Actor framework
  *
  * @author qb - C++ Actor Framework
@@ -39,7 +39,7 @@
 // Simple user database simulation
 struct UserAccount {
     std::string              username;
-    std::string              password_hash; // In real app, use proper password hashing
+    std::string              demo_password; // Plain text for this in-memory example only; never use in production.
     std::string              email;
     std::vector<std::string> roles;
     bool                     active = true;
@@ -120,34 +120,16 @@ private:
     void
     initialize_users() {
         // Admin user
-        _users["admin"] = {
-            "admin",
-            "admin_hash", // In real app: hash("admin123")
-            "admin@example.com",
-            {"admin", "user"},
-            true
-        };
+        _users["admin"] = {"admin", "admin123", "admin@example.com", {"admin", "user"}, true};
 
         // Regular user
-        _users["john"] = {
-            "john",
-            "john_hash", // In real app: hash("password123")
-            "john@example.com",
-            {"user"},
-            true
-        };
+        _users["john"] = {"john", "password123", "john@example.com", {"user"}, true};
 
         // Manager user
-        _users["manager"] = {
-            "manager",
-            "manager_hash", // In real app: hash("manager123")
-            "manager@example.com",
-            {"manager", "user"},
-            true
-        };
+        _users["manager"] = {"manager", "manager123", "manager@example.com", {"manager", "user"}, true};
 
         // Inactive user
-        _users["inactive"] = {"inactive", "inactive_hash", "inactive@example.com", {"user"}, false};
+        _users["inactive"] = {"inactive", "inactive123", "inactive@example.com", {"user"}, false};
 
         std::cout << "Initialized " << _users.size() << " test users" << std::endl;
     }
@@ -346,18 +328,9 @@ private:
                 return;
             }
 
-            // In real app, verify password hash properly
-            std::string expected_password;
-            if (username == "admin")
-                expected_password = "admin123";
-            else if (username == "john")
-                expected_password = "password123";
-            else if (username == "manager")
-                expected_password = "manager123";
-            else
-                expected_password = "wrong";
-
-            if (password != expected_password) {
+            // All accounts, including registrations, use the same demo-only check.
+            // A real service must store a proper password hash and verify it here.
+            if (password != user_account.demo_password) {
                 ctx->response().status() = qb::http::Status::UNAUTHORIZED;
                 ctx->response().add_header("Content-Type", "application/json");
                 ctx->response().body() = qb::json{{"error", "Invalid credentials"}, {"message", "Username or password is incorrect"}};
@@ -427,10 +400,11 @@ private:
                 return;
             }
 
-            // Create new user (in real app, hash password properly)
+            // This example keeps credentials only in memory, in plain text. A real
+            // service must hash passwords before storing them.
             UserAccount new_user;
             new_user.username      = username;
-            new_user.password_hash = "hashed_" + register_data["password"].get<std::string>();
+            new_user.demo_password = register_data["password"].get<std::string>();
             new_user.email         = email;
             new_user.roles         = {"user"}; // Default role
             new_user.active        = true;

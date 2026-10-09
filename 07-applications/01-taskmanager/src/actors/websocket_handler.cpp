@@ -43,7 +43,7 @@ WsSession::send_json(const qb::json &msg) {
 WebSocketHandler::WebSocketHandler(TaskManager &manager, qb::io::uri redis_uri)
     : _manager(manager)
     , _redis_uri(std::move(redis_uri))
-    , _sub(_redis_uri) {}
+    , _sub(std::make_shared<qb::redis::tcp::co_consumer>(_redis_uri)) {}
 
 /**
  * Connect the coroutine subscriber and subscribe to `tasks:events`.
@@ -51,11 +51,11 @@ WebSocketHandler::WebSocketHandler(TaskManager &manager, qb::io::uri redis_uri)
  */
 qb::io::async::task<bool>
 WebSocketHandler::connect_subscriber() {
-    if (!co_await _sub.connect()) {
+    if (!co_await _sub->connect()) {
         qb::io::cerr() << "[WebSocketHandler] Redis SUB connect failed\n";
         co_return false;
     }
-    auto sub = co_await _sub.subscribe(std::string{"tasks:events"});
+    auto sub = co_await _sub->subscribe(std::string{"tasks:events"});
     if (!sub.ok()) {
         qb::io::cerr() << "[WebSocketHandler] subscribe failed: " << sub.error() << '\n';
         co_return false;
@@ -64,39 +64,37 @@ WebSocketHandler::connect_subscriber() {
     co_return true;
 }
 
-/**
- * Coroutine receive loop: pull every published message and fan it out to all WS clients.
- * `receive()` yields `std::nullopt` when the message channel closes — `shutdown()`'s
- * `disconnect()`, a dropped link, or `~RedisCoroConsumer`. See the loop's tail.
- */
+namespace {
 qb::io::async::task<void>
-WebSocketHandler::consume_loop() {
-    while (auto msg = co_await _sub.receive()) {
+consume_messages(WebSocketHandler *handler, std::shared_ptr<qb::redis::tcp::co_consumer> sub, qb::io::async::cancellation_token stop) {
+    while (auto msg = co_await sub->receive()) {
+        if (stop.is_cancelled())
+            break;
         try {
             auto data = qb::json::parse(msg->payload);
-            qb::io::cout() << "[WebSocketHandler] broadcast action=" << data.value("action", "?") << "  clients=" << client_count() << '\n';
-            broadcast_to_all(data);
+            qb::io::cout() << "[WebSocketHandler] broadcast action=" << data.value("action", "?") << "  clients=" << handler->client_count()
+                           << '\n';
+            handler->broadcast_to_all(data);
         } catch (const std::exception &e) {
             qb::io::cerr() << "[WebSocketHandler] malformed payload: " << e.what() << '\n';
         }
     }
-    // NOTHING BELOW THIS LINE MAY TOUCH `this`, AND THAT IS LOAD-BEARING.
-    // The loop exits when the channel closes. On shutdown that is `shutdown()`'s
-    // `disconnect()`, inside the handler that then calls `kill()`: `close()` only SCHEDULES
-    // the parked receiver's resume, the reap at the end of that pass runs `~TaskManager`
-    // first, and we resume with `nullopt` with `this` (which is `&_ws_handler`, a member of
-    // the actor) already freed. The framework anticipates the parked receiver outliving its
-    // channel — `recv_awaiter` holds a `_ch_alive` flag and returns `nullopt` without
-    // dereferencing the freed channel. It cannot anticipate this function reading its own
-    // members, so a `client_count()` or `_manager` access added here is an immediate
-    // use-after-free. Measured: adding one member read here reports ASan heap-use-after-free.
+    // A channel awaiter may return an already committed value even after its channel dies.
+    // Keep this tail independent of WebSocketHandler: the owning actor may be gone.
     qb::io::cout() << "[WebSocketHandler] consume loop ended\n";
+}
+} // namespace
+
+/** Copy the subscriber into the coroutine frame while this component is alive. */
+qb::io::async::task<void>
+WebSocketHandler::consume_loop(qb::io::async::cancellation_token stop) {
+    return consume_messages(this, _sub, std::move(stop));
 }
 
 /** Drop the subscriber link, which ends consume_loop() — see the loop's tail. */
 void
 WebSocketHandler::shutdown() {
-    _sub.disconnect();
+    _sub->disconnect();
 }
 
 /** Called by io_handler whenever a new WsSession becomes fully active. */
@@ -119,10 +117,15 @@ WebSocketHandler::upgrade_connection(qb::io::tcp::socket &&sock, const qb::http:
         return false;
     }
 
-    if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
-        *ws_session << response;
-        qb::io::cout() << "[WebSocketHandler] upgrade OK: " << ws_session->id() << '\n';
-        return true;
+    try {
+        if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
+            *ws_session << response;
+            qb::io::cout() << "[WebSocketHandler] upgrade OK: " << ws_session->id() << '\n';
+            return true;
+        }
+    } catch (...) {
+        ws_session->disconnect();
+        throw;
     }
 
     qb::io::cerr() << "[WebSocketHandler] upgrade failed (bad handshake)\n";

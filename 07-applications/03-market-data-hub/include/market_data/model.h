@@ -94,12 +94,14 @@ struct SubscriberDone : qb::Event {
 /// What the engine did, filled in by the actors and PRINTED BY main(). Keeping the report in one
 /// place — and out of the actors — is why `main.cpp` can promise what it prints.
 struct Report {
-    std::vector<std::uint64_t> latencies;      ///< one sample per published quote, nanoseconds
-    std::uint64_t              routed{};       ///< ticks the ingest actor took off the ring
-    std::uint32_t              shards{};       ///< how many aggregators they were spread across
-    std::uint32_t              quotes{};       ///< quotes published
-    std::uint32_t              emitted{};      ///< quotes the aggregators say they emitted
-    std::uint32_t              wire_records{}; ///< records the subscriber decoded
+    std::vector<std::uint64_t> latencies;           ///< one sample per published quote, nanoseconds
+    std::uint64_t              routed{};            ///< ticks the ingest actor took off the ring
+    std::uint32_t              shards{};            ///< how many aggregators they were spread across
+    std::uint32_t              quotes{};            ///< quotes published
+    std::uint32_t              emitted{};           ///< quotes the aggregators say they emitted
+    std::uint32_t              wire_records{};      ///< records the subscriber decoded
+    bool                       wire_complete{};     ///< the subscriber saw the end-of-stream sentinel
+    bool                       subscriber_failed{}; ///< connect failed or the link closed before that sentinel
     Symbol                     last_symbol;
     double                     last_price{};
     double                     last_vwap{};

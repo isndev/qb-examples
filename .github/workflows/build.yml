@@ -8,7 +8,8 @@
 # What this lane proves and does not prove, stated:
 #   * PROVES: the corpus configures and builds against the same-named qb + qbm branches
 #     (the pairing this change is proposed to join), the build's own roster records >= 99
-#     programs, every roster entry's binary EXISTS, and one named smoke program runs.
+#     programs, every roster entry's binary EXISTS, one named smoke program runs, and the
+#     PostgreSQL ownership cases run against a disposable cluster.
 #   * DOES NOT prove: the run contracts. The example RUNNER (@expect assertion, serve modes,
 #     second-instance checks, service probes) and its manifest live in the private
 #     superproject's dev/agent and run there — this lane is the build half a public PR needs,
@@ -191,3 +192,9 @@ jobs:
           fi
           timeout 60 "${bin}" < /dev/null
           echo "smoke program ran and exited 0"
+
+      - name: Run PostgreSQL ownership checks in a disposable cluster
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y postgresql
+          python3 examples/06-modules/pgsql/test-ownership.py build --strict

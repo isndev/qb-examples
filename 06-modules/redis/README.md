@@ -5,14 +5,14 @@ Redis client functionality integrated with the QB C++ Actor Framework.
 
 ## Prerequisites
 
-- **A running Redis server instance — all ten need one.** `dev/agent/run-examples.py` records
+- **A running Redis server instance — all fourteen need one.** `dev/agent/run-examples.py` records
   `needs = redis` for every target here and reports a SKIP, never a pass, when nothing answers.
 - The QB Framework, including `qb-core`, `qb-io`, and `qbm-redis`, must be built.
-- Eight of the ten define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
-  edit it if your server is elsewhere. The two exceptions spell the URI inline:
-  `03-coroutines-and-pipelining.cpp` repeats `{"tcp://localhost:6379"}` per client, and
-  `09-reliability.cpp` uses named constants `URI` / `DEAD_URI` (`:78-79`) — the second deliberately
-  points at a port where nothing listens.
+- Nine define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
+  edit it if your server is elsewhere. `06-streams` uses a string macro, `03-coroutines-and-pipelining`
+  spells the URI inline, and `09-reliability` and `11-callbacks-and-consumers` use named constants.
+  `12-cardinality-and-bitmaps` accepts `QB_EXAMPLE_REDIS_URI` for an isolated server and otherwise
+  uses `tcp://localhost:6379`.
 
 ## Building the Examples
 
@@ -99,14 +99,14 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   actors.
 * **Key Components**: `PublisherActor`, `SubscriberActor` (using `qb::redis::tcp::co_consumer`), `CoordinatorActor`.
 * **QB/QBM Redis Features**: `qb::Actor`, `qb::Main`, `co_await client.publish(channel, message)`
-  (`04-pubsub.cpp:173`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
-  (`:208`) — with `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>` (`:289`) and a
-  `while (auto msg = co_await _consumer.receive()) { ... }` loop (`:259`) instead of a message callback. Read that
-  loop's capture list: it takes `this` only for the consumer it awaits, and copies everything it *reads*
-  (`name = _name`, `coordinator = _coordinator_id`) before the first `co_await`. The loop resumes when
-  `~RedisCoroConsumer` closes the message channel — i.e. while the actor is being destroyed — so a member read after
-  the resume is a use-after-free, and was one.
-  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1795-1796`): `cb_consumer` is the
+  (`04-pubsub.cpp:172`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
+  (`:207`) — with `co_await consumer->subscribe(channel)` → `Reply<qb::redis::subscription>` (`:283`) and a
+  `while (auto msg = co_await consumer->receive()) { ... }` loop (`:257`) instead of a message callback. The
+  loop retains the consumer in its coroutine frame and copies `name` and `coordinator` before suspension.
+  Disconnect closes the channel and schedules a parked receiver, but a message already committed to
+  its awaiter can still be returned after actor reap. The loop checks actor-scope cancellation before
+  forwarding that message; the retained consumer makes the next `receive()` safe.
+  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:1854-1855`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-pubsub`
 
@@ -180,15 +180,23 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
 
 * **Purpose**: the structure that keeps the ORDER for you (a leaderboard: "top 3" is a range read,
   not a sort; "what rank am I" is a lookup), the same structure scored by TIME (a sliding-window rate
-  limiter in three commands and no timer), the expiry rules, and the cursor SCAN you must use instead
+  limiter with one atomic EVAL and no client timer), the expiry rules, and the cursor SCAN you must use instead
   of `KEYS`.
 * **QB/QBM Redis Features**: `zadd`/`zincrby`/`zcard`/`zscore`/`zrevrange`/`zrevrank`/`zrangebyscore`/
-  `zremrangebyscore`/`zrem`, `qb::redis::score_member`, the interval types and `LimitOptions`;
+  `zrem`, `eval<long long>`, `qb::redis::score_member`, the interval types and `LimitOptions`;
   `expire`/`ttl`/`persist`/`setex`; `scan` + `qb::redis::scan<>`.
 * **Two measured gotchas**: `LeftBoundedInterval<double>` accepts only `OPEN` and `RIGHT_OPEN` and
   THROWS `qb::redis::Error` on `CLOSED` (`redis.cpp:127-141`) — for `[300, +inf)` the open side is the
   right one. And a plain `SET` CLEARS a key's TTL while `INCR` keeps it; `-1` means "no expiry" and
   `-2` means "no key", which are two different answers.
+* **Admission contract**: Redis atomically purges old entries, counts, adds a distinct member with
+  `ZADD NX`, and sets `PEXPIRE`. The helper distinguishes a checked admission (1), a quota refusal
+  (0), and a command error. If expiry fails after an add, the script attempts to remove that
+  member and returns an error; a failed or ambiguous reply does not admit the request. If cleanup
+  is also denied, an entry may remain. One EVAL
+  is one round trip and sends the script body each time. The script uses one declared key, so its
+  operations stay in one Cluster slot; the client must connect to the owning node because the
+  qbm-redis client does not follow `MOVED` or `ASK` redirects.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-sorted-sets-and-ttl`
 
 ---
@@ -224,8 +232,14 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
   Nothing here is a blocking call: `onInit()` is a `qb::io::async::task<bool>` that does `co_await _redis.connect()`,
   and each `RedisDataEvent` spawns a coroutine that does `co_await _redis.set(...)`, `co_await _redis.incr(...)`,
   `co_await _redis.get(...)`, reading `Reply<T>::ok()` / `result()` between steps
-  (`10-cache-actor.cpp:114-115`, `:125`, `:163`, `:168-176`).
+  (`10-cache-actor.cpp:118-120`, `:129-140`, `:170-185`, `:189-215`).
+  Each request sends exactly one success or failure result. The coordinator waits for all five,
+  asks the worker to remove only keys it wrote, and exits nonzero if any request or cleanup failed
+  (`10-cache-actor.cpp:317-335`). `QB_EXAMPLE_REDIS_URI` selects a test server; the default is
+  `tcp://localhost:6379`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cache-actor`
+* **Regression test**: `ctest --preset release -R qb-examples-test-system-redis-cache-actor-results`
+  runs five accepted, four accepted plus one denied, and five denied SETs against a disposable Redis.
 
 ---
 
@@ -276,6 +290,9 @@ These examples provide a practical starting point for leveraging Redis with the 
   per user only if your ids are dense integers — `SETBIT` at 4,000,000,000 allocates 500 MB for one
   user. What you buy is `BITOP`: AND is retention, OR is reach, executed server-side, result is
   another bitmap.
+* **A refused or short `BITFIELD` reply** prints `n/a` for the missing counter, reports a failed
+  verdict and exits nonzero after cleanup. The measured counter line is part of the normal run's
+  checked output.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cardinality-and-bitmaps`
 
 ---

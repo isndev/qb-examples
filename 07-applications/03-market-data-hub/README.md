@@ -29,6 +29,8 @@ include/market_data/model.h      the domain, and the cross-core payload rule it 
 include/market_data/protocol.h   the wire: size_as_header framing + big-endian fields
 src/actors.h                     the four actors
 src/main.cpp                     engine wiring, the feed thread, the report  (carries the header block)
+tests/feed-stop.cpp              the real producer with a full ring and no consumer
+scripts/check_startup_failure.py  publisher bind, subscriber connect and early-disconnect controls
 ```
 
 ## The number at the end
@@ -47,6 +49,11 @@ machines.
 * Publishing before a subscriber has attached sends those frames nowhere, so the feed thread waits
   for one. Without that gate the first ~10 000 quotes were lost and the final count measured
   startup timing rather than the pipeline.
+* The feed starts only after both the publisher has accepted a socket and the subscriber has
+  installed its own end of that socket. A failed publisher bind, failed subscriber connect, or
+  disconnect before the end-of-stream marker returns a failed verdict instead of leaving the
+  feed parked. If the engine stops with a full ring, the stop flag lets the producer join; the
+  flag is read only on the waiting paths, not on a successful tick enqueue.
 
 ## Build and run
 
@@ -54,4 +61,7 @@ machines.
 cmake --preset release
 cmake --build --preset release --target qb-example-applications-market-data-hub
 ./build/presets/release/examples/07-applications/03-market-data-hub/qb-example-applications-market-data-hub
+python3 examples/07-applications/03-market-data-hub/scripts/check_startup_failure.py \
+  ./build/presets/release/examples/07-applications/03-market-data-hub/qb-example-applications-market-data-hub
+ctest --preset release -R qb-examples-test-system-market-
 ```

@@ -114,10 +114,11 @@ echo "▶ POST /api/lots/$FIRST_LOT_ID/bids  [place a bid - 201 expected]"
 # Get current price to bid above it
 current_price=$(echo "$body" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("current_price",0))' 2>/dev/null || echo "0")
 bid_amount=$(python3 -c "print(int(float('$current_price') * 1.1) + 100)" 2>/dev/null || echo "1000")
+request_id=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
 r=$($CURL -i -X POST "$BASE/api/lots/$FIRST_LOT_ID/bids" \
     -H "Content-Type: application/json" \
-    -d "{\"bidder_id\":2,\"amount\":$bid_amount}")
+    -d "{\"bidder_id\":2,\"amount\":$bid_amount,\"request_id\":\"$request_id\"}")
 code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
 body=$(echo "$r" | tail -1)
 if [ "$code" = "201" ] || [ "$code" = "409" ]; then

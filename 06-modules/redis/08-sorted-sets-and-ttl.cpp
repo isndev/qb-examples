@@ -2,13 +2,13 @@
  * @file examples/06-modules/redis/08-sorted-sets-and-ttl.cpp
  * @tier 06-modules
  * @teaches The sorted set as the structure that keeps the ORDER for you — a leaderboard and a
- *          sliding-window rate limiter — plus expiry (EXPIRE/TTL/PERSIST and which writes clear a
+ *          sliding-window rate limiter with one atomic EVAL — plus expiry (EXPIRE/TTL/PERSIST and which writes clear a
  *          TTL) and the cursor SCAN you must reach for instead of KEYS.
  * @demonstrates qb::redis::tcp::client, zadd, zincrby, zcard, zscore, zrevrange, zrevrank,
- *               zrangebyscore, zremrangebyscore, zrem, qb::redis::score_member,
- *               qb::redis::BoundedInterval<double>, qb::redis::LeftBoundedInterval<double>,
+ *               zrangebyscore, zrem, qb::redis::score_member,
+ *               qb::redis::LeftBoundedInterval<double>,
  *               qb::redis::LimitOptions,
- *               expire, ttl, persist, setex, incr, set, scan, qb::redis::scan<>,
+ *               eval<long long>, expire, ttl, persist, setex, incr, set, scan, qb::redis::scan<>,
  *               qb::redis::Reply<T>, ok, result, del,
  *               qb::io::async::init, qb::io::async::run_until, qb::io::async::coro_scheduler,
  *               qb::io::async::task<void>
@@ -17,7 +17,7 @@
  * @expect "[board] ZADD kept the set ORDERED as it was written, so 'top 3' is a range read and"
  * @expect "[board] ZREVRANK answers 'what place am I?' in O(log N), and ZSCORE the score itself"
  * @expect "[board] a score RANGE is its own query: everyone from 300 up, newest-first, LIMITed"
- * @expect "[limit] the sliding window is three commands: drop what aged out, count what is left,"
+ * @expect "[limit] one EVAL atomically drops aged requests, counts survivors, records one, and"
  * @expect "[limit] request 6 of 5 was REFUSED inside the same window, and the window key carries"
  * @expect "[ttl] INCR kept the expiry; a plain SET CLEARED it — a write is not a refresh, and"
  * @expect "[ttl] PERSIST removes an expiry outright: TTL goes from a countdown to -1 (no expiry)"
@@ -36,9 +36,18 @@
  * ---------------------------------------------------------------
  * A LEADERBOARD scores things you rank. A SLIDING-WINDOW RATE LIMITER scores things by TIME: each
  * request is a member whose score is its timestamp, so "how many requests in the last second" is
- * `ZREMRANGEBYSCORE` (drop what aged out) + `ZCARD` (count what is left). That is three commands
- * and no timer, and it is strictly more accurate than a fixed-window counter, which lets 2x the
- * limit through across a window boundary.
+ * `ZREMRANGEBYSCORE` (drop what aged out) + `ZCARD` (count what is left) + `ZADD NX` (record one).
+ * Those steps MUST be one atomic decision: separate awaited commands let two callers count the
+ * same free slot and a same-millisecond member can collapse their entries. The script below runs
+ * them as one EVAL, takes time from Redis, and checks ZADD and PEXPIRE before it admits. An error
+ * fails closed; if expiry fails after the add, it tries to remove that add before returning an
+ * error. If cleanup is itself denied, the request is still refused but its entry may remain.
+ * One EVAL is one client/server round trip. An admission runs five short Redis commands inside
+ * (TIME, purge, count, add, expiry); a quota refusal runs the first three. A rollback adds ZREM.
+ * EVAL sends its script body on every call. A hot production path could cache its SHA and handle
+ * NOSCRIPT after restart or failover.
+ * The script declares just KEYS[1], so Cluster slot rules are satisfied. The qbm-redis client
+ * does not follow MOVED/ASK; a Cluster caller must reach the key's owning node.
  *
  * EXPIRY HAS ONE RULE PEOPLE GET WRONG
  * ------------------------------------
@@ -61,18 +70,17 @@
  * Build:
  *   cmake --preset release
  *   cmake --build --preset release --target qb-example-modules-redis-sorted-sets-and-ttl
- * Run (needs a Redis on 127.0.0.1:6379):
+ * Run (defaults to Redis on 127.0.0.1:6379; QB_EXAMPLE_REDIS_URI overrides it):
  *   ./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-sorted-sets-and-ttl
  */
 
 #include <chrono>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
 #include <qbm/redis/redis.h>
-
-#define REDIS_URI {"tcp://localhost:6379"}
 
 using namespace std::chrono_literals;
 
@@ -83,25 +91,56 @@ constexpr const char *K_WINDOW = "qb:example:zt:ratelimit:user42";
 constexpr const char *K_TTL    = "qb:example:zt:session";
 constexpr const char *K_SCAN   = "qb:example:zt:scan:"; // five keys share this prefix
 
-// The rate limit, as one function, because that is how you would actually ship it: three commands
-// on one key, no timer, no shared state on your side. `now_ms` is the score.
-qb::io::async::task<bool>
-allow(qb::redis::tcp::client &redis, std::string const &key, long long limit, std::chrono::milliseconds window) {
-    const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+// Redis serializes this whole read/decide/write step, including competing clients. The optional
+// third argument fixes the clock only in the disposable-server test; normal calls use Redis TIME.
+constexpr const char *SLIDING_WINDOW_SCRIPT = R"lua(
+local limit = tonumber(ARGV[1])
+local window_ms = tonumber(ARGV[2])
+if not limit or limit < 1 or not window_ms or window_ms < 1 then
+  return redis.error_reply('invalid rate limit or window')
+end
+local now_ms
+if ARGV[3] then
+  now_ms = tonumber(ARGV[3])
+else
+  local clock = redis.call('TIME')
+  now_ms = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
+end
+if not now_ms then return redis.error_reply('invalid clock') end
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_ms - window_ms)
+local used = redis.call('ZCARD', KEYS[1])
+if used >= limit then return 0 end
+-- The count changes on every admission at this timestamp. NX still refuses any collision.
+local member = tostring(now_ms) .. ':' .. tostring(used)
+local added = redis.pcall('ZADD', KEYS[1], 'NX', now_ms, member)
+if type(added) == 'table' and added.err then return redis.error_reply(added.err) end
+if added ~= 1 then return redis.error_reply('ZADD member collision') end
+local expires = redis.pcall('PEXPIRE', KEYS[1], window_ms + 1000)
+if type(expires) == 'table' and expires.err then
+  redis.call('ZREM', KEYS[1], member)
+  return redis.error_reply(expires.err)
+end
+if expires ~= 1 then
+  redis.call('ZREM', KEYS[1], member)
+  return redis.error_reply('PEXPIRE did not set a TTL')
+end
+return 1
+)lua";
 
-    // 1. Drop every request whose timestamp fell out of the window.
-    (void) co_await redis.zremrangebyscore(
-        key, qb::redis::BoundedInterval<double>(0, static_cast<double>(now_ms - window.count()), qb::redis::BoundType::CLOSED));
-    // 2. Count what is left.
-    auto used = co_await redis.zcard(key);
-    if (!used.ok() || used.result() >= limit)
-        co_return false;
-    // 3. Record this one. The member must be unique or two requests in the same millisecond
-    //    collapse into one entry — a counter suffix is enough here.
-    (void) co_await redis.zadd(key, {{static_cast<double>(now_ms), std::to_string(now_ms) + ":" + std::to_string(used.result())}});
-    // The key must not outlive the window, or an idle user leaks one key forever.
-    (void) co_await redis.expire(key, std::chrono::seconds(1 + window.count() / 1000));
-    co_return true;
+enum class Admission { allowed, limited, failed };
+
+qb::io::async::task<Admission>
+allow(qb::redis::tcp::client &redis, std::string const &key, long long limit, std::chrono::milliseconds window) {
+    if (limit < 1 || window.count() < 1)
+        co_return Admission::failed;
+    qb::redis::Reply<long long> decision =
+        co_await redis.eval<long long>(SLIDING_WINDOW_SCRIPT, {key}, {std::to_string(limit), std::to_string(window.count())});
+    // Redis errors (including ZADD / PEXPIRE failure) are Reply values, not exceptions.
+    if (!decision.ok())
+        co_return Admission::failed;
+    if (decision.result() == 1)
+        co_return Admission::allowed;
+    co_return decision.result() == 0 ? Admission::limited : Admission::failed;
 }
 
 } // namespace
@@ -115,7 +154,9 @@ run_sorted_sets_and_ttl(bool &running, bool &ok) {
         }
     } stop{running};
 
-    qb::redis::tcp::client redis{REDIS_URI};
+    const char            *configured_uri = std::getenv("QB_EXAMPLE_REDIS_URI");
+    const std::string      redis_uri      = configured_uri ? configured_uri : "tcp://localhost:6379";
+    qb::redis::tcp::client redis{qb::io::uri{redis_uri}};
     if (!co_await redis.connect()) {
         qb::io::cerr() << "Failed to connect to Redis\n";
         co_return;
@@ -183,21 +224,32 @@ run_sorted_sets_and_ttl(bool &running, bool &ok) {
     // 2. THE SLIDING-WINDOW RATE LIMIT — the same structure, scored by TIME
     // -----------------------------------------------------------------------------------
     constexpr long long LIMIT   = 5;
-    int                 allowed = 0, refused = 0;
-    for (int i = 0; i < 6; ++i)
-        (co_await allow(redis, K_WINDOW, LIMIT, 1000ms)) ? ++allowed : ++refused;
+    int                 allowed = 0, refused = 0, failed = 0;
+    for (int i = 0; i < 6; ++i) {
+        switch (co_await allow(redis, K_WINDOW, LIMIT, 1000ms)) {
+            case Admission::allowed:
+                ++allowed;
+                break;
+            case Admission::limited:
+                ++refused;
+                break;
+            case Admission::failed:
+                ++failed;
+                break;
+        }
+    }
 
     auto       window_ttl = co_await redis.ttl(K_WINDOW);
-    const bool limit_ok   = allowed == 5 && refused == 1 && window_ttl.ok() && window_ttl.result() > 0;
-    qb::io::cout() << (limit_ok ? "[limit] the sliding window is three commands: drop what aged out, count what is left,\n"
-                                  "        record this one. No timer, no state on the client, and it does not let 2x the\n"
+    const bool limit_ok   = allowed == 5 && refused == 1 && failed == 0 && window_ttl.ok() && window_ttl.result() > 0;
+    qb::io::cout() << (limit_ok ? "[limit] one EVAL atomically drops aged requests, counts survivors, records one, and\n"
+                                  "        sets expiry. One round trip, no client timer; it does not let 2x the\n"
                                   "        limit through at a window boundary the way a fixed-window counter does\n"
                                 : "[limit] UNEXPECTED: 6 requests against a limit of 5 did not give 5 allowed / 1 refused\n");
     qb::io::cout() << (limit_ok ? "[limit] request 6 of 5 was REFUSED inside the same window, and the window key carries\n"
                                   "        an EXPIRE so an idle caller does not leak a key forever\n"
                                 : "[limit] UNEXPECTED: the sixth request was not refused\n");
-    qb::io::cout() << "        (allowed " << allowed << ", refused " << refused << ", window key expires in " << window_ttl.result()
-                   << "s)\n\n";
+    qb::io::cout() << "        (allowed " << allowed << ", refused " << refused << ", errors " << failed << ", window key expires in "
+                   << (window_ttl.ok() ? std::to_string(window_ttl.result()) + "s" : "n/a") << ")\n\n";
 
     // -----------------------------------------------------------------------------------
     // 3. EXPIRY — which writes keep a TTL, and which clear it

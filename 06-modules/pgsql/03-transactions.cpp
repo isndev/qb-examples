@@ -73,21 +73,25 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 namespace {
 
-const char *PG_URI = "tcp://test:test@localhost:5432[test]";
+const char *PG_URI = example_pg_connection_string();
 
-const char *SCHEMA_SQL = "CREATE TABLE IF NOT EXISTS qb_tx_accounts ("
-                         "id SERIAL PRIMARY KEY, "
-                         "name TEXT NOT NULL UNIQUE, "
-                         "balance BIGINT NOT NULL DEFAULT 0);";
+const std::string TABLE = example_pg_table_name("qb_tx_accounts");
+
+const std::string SCHEMA_SQL = "CREATE TABLE " + TABLE
+                               + " ("
+                                 "id SERIAL PRIMARY KEY, "
+                                 "name TEXT NOT NULL UNIQUE, "
+                                 "balance BIGINT NOT NULL DEFAULT 0);";
 
 /// Read one balance, or `std::nullopt` when the row is not there.
 qb::io::async::task<std::optional<std::int64_t>>
 balance_of(qb::pg::tcp::database &db, std::string name) {
-    auto r = co_await db.query("SELECT balance FROM qb_tx_accounts WHERE name = $1", name);
+    auto r = co_await db.query("SELECT balance FROM " + TABLE + " WHERE name = $1", name);
     if (!r.ok() || r.result().empty())
         co_return std::nullopt;
     co_return r.result().front()[0].as<std::int64_t>();
@@ -96,7 +100,7 @@ balance_of(qb::pg::tcp::database &db, std::string name) {
 } // namespace
 
 qb::io::async::task<void>
-run_transactions(bool &running) {
+run_transactions(bool &running, bool &ok) {
     struct StopOnExit {
         bool &r;
         ~StopOnExit() {
@@ -111,12 +115,11 @@ run_transactions(bool &running) {
     }
     qb::io::cout() << "Successfully connected to PostgreSQL.\n\n";
 
-    (void) co_await db.execute("DROP TABLE IF EXISTS qb_tx_accounts;");
     if (!(co_await db.execute(SCHEMA_SQL)).ok()) {
         qb::io::cerr() << "Failed to create the accounts table\n";
         co_return;
     }
-    (void) co_await db.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2), ($3, $4)", "Alice", std::int64_t{100}, "Bob",
+    (void) co_await db.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2), ($3, $4)", "Alice", std::int64_t{100}, "Bob",
                              std::int64_t{20});
 
     // -----------------------------------------------------------------------------------
@@ -125,7 +128,7 @@ run_transactions(bool &running) {
     {
         bool ok = (co_await db.begin()).ok();
         if (ok) {
-            auto debit = co_await db.query("UPDATE qb_tx_accounts SET balance = balance - $1 WHERE name = $2", std::int64_t{50}, "Alice");
+            auto debit = co_await db.query("UPDATE " + TABLE + " SET balance = balance - $1 WHERE name = $2", std::int64_t{50}, "Alice");
             // The rule: a failed statement does NOT abort. Without this check the COMMIT below
             // would happily commit a transfer that only debited or only credited.
             if (!debit.ok()) {
@@ -134,7 +137,7 @@ run_transactions(bool &running) {
             }
         }
         if (ok) {
-            auto credit = co_await db.query("UPDATE qb_tx_accounts SET balance = balance + $1 WHERE name = $2", std::int64_t{50}, "Bob");
+            auto credit = co_await db.query("UPDATE " + TABLE + " SET balance = balance + $1 WHERE name = $2", std::int64_t{50}, "Bob");
             if (!credit.ok()) {
                 (void) co_await db.rollback();
                 ok = false;
@@ -159,13 +162,13 @@ run_transactions(bool &running) {
         // body takes the transaction it is given and does NOT touch `db` — the two are the same
         // connection here, but writing against the parameter is what makes a body reusable.
         auto res = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<std::int64_t> {
-            auto d = co_await tr.query("UPDATE qb_tx_accounts SET balance = balance - $1 WHERE name = $2", std::int64_t{10}, "Alice");
+            auto d = co_await tr.query("UPDATE " + TABLE + " SET balance = balance - $1 WHERE name = $2", std::int64_t{10}, "Alice");
             if (!d.ok())
                 throw qb::pg::transaction_abort{d.error()};
-            auto c = co_await tr.query("UPDATE qb_tx_accounts SET balance = balance + $1 WHERE name = $2", std::int64_t{10}, "Bob");
+            auto c = co_await tr.query("UPDATE " + TABLE + " SET balance = balance + $1 WHERE name = $2", std::int64_t{10}, "Bob");
             if (!c.ok())
                 throw qb::pg::transaction_abort{c.error()};
-            auto t = co_await tr.query("SELECT SUM(balance) FROM qb_tx_accounts");
+            auto t = co_await tr.query("SELECT SUM(balance) FROM " + TABLE + "");
             co_return t.ok() && !t.result().empty() ? t.result().front()[0].as<std::int64_t>() : std::int64_t{-1};
         });
         qb::io::cout() << (res.ok() && res.result() == std::int64_t{120}
@@ -178,10 +181,10 @@ run_transactions(bool &running) {
     // that succeeded before it.
     {
         auto       res     = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
-            auto ins = co_await tr.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Mallory", std::int64_t{5});
+            auto ins = co_await tr.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Mallory", std::int64_t{5});
             if (!ins.ok())
                 throw qb::pg::transaction_abort{ins.error()};
-            auto dup = co_await tr.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Alice", std::int64_t{1});
+            auto dup = co_await tr.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Alice", std::int64_t{1});
             if (!dup.ok())
                 throw qb::pg::transaction_abort{dup.error()}; // <- fires: name is UNIQUE
             co_return 1;
@@ -201,7 +204,7 @@ run_transactions(bool &running) {
         bool rethrown = false;
         try {
             (void) co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
-                (void) co_await tr.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Trent", std::int64_t{7});
+                (void) co_await tr.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Trent", std::int64_t{7});
                 throw std::runtime_error{"a bug in the body, not a database error"};
             });
         } catch (std::runtime_error const &) {
@@ -230,7 +233,7 @@ run_transactions(bool &running) {
     // -----------------------------------------------------------------------------------
     {
         bool ok = (co_await db.begin()).ok();
-        ok      = ok && (co_await db.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Carol", std::int64_t{30})).ok();
+        ok      = ok && (co_await db.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Carol", std::int64_t{30})).ok();
 
         // A named point to come back to. Names are validated (non-empty, <= 63 bytes,
         // [A-Za-z0-9_]) and quoted, so they are case-sensitive and injection-safe.
@@ -239,11 +242,11 @@ run_transactions(bool &running) {
         // This one fails: UNIQUE on `name`. Everything since the savepoint is undone, and the
         // transaction stays usable — without the savepoint the failed statement would have
         // poisoned the whole block (25P02, "current transaction is aborted").
-        auto bad = co_await db.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Alice", std::int64_t{1});
+        auto bad = co_await db.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Alice", std::int64_t{1});
         if (!bad.ok())
             ok = ok && (co_await db.rollback_savepoint("after_carol")).ok();
 
-        ok = ok && (co_await db.query("INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2)", "Erin", std::int64_t{40})).ok();
+        ok = ok && (co_await db.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Erin", std::int64_t{40})).ok();
         // RELEASE forgets the point (it does not undo anything). Skipping it is legal; the
         // savepoint simply lives to the end of the transaction.
         ok = ok && (co_await db.release_savepoint("after_carol")).ok();
@@ -266,7 +269,7 @@ run_transactions(bool &running) {
         const qb::pg::transaction_mode ro{qb::pg::isolation_level::serializable, /*read_only*/ true};
 
         auto       res = co_await qb::pg::with_transaction(db, ro, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
-            auto w = co_await tr.query("UPDATE qb_tx_accounts SET balance = balance + $1 WHERE name = $2", std::int64_t{1}, "Alice");
+            auto w = co_await tr.query("UPDATE " + TABLE + " SET balance = balance + $1 WHERE name = $2", std::int64_t{1}, "Alice");
             if (!w.ok())
                 throw qb::pg::transaction_abort{w.error()}; // 25006, read-only transaction
             co_return 1;
@@ -301,7 +304,21 @@ run_transactions(bool &running) {
         db.set_timeout(qb::duration::zero()); // sticky — clear it, or every later BEGIN carries it
     }
 
-    (void) co_await db.execute("DROP TABLE IF EXISTS qb_tx_accounts;");
+    // A failed statement can leave a transaction aborted. End that block before DDL;
+    // otherwise PostgreSQL rejects DROP and a permanent table survives this run.
+    if (db.in_transaction()) {
+        auto rolled_back = co_await db.rollback();
+        if (!rolled_back.ok()) {
+            qb::io::cerr() << "Failed to roll back before dropping " << TABLE << ": " << rolled_back.error().what() << '\n';
+            co_return;
+        }
+    }
+    auto dropped = co_await db.execute("DROP TABLE " + TABLE + ";");
+    if (!dropped.ok()) {
+        qb::io::cerr() << "Failed to drop owned table " << TABLE << ": " << dropped.error().what() << '\n';
+        co_return;
+    }
+    ok = true;
     qb::io::cout() << "\n=== transactions complete: manual, with_transaction, savepoints, mode, timeout ===\n";
     co_return;
 }
@@ -311,9 +328,10 @@ main() {
     qb::io::async::init();
 
     bool running = true;
-    qb::io::async::coro_scheduler().spawn(run_transactions(running));
+    bool ok      = false;
+    qb::io::async::coro_scheduler().spawn(run_transactions(running, ok));
     qb::io::async::run_until(running);
 
     qb::io::cout() << "Application finished.\n";
-    return 0;
+    return ok ? 0 : 1;
 }

@@ -13,6 +13,7 @@
 #include <qbm/redis/redis.h>
 #include <qb/io/async.h>
 #include <qb/json.h>
+#include <memory>
 #include "ws_session.h"
 
 namespace auction_house {
@@ -36,18 +37,14 @@ public:
      * @brief Drain published messages, broadcasting each to WS clients, until the
      *        subscriber disconnects.
      *
-     * NOTHING AFTER THE LOOP MAY TOUCH `this`, AND THAT IS LOAD-BEARING. The loop ends when
-     * the message channel closes. On shutdown that is `shutdown()`'s `disconnect()`, inside
-     * the handler that then calls `kill()`: `close()` SCHEDULES a resume for every parked
-     * receiver, the reap at the end of that pass runs `~AuctionManager` first, and the loop
-     * resumes with `std::nullopt` with `this` (which is `&_ws_handler`, a member of that
-     * actor) already freed. The framework anticipates the parked receiver outliving its
-     * channel — `recv_awaiter` holds a `_ch_alive` flag and returns `nullopt` without
-     * dereferencing the freed channel. It cannot anticipate the loop's tail reading its own
-     * members, so a `client_count()` or `_manager` access added there is an immediate
-     * use-after-free: measured, one member read at that point is an ASan heap-use-after-free.
+     * The channel can return an already committed message after actor reap. The loop
+     * retains the subscriber and checks the actor scope before touching the session pool.
      */
-    qb::io::async::task<void> consume_loop();
+    qb::io::async::task<void> consume_loop(qb::io::async::cancellation_token stop);
+
+    ~WebSocketHandler() {
+        shutdown();
+    }
 
     /**
      * @brief Drop the subscriber connection (idempotent), which ends `consume_loop()`.
@@ -81,9 +78,9 @@ public:
     void handle_ws_message(const qb::json &data, WsSession &session);
 
 private:
-    AuctionManager             &_manager;
-    qb::io::uri                 _redis_uri;
-    qb::redis::tcp::co_consumer _sub; ///< coroutine Pub/Sub subscriber
+    AuctionManager                              &_manager;
+    qb::io::uri                                  _redis_uri;
+    std::shared_ptr<qb::redis::tcp::co_consumer> _sub; ///< retained by consume_loop across actor teardown
 };
 
 } // namespace actors

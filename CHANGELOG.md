@@ -35,6 +35,58 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **PostgreSQL lessons own the objects they remove (Huly QB-824).** Lessons 02, 04–07, 09 and 10
+  use connection-local temporary tables; the trigger function in 07 is temporary too, and its
+  notification channel is unique to the publisher session. The transactions lesson keeps a
+  permanent table for its READ ONLY check but gives each run a random name and reports failed
+  cleanup. The callback lesson stops on failed setup and qualifies reads with `pg_temp`. A disposable-cluster
+  check proves same-named public tables and a public function survive, two runs of each lesson
+  complete together, and run-owned tables are gone afterwards. `QB_EXAMPLE_PG_URI` selects the
+  test database without editing and rebuilding the lessons.
+- **The manual WebSocket chat client answers Close and reconnects (Huly QB-831, QB-833).**
+  A peer Close now receives one masked Close reply. `/disconnect` and a peer Close release
+  the old socket; `/connect` is refused until a pending Close has fully left the socket. The next
+  handshake starts with clean buffers, a fresh HTTP parser and a new key. A loopback check
+  covers backpressure, both reconnection paths and bounded exit.
+- **Redis cache actor finishes after denied writes (Huly QB-829).** Each of five requests
+  reports one result even when SET fails. The coordinator waits for all five, lets the worker
+  clean up, and exits with failure instead of hanging or printing a success verdict.
+- **HTTP account registration and login use the same demo password check (Huly QB-790).**
+  Newly registered accounts accept their chosen password and reject another; seeded accounts keep their
+  documented credentials. This in-memory example stores plain-text passwords and does not model production storage.
+- **The HTTP upload page preserves special filenames and entered metadata (Huly QB-823).**
+  It renders filenames, descriptions, tags and MIME types as text, encodes download/delete URL segments, and
+  stores comma-separated form tags instead of replacing them with fixed values. Upload and list response paths
+  and the `Location` header also encode the filename. Oversized tag fields are rejected before splitting or saving.
+- **The Redis sliding-window example admits atomically and checks writes (Huly QB-826, QB-827).**
+  One EVAL now purges, counts, adds a unique member and sets expiry on the server. Competing
+  callers cannot consume the same slot; a failed add or expiry reports an error, with an expiry
+  failure attempting to remove the added member. A disposable-Redis test covers concurrent calls,
+  same-millisecond entries, expired windows, denied commands and failed EVAL/TTL replies.
+- **The Redis cardinality example handles refused or short `BITFIELD` replies (Huly QB-828).**
+  It prints `n/a` for an unavailable counter, completes cleanup and exits with a failed verdict
+  instead of reading past the reply vector and crashing. The normal run now requires the
+  measured counter line; its verdict checks the values.
+- **Market Data Hub exits after either end of its wire fails (Huly QB-808).** A failed
+  publisher bind no longer launches a feed thread that waits forever. A subscriber
+  connect failure or disconnect before the end marker stops the engine, releases the
+  feed's subscriber/full-ring waits, and returns a failed verdict. A disconnect after
+  the marker remains a normal completion. The 20,000-tick pipeline is unchanged.
+- **The HTTP static-files example confines `/browse` to its configured static root (Huly QB-792).**
+  Raw and percent-encoded parent paths, plus outward symlinks, now receive 403; ordinary child
+  directories and inward symlinks remain browsable.
+- **The HTTP upload example keeps same-name uploads distinct and checks stored bytes (Huly QB-791).**
+  A per-server sequence prevents rapid uploads from truncating one another; failed writes,
+  flushes, closes, or an incomplete stored size no longer receive 201 or metadata.
+- **The HTTP file API rejects path-shaped filenames before deletion or metadata lookup (Huly QB-987).**
+  A decoded parent path can no longer delete a file beside `uploads`; GET, PUT and DELETE
+  accept only one filename component and return 400 for separators, NUL, dot names or a Windows drive/colon.
+- **The HTTP Book PATCH and file metadata update commit only a fully valid change (Huly QB-788).**
+  If a later field has the wrong JSON type, the 400 response leaves the existing object unchanged.
+- **Redis Pub/Sub lesson describes disconnect and deferred resumption (Huly QB-252).**
+  Disconnect closes the receive channel before shutdown kills the actor, but the parked
+  coroutine resumes on a later scheduler pass and may outlive the actor. The lesson no
+  longer claims that only the consumer destructor wakes it.
 - **The WebSocket chat server stops cleanly with connected users (Huly QB-830).** A session
   destructor broadcast a departure while the server's session map was being destroyed,
   recursively destroying sessions until the process crashed. Ordinary disconnection now

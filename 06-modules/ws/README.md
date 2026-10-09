@@ -90,8 +90,8 @@ public:
 };
 ```
 
-> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:190-191` and
-> `:497-498` — all four are `qb::io::async::task<bool> onInit() override`.
+> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:192-193` and
+> `:541-542` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
 
@@ -170,6 +170,13 @@ The client uses a similar dual-actor architecture to separate network logic from
   `WebSocketClientActor`.
 
 This separation ensures that blocking `stdin` reads do not interfere with the non-blocking network I/O.
+
+When the server sends Close, the manual client echoes its validated payload in a masked Close
+frame. While that frame is still being written, `/connect` is refused; after the socket closes,
+a later `/connect` clears the old buffers and WebSocket parser, installs a fresh HTTP parser and
+handshake key, and announces the user again. A typed `/disconnect` also closes the socket first.
+`check-chat-shutdown.py --build-dir <build>` exercises these paths against a loopback peer,
+including a full send buffer before Close, and bounds the client's exit.
 
 ---
 

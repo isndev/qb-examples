@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -219,8 +220,8 @@ public:
         co_return true;
     }
 
-    /// A subscriber has attached. The feed thread is waiting for exactly this: publishing into an
-    /// empty session list would send those quotes nowhere and make the record count a lie.
+    /// A subscriber has attached. This is one of the feed's two readiness gates: publishing
+    /// into an empty session list would send those quotes nowhere and make the count a lie.
     void
     on(IOSession &) {
         _ready->store(true, std::memory_order_release);
@@ -281,25 +282,44 @@ private:
 // ---------------------------------------------------------------------------------------
 // SUBSCRIBER — the other end of the wire, in this process.
 // ---------------------------------------------------------------------------------------
+struct SubscriberSocketReady : qb::Event {
+    std::shared_ptr<qb::io::tcp::socket> socket;
+
+    explicit SubscriberSocketReady(std::shared_ptr<qb::io::tcp::socket> connected)
+        : socket(std::move(connected)) {}
+};
+
+inline void
+fail_subscriber(Report &report, const char *reason) {
+    if (report.wire_complete || report.subscriber_failed)
+        return; // late disconnect after the sentinel, or failure already reported
+    report.subscriber_failed = true;
+    qb::io::cerr() << reason << '\n';
+    qb::Main::stop();
+}
+
 class SubscriberActor
     : public qb::Actor
     , public qb::io::use<SubscriberActor>::tcp::client<> {
-    qb::ActorId   _publisher;
-    std::uint16_t _port;
-    Report       *_report  = nullptr;
-    std::uint32_t _records = 0;
-    WireQuote     _last{};
+    qb::ActorId        _publisher;
+    std::uint16_t      _port;
+    std::atomic<bool> *_started = nullptr;
+    Report            *_report  = nullptr;
+    std::uint32_t      _records = 0;
+    WireQuote          _last{};
 
 public:
     using Protocol = QuoteFeed<SubscriberActor>;
 
-    SubscriberActor(qb::ActorId publisher, std::uint16_t port, Report *report)
+    SubscriberActor(qb::ActorId publisher, std::uint16_t port, std::atomic<bool> *started, Report *report)
         : _publisher(publisher)
         , _port(port)
+        , _started(started)
         , _report(report) {}
 
     qb::io::async::task<bool>
     onInit() override {
+        registerEvent<SubscriberSocketReady>(*this);
         // THE CONNECT IS SPAWNED, NOT AWAITED IN `onInit`, AND THAT IS A MEASUREMENT.
         //
         // The obvious form — `co_await qb::io::async::tcp::connect<transport::tcp>(uri, 2s)`
@@ -311,20 +331,29 @@ public:
         // `spawn()` from the same actor resumes normally, which is what this does.
         //
         // The cost of the workaround is stated rather than hidden: `onInit` returns true
-        // immediately, so this actor is ACTIVE before its socket exists. Anything that must not
-        // be sent before the connection is up has to wait for evidence — here, nothing does,
-        // because the subscriber only ever reads.
-        spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-            auto sock = co_await qb::io::async::tcp::connect<qb::io::transport::tcp>(qb::io::uri("tcp://127.0.0.1:" + std::to_string(_port)),
+        // immediately, so this actor is ACTIVE before its socket exists. The feed waits for
+        // both the publisher's accept and this actor's start before producing any quote.
+        const auto  port   = _port;
+        auto *const report = _report; // main owns it until every core and the feed have joined
+        spawn([port, report](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            auto sock = co_await qb::io::async::tcp::connect<qb::io::transport::tcp>(qb::io::uri("tcp://127.0.0.1:" + std::to_string(port)),
                                                                                      std::chrono::seconds(2));
+            if (ctx.cancelled())
+                co_return;
             if (!sock.has_value()) {
-                qb::io::cerr() << "[subscriber] could not connect to the feed\n";
+                fail_subscriber(*report, "[subscriber] could not connect to the feed");
                 co_return;
             }
-            transport() = std::move(*sock);
-            start();
+            ctx.push<SubscriberSocketReady>(std::make_shared<qb::io::tcp::socket>(std::move(*sock)));
         });
         co_return true;
+    }
+
+    void
+    on(SubscriberSocketReady &ready) {
+        transport() = std::move(*ready.socket);
+        start();
+        _started->store(true, std::memory_order_release);
     }
 
     void
@@ -334,10 +363,11 @@ public:
         for (std::size_t off = 0; off + kWireQuoteSize <= msg.size; off += kWireQuoteSize) {
             const WireQuote q = decode(msg.data + off);
             if (q.symbol[0] == '\0') { // the end-of-stream sentinel
-                _report->last_symbol  = Symbol(std::string(_last.symbol, strnlen(_last.symbol, sizeof(_last.symbol))).c_str());
-                _report->last_price   = static_cast<double>(_last.last_micros) / 1'000'000.0;
-                _report->last_vwap    = static_cast<double>(_last.vwap_micros) / 1'000'000.0;
-                _report->last_updates = _last.updates;
+                _report->wire_complete = true;
+                _report->last_symbol   = Symbol(std::string(_last.symbol, strnlen(_last.symbol, sizeof(_last.symbol))).c_str());
+                _report->last_price    = static_cast<double>(_last.last_micros) / 1'000'000.0;
+                _report->last_vwap     = static_cast<double>(_last.vwap_micros) / 1'000'000.0;
+                _report->last_updates  = _last.updates;
                 push<SubscriberDone>(_publisher).records = _records;
                 return;
             }
@@ -347,7 +377,9 @@ public:
     }
 
     void
-    on(qb::io::async::event::disconnected const &) {}
+    on(qb::io::async::event::disconnected const &) {
+        fail_subscriber(*_report, "[subscriber] disconnected before end-of-stream");
+    }
 };
 
 } // namespace market_data

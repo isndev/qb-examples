@@ -73,17 +73,18 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 using namespace std::chrono_literals;
 
 namespace {
 
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
-constexpr const char *CHANNEL = "qb_example_events";
+std::string           CHANNEL;
 constexpr const char *TABLE   = "qb_example_notify_jobs";
-constexpr const char *FUNC    = "qb_example_notify_job";
+constexpr const char *FUNC    = "pg_temp.qb_example_notify_job";
 constexpr const char *TRIGGER = "qb_example_notify_job_trg";
 
 } // namespace
@@ -107,6 +108,14 @@ run_listen_notify(bool &running, bool &ok) {
         qb::io::cerr() << "Failed to connect to PostgreSQL: " << pub.error().what() << std::endl;
         co_return;
     }
+
+    // A backend PID is unique among live sessions, so concurrent runs never share a channel.
+    auto pid = co_await pub.execute("SELECT pg_backend_pid();");
+    if (!pid.ok() || pid.result().empty()) {
+        qb::io::cerr() << "Could not obtain publisher backend PID\n";
+        co_return;
+    }
+    CHANNEL = "qb_example_events_" + std::to_string(pid.result()[0][0].as<int>());
 
     // The callback half. It runs on the I/O thread as the frame is parsed — before any coroutine
     // resumes — which is what makes it the right place for a counter and the wrong place for work.
@@ -182,11 +191,9 @@ run_listen_notify(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     // `pg_notify(channel, payload)` is the function form of NOTIFY, and it is the one you need
     // inside PL/pgSQL because the statement form does not take an expression for the channel.
-    (void) co_await pub.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + " CASCADE;");
-    (void) co_await pub.execute(std::string("DROP FUNCTION IF EXISTS ") + FUNC + "() CASCADE;");
     auto made =
-        co_await pub.execute(std::string("CREATE TABLE ") + TABLE + " (id SERIAL PRIMARY KEY, kind TEXT NOT NULL);" + "CREATE FUNCTION " + FUNC
-                             + "() RETURNS trigger AS $$ BEGIN" + "  PERFORM pg_notify('" + CHANNEL
+        co_await pub.execute(std::string("CREATE TEMP TABLE ") + TABLE + " (id SERIAL PRIMARY KEY, kind TEXT NOT NULL);" + "CREATE FUNCTION "
+                             + FUNC + "() RETURNS trigger AS $$ BEGIN" + "  PERFORM pg_notify('" + CHANNEL
                              + "', 'row:' || NEW.id::text || ':' || NEW.kind);" + "  RETURN NEW; END; $$ LANGUAGE plpgsql;" + "CREATE TRIGGER "
                              + TRIGGER + " AFTER INSERT ON " + TABLE + " FOR EACH ROW EXECUTE FUNCTION " + FUNC + "();");
     if (!made.ok()) {
@@ -274,10 +281,10 @@ run_listen_notify(bool &running, bool &ok) {
     // ---- cleanup ----------------------------------------------------------------------
     (void) co_await sub.unlisten_all();
     (void) co_await pub.execute(std::string("DROP TRIGGER IF EXISTS ") + TRIGGER + " ON " + TABLE + ";");
-    (void) co_await pub.execute(std::string("DROP FUNCTION IF EXISTS ") + FUNC + "() CASCADE;");
-    auto cleaned = co_await pub.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + " CASCADE;");
+    auto function_cleaned = co_await pub.execute(std::string("DROP FUNCTION ") + FUNC + "();");
+    auto cleaned          = co_await pub.execute(std::string("DROP TABLE ") + TABLE + ";");
 
-    ok = basic_ok && txn_ok && trigger_ok && rule_ok && reuse_ok && cleaned.ok() && sub.is_connected();
+    ok = basic_ok && txn_ok && trigger_ok && rule_ok && reuse_ok && function_cleaned.ok() && cleaned.ok() && sub.is_connected();
     qb::io::cout() << "=== listen/notify complete: the trigger, the function and the table are dropped ===\n"
                    << "(the callback saw " << seen_via_callback << " notification(s) in total)\n";
     co_return;

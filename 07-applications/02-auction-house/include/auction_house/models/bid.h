@@ -85,13 +85,15 @@ struct BidHistory {
 struct BidResult {
     bool        success{false};
     std::string message;
+    std::string request_id;
     int32_t     bid_id{0};
     double      new_price{0.0};
     int32_t     time_left{0};
 
     [[nodiscard]] qb::json
     to_json() const {
-        return qb::json{{"success", success}, {"message", message}, {"bid_id", bid_id}, {"new_price", new_price}, {"time_left", time_left}};
+        return qb::json{{"success", success}, {"message", message},     {"request_id", request_id},
+                        {"bid_id", bid_id},   {"new_price", new_price}, {"time_left", time_left}};
     }
 };
 

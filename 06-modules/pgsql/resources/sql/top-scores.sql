@@ -8,7 +8,7 @@
 --
 -- $1 is a minimum score (float8), $2 a row limit (int4). Both are BOUND, never pasted.
 SELECT name, score
-FROM qb_example_callbacks
+FROM pg_temp.qb_example_callbacks
 WHERE score >= $1
 ORDER BY score DESC
 LIMIT $2;

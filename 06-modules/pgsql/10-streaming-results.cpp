@@ -72,11 +72,12 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 namespace {
 
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
 constexpr const char   *TABLE = "qb_example_streaming";
 constexpr std::uint64_t ROWS  = 20000;
@@ -111,13 +112,12 @@ run_streaming(bool &running, bool &ok) {
     }
 
     // ---- setup ------------------------------------------------------------------------
-    (void) co_await db.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + ";");
     // generate_series builds the whole table SERVER-SIDE in one statement, so the setup is one
     // round trip rather than 20000.
-    auto created = co_await db.execute(std::string("CREATE TABLE ") + TABLE + " AS SELECT g AS v, 'row-' || g AS label FROM generate_series(1, "
-                                       + std::to_string(ROWS) + ") AS g;");
+    auto created = co_await db.execute(std::string("CREATE TEMP TABLE ") + TABLE
+                                       + " AS SELECT g AS v, 'row-' || g AS label FROM generate_series(1, " + std::to_string(ROWS) + ") AS g;");
     if (!created.ok()) {
-        qb::io::cerr() << "CREATE TABLE failed: " << created.error().what() << std::endl;
+        qb::io::cerr() << "CREATE TEMP TABLE failed: " << created.error().what() << std::endl;
         co_return;
     }
     qb::io::cout() << "Connected — 20000 rows to read four different ways.\n"
@@ -138,7 +138,6 @@ run_streaming(bool &running, bool &ok) {
         [[maybe_unused]] qb::pg::results const &everything = all.result();
         if (!all.ok()) {
             qb::io::cerr() << "[buffered] UNEXPECTED: " << all.error().what() << "\n";
-            (void) co_await db.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + ";");
             co_return;
         }
         // Every row is already here. `size()` is not a stream position, it is a count of what the

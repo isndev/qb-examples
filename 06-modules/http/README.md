@@ -114,6 +114,7 @@ Below is a list of the available examples and the key features they showcase:
 * **Features**:
     * Full CRUD operations for books.
     * JSON request body parsing and response serialization.
+    * A PATCH with invalid fields returns 400 without changing the stored Book.
     * Using `qb::json` (nlohmann::json).
     * Standard middleware stack, installed in this order (`05-rest-api-json.cpp:116-163`): CORS, Compression,
       SecurityHeaders, Logging, RateLimit. There is no timing middleware in this example.
@@ -162,15 +163,17 @@ Below is a list of the available examples and the key features they showcase:
     * `qb::http::AuthMiddleware` for protecting routes.
     * Login (`/auth/login`) and registration (`/auth/register`) endpoints.
     * Storing user data in `Context` after successful authentication.
-    * Role-based access control (e.g., admin-only routes) via nested groups (`07-auth-jwt.cpp:226`, `:237`, `:256`).
+    * Role-based access control (e.g., admin-only routes) via nested groups (`07-auth-jwt.cpp:208`, `:219`, `:238`).
     * Token refresh mechanism (conceptual).
-    * Secure password handling (conceptual, uses plain text for demo simplicity).
-* **Key Endpoints** (the authenticated group is `/api` — there is no `/v1` segment, `07-auth-jwt.cpp:226`):
+    * One in-memory password check for seeded and newly registered accounts (`07-auth-jwt.cpp:333`, `:407`).
+      Passwords are stored in plain text for this demo and disappear when it stops. This is not production
+      credential storage; a real service must store and verify password hashes.
+* **Key Endpoints** (the authenticated group is `/api` — there is no `/v1` segment, `07-auth-jwt.cpp:208`):
     * `POST /auth/login`, `POST /auth/register`
-    * `GET /api/profile`, `PUT /api/profile` (requires auth — `:223-225`)
-    * `POST /api/auth/logout`, `POST /api/auth/refresh` (requires auth — `:265`, `:268`)
-    * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:242-244`)
-    * `GET /api/manager/reports` (requires manager or admin role — `:262`)
+    * `GET /api/profile`, `PUT /api/profile` (requires auth — `:214-216`)
+    * `POST /api/auth/logout`, `POST /api/auth/refresh` (requires auth — `:256`, `:259`)
+    * `GET /api/admin/users`, `PUT /api/admin/users/:username/status` (requires admin role — `:233-235`)
+    * `GET /api/manager/reports` (requires manager or admin role — `:253`)
 
 ### 8. `08-static-files.cpp`
 
@@ -178,18 +181,25 @@ Below is a list of the available examples and the key features they showcase:
 * **Features**:
     * `qb::http::StaticFilesMiddleware` for serving files from a directory (`./resources/static`).
     * Serving uploaded files from a separate directory (`./uploads`).
-    * Directory browsing (`/browse`).
+    * Directory browsing (`/browse`) confined to the static root, including through symlinks.
     * File upload API (`POST /api/upload`) handling `multipart/form-data`.
+    * The upload form saves comma-separated tags (up to 16, at most 64 bytes per tag and 1024 bytes total).
+      Oversized fields are rejected before splitting or saving them. Omitting the field retains the demo
+      defaults `uploaded,api`; a supplied empty field stores no tags.
     * API for listing, retrieving metadata, and deleting files.
     * MIME type detection, ETag, Last-Modified headers.
     * Interaction with static HTML/JS/CSS frontend (`index.html`, `upload.html`, etc. in `resources/static`).
+      The list displays metadata as text and encodes filenames as URL path segments for download and delete.
 * **Key Endpoints**:
     * `GET /static/*path`: Serves files from `resources/static`.
     * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
-    * `GET /browse`, `GET /browse/*path`: Directory listing for uploads.
-    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`
-    * `POST /api/upload`
-    * `PUT /api/files/:filename/metadata`
+    * `GET /browse`, `GET /browse/*path`: Directory listing for the static root; paths that resolve outside it return 403.
+    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`: The filename must be one path
+      component; an encoded separator or parent path returns 400 before reading or deleting a file.
+    * `POST /api/upload`: Stores each upload under a distinct name and reports 201 only after a complete write;
+      the response `path` and `Location` header encode the stored filename for use as a URL.
+    * `PUT /api/files/:filename/metadata`: Uses the same filename rule and applies a valid update as one change;
+      a 400 leaves metadata unchanged.
 
 ### 9. `09-coroutine-handlers.cpp`
 

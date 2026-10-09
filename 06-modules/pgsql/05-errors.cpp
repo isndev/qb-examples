@@ -40,6 +40,7 @@
  * - `Reply::ok()`, `Reply::result()`, `Reply::error()` and the `db_error` field set.
  * - Driving an SQL-issuing coroutine from a sync handler via `spawn(...)`.
  */
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 #include <qb/actor.h>
 #include <qb/io.h>
@@ -54,9 +55,9 @@
 #include <string>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string.
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
-const char *ERROR_TEST_TABLE_SQL = "CREATE TABLE IF NOT EXISTS error_test_items ("
+const char *ERROR_TEST_TABLE_SQL = "CREATE TEMP TABLE error_test_items ("
                                    "id SERIAL PRIMARY KEY, "
                                    "name TEXT NOT NULL UNIQUE, "
                                    "quantity INT CHECK (quantity >= 0), "

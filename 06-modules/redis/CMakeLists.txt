@@ -74,10 +74,49 @@ qb_example(SOURCE 04-pubsub.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 05-transactions.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 06-streams.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 07-scripting.cpp DEPENDS qbm-redis)
-qb_example(SOURCE 08-sorted-sets-and-ttl.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 08-sorted-sets-and-ttl.cpp DEPENDS qbm-redis TARGET_VAR sorted_sets_example)
 qb_example(SOURCE 09-reliability.cpp DEPENDS qbm-redis)
-qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 10-cache-actor.cpp DEPENDS qbm-redis TARGET_VAR cache_actor_example)
 qb_example(SOURCE 11-callbacks-and-consumers.cpp DEPENDS qbm-redis)
-qb_example(SOURCE 12-cardinality-and-bitmaps.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 12-cardinality-and-bitmaps.cpp DEPENDS qbm-redis TARGET_VAR cardinality_example)
+if(QB_BUILD_TESTS)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_program(QB_REDIS_SERVER_EXECUTABLE NAMES redis-server redis-server.exe
+                 HINTS "$ENV{REDIS_HOME}" "$ENV{REDIS_HOME}/bin")
+    if(QB_REDIS_SERVER_EXECUTABLE)
+        set(_redis_test_server "${QB_REDIS_SERVER_EXECUTABLE}")
+    else()
+        set(_redis_test_server "--redis-unavailable")
+        message(STATUS "Redis example tests registered as SKIP: redis-server unavailable")
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME qb-examples-test-system-redis-bitfield-replies
+                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check-cardinality-bitfield.py"
+                         "$<TARGET_FILE:${cardinality_example}>" "${_redis_test_server}")
+        add_test(NAME qb-examples-test-system-redis-sliding-window
+                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check-sorted-sets-window.py"
+                         "$<TARGET_FILE:${sorted_sets_example}>" "${_redis_test_server}")
+        add_test(NAME qb-examples-test-system-redis-cache-actor-results
+                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check-cache-actor-results.py"
+                         "$<TARGET_FILE:${cache_actor_example}>" "${_redis_test_server}")
+    else()
+        message(STATUS "Redis example tests registered as SKIP: Python3 interpreter unavailable")
+        add_test(NAME qb-examples-test-system-redis-bitfield-replies
+                 COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
+        add_test(NAME qb-examples-test-system-redis-sliding-window
+                 COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
+        add_test(NAME qb-examples-test-system-redis-cache-actor-results
+                 COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: Python3 interpreter unavailable")
+    endif()
+    set_tests_properties(qb-examples-test-system-redis-bitfield-replies PROPERTIES
+                         TIMEOUT 60 SKIP_RETURN_CODE 77 SKIP_REGULAR_EXPRESSION "^SKIP:"
+                         LABELS "tier:system;module:qb-examples")
+    set_tests_properties(qb-examples-test-system-redis-sliding-window PROPERTIES
+                         TIMEOUT 60 SKIP_RETURN_CODE 77 SKIP_REGULAR_EXPRESSION "^SKIP:"
+                         LABELS "tier:system;module:qb-examples")
+    set_tests_properties(qb-examples-test-system-redis-cache-actor-results PROPERTIES
+                         TIMEOUT 30 SKIP_RETURN_CODE 77 SKIP_REGULAR_EXPRESSION "^SKIP:"
+                         LABELS "tier:system;module:qb-examples")
+endif()
 qb_example(SOURCE 13-geospatial.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 14-acl-and-topology.cpp DEPENDS qbm-redis)

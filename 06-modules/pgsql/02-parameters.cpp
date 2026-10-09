@@ -30,6 +30,7 @@
  * - `Reply<T>`: `ok()`, `result()`, `error()`.
  */
 
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
@@ -39,7 +40,7 @@
 #include <vector>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
 // Prepared statement names
 const char *PREPARE_INSERT_USER       = "insert_user_stmt_v2_5";
@@ -121,7 +122,7 @@ run_prepared_statements(bool &running) {
     // 2. Create schema.
     qb::io::cout() << "Initializing database schema and preparing statements..." << std::endl;
     {
-        [[maybe_unused]] auto r = co_await db.execute("CREATE TABLE IF NOT EXISTS users ("
+        [[maybe_unused]] auto r = co_await db.execute("CREATE TEMP TABLE users ("
                                                       "id SERIAL PRIMARY KEY, "
                                                       "name TEXT NOT NULL, "
                                                       "email TEXT UNIQUE"

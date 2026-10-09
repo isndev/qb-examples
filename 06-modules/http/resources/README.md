@@ -57,8 +57,13 @@ The `08-static-files.cpp` server is configured to:
     * e.g., `http://localhost:8080/static/index.html` maps to `examples/06-modules/http/resources/static/index.html`.
 2. Serve files from an `./uploads` directory (created by the example) under the `/uploads/` URL path. This directory is
    where uploaded files are stored.
-3. Provide a `/browse` endpoint for listing files in the `./uploads` directory.
+3. Provide a `/browse` endpoint for listing directories beneath the static resource root;
+   requests resolving outside it (including through symlinks) receive 403.
 4. Offer API endpoints like `/api/upload` and `/api/files` that are typically interacted with from `upload.html`.
+   A file URL parameter must decode to one filename component; invalid names return 400.
+   The form's optional comma-separated tags are stored with each upload (up to 16 tags, 64 bytes each,
+   1024 bytes for the whole field). If omitted, the demo uses `uploaded,api`. File paths returned by the
+   API and links in the page encode each filename as one URL segment.
 
 ## Running the Static File Demo (`08-static-files.cpp`)
 
@@ -209,4 +214,4 @@ The web interfaces generally support:
 - Safari 11+
 - Edge 79+
 
-Older browsers may experience reduced functionality due to modern JavaScript usage. 
+Older browsers may experience reduced functionality due to modern JavaScript usage.
