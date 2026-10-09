@@ -43,6 +43,11 @@ plumbing do not qualify.
   check proves same-named public tables and a public function survive, two runs of each lesson
   complete together, and run-owned tables are gone afterwards. `QB_EXAMPLE_PG_URI` selects the
   test database without editing and rebuilding the lessons.
+- **The manual WebSocket chat client answers Close and reconnects (Huly QB-831, QB-833).**
+  A peer Close now receives one masked Close reply. `/disconnect` and a peer Close release
+  the old socket; `/connect` is refused until a pending Close has fully left the socket. The next
+  handshake starts with clean buffers, a fresh HTTP parser and a new key. A loopback check
+  covers backpressure, both reconnection paths and bounded exit.
 - **HTTP account registration and login use the same demo password check (Huly QB-790).**
   Newly registered accounts accept their chosen password and reject another; seeded accounts keep their
   documented credentials. This in-memory example stores plain-text passwords and does not model production storage.

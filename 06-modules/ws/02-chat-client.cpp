@@ -176,6 +176,8 @@ private:
     std::string _server_url;
     qb::ActorId _cmdline_actor_id;
     bool        _connected      = false;
+    bool        _connecting     = false;
+    bool        _closing        = false; // Peer Close queued; wait for dispose before reusing I/O.
     bool        _user_announced = false;
     std::string _ws_key;
 
@@ -239,8 +241,12 @@ public:
     // Handle connection requests
     void
     on(const ConnectEvent &event) {
-        if (_connected) {
-            push<DisplayMessageEvent>(_cmdline_actor_id, "Already connected!", "warning");
+        if (_closing) {
+            push<DisplayMessageEvent>(_cmdline_actor_id, "Close in progress; retry /connect after closure", "warning");
+            return;
+        }
+        if (_connected || _connecting) {
+            push<DisplayMessageEvent>(_cmdline_actor_id, "Already connected or connecting!", "warning");
             return;
         }
 
@@ -255,11 +261,20 @@ public:
 
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connecting to " + host + ":" + std::to_string(port), "info");
 
+        // A standalone client's dispose stops its watcher, but retains the old socket,
+        // buffers and protocol. Start each handshake with a fresh HTTP parser and key.
+        reset_for_reconnect();
+        reset_io_state();
+        _ws_key = qb::http::ws::generateKey();
+        this->switch_protocol<Protocol>(*this);
+
         // Connect to the server
         if (transport().connect(uri) == qb::io::SocketStatus::Done) {
+            _connecting = true;
             start();
             send_websocket_handshake(uri);
         } else {
+            transport().close();
             push<DisplayMessageEvent>(_cmdline_actor_id, "Failed to connect to server", "error");
         }
     }
@@ -267,8 +282,14 @@ public:
     // Handle disconnect requests
     void
     on(const DisconnectEvent &event) {
-        if (_connected) {
-            disconnect();
+        if (_closing) {
+            push<DisplayMessageEvent>(_cmdline_actor_id, "Close in progress", "warning");
+            return;
+        }
+        if (_connected || _connecting) {
+            // This is an actor event, outside the I/O dispatch: finish dispose now so
+            // a queued /connect cannot restart the old watcher before teardown.
+            disconnect_now();
         } else {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Not connected!", "warning");
         }
@@ -283,7 +304,8 @@ public:
             push<DisplayMessageEvent>(_cmdline_actor_id, "Failed to switch to WebSocket protocol", "error");
             disconnect();
         } else {
-            _connected = true;
+            _connecting = false;
+            _connected  = true;
             push<DisplayMessageEvent>(_cmdline_actor_id, "✓ Connected to WebSocket server!", "success");
 
             // Send user joined notification
@@ -335,8 +357,12 @@ public:
     // Handle close frames from the server
     void
     on(WS_Protocol::close &&event) {
+        _closing = true;
         std::string close_reason(event.data, event.size);
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connection closed: " + close_reason, "warning");
+        // Declaring this handler suppresses the protocol's default Close echo.
+        // The parser already marked this frame for client-side masking.
+        *this << event.ws;
         _connected      = false;
         _user_announced = false;
     }
@@ -345,8 +371,16 @@ public:
     void
     on(qb::io::async::event::disconnected &&) {
         push<DisplayMessageEvent>(_cmdline_actor_id, "✗ Disconnected from server", "warning");
+        _connecting     = false;
         _connected      = false;
         _user_announced = false;
+    }
+
+    void
+    on(qb::io::async::event::dispose &&) {
+        // The watcher is stopped; close the socket before allowing reconnect.
+        transport().close();
+        _closing = false;
     }
 
 private:
@@ -700,6 +734,8 @@ private:
         } else {
             std::cout << message << "\n"; // Default
         }
+        // Keep status visible when the CLI is piped while a socket drains.
+        std::cout.flush();
     }
 
     void
