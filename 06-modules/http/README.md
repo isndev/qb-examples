@@ -188,9 +188,11 @@ Below is a list of the available examples and the key features they showcase:
     * `GET /static/*path`: Serves files from `resources/static`.
     * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
     * `GET /browse`, `GET /browse/*path`: Directory listing for the static root; paths that resolve outside it return 403.
-    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`
+    * `GET /api/files`, `GET /api/files/:filename`, `DELETE /api/files/:filename`: The filename must be one path
+      component; an encoded separator or parent path returns 400 before reading or deleting a file.
     * `POST /api/upload`: Stores each upload under a distinct name and reports 201 only after a complete write.
-    * `PUT /api/files/:filename/metadata`: Applies a valid update as one change; a 400 leaves metadata unchanged.
+    * `PUT /api/files/:filename/metadata`: Uses the same filename rule and applies a valid update as one change;
+      a 400 leaves metadata unchanged.
 
 ### 9. `09-coroutine-handlers.cpp`
 

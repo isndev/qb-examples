@@ -92,6 +92,8 @@ def test_static(binary):
         outside.mkdir()
         (inside / "inside-marker").write_text("inside")
         (outside / "outside-marker").write_text("outside")
+        delete_marker = static / "delete-marker.txt"
+        delete_marker.write_text("must remain")
         symlink_available = True
         try:
             (static / "outside-link").symlink_to(outside, target_is_directory=True)
@@ -114,6 +116,16 @@ def test_static(binary):
                 check(status == 200 and any(item["name"] == "inside-marker" for item in data["entries"]), "browse accepts inward symlink")
             else:
                 print("SKIP symlink policy: symlink creation unavailable")
+
+            escaped_marker = "/api/files/%2e%2e%2fresources%2fstatic%2fdelete-marker.txt"
+            for method in ("GET", "PUT", "DELETE"):
+                body = b"{}" if method == "PUT" else None
+                status, _ = request(method, escaped_marker + ("/metadata" if method == "PUT" else ""), body,
+                                    "application/json" if method == "PUT" else None)
+                check(status == 400 and delete_marker.read_text() == "must remain", f"{method} rejects decoded parent path")
+            for unsafe_name in ("%2e", "%2e%2e", "%2e%2e%5cdelete-marker.txt", "C%3adelete-marker.txt", "%00"):
+                status, _ = request("DELETE", "/api/files/" + unsafe_name)
+                check(status == 400 and delete_marker.read_text() == "must remain", f"DELETE rejects unsafe name {unsafe_name}")
 
             first = b"first content"
             second = b"second content"
@@ -140,6 +152,18 @@ def test_static(binary):
             check(status == 400, "invalid metadata update is rejected")
             status, after = request("GET", metadata_path)
             check(status == 200 and after == before, "metadata remains unchanged after 400")
+            status, _ = request("DELETE", f"/api/files/{name2}")
+            check(status == 200 and not (root / "uploads" / name2).exists(), "valid DELETE removes its uploaded file")
+            if symlink_available:
+                file_link = root / "uploads" / "delete-link"
+                try:
+                    file_link.symlink_to(delete_marker)
+                except OSError:
+                    print("SKIP file symlink policy: symlink creation unavailable")
+                else:
+                    status, _ = request("DELETE", "/api/files/delete-link")
+                    check(status == 200 and not file_link.is_symlink() and delete_marker.read_text() == "must remain",
+                          "DELETE removes an upload symlink without touching its target")
 
 
 def test_rest(binary):

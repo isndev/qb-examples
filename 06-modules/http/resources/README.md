@@ -60,6 +60,7 @@ The `08-static-files.cpp` server is configured to:
 3. Provide a `/browse` endpoint for listing directories beneath the static resource root;
    requests resolving outside it (including through symlinks) receive 403.
 4. Offer API endpoints like `/api/upload` and `/api/files` that are typically interacted with from `upload.html`.
+   A file URL parameter must decode to one filename component; invalid names return 400.
 
 ## Running the Static File Demo (`08-static-files.cpp`)
 

@@ -46,6 +46,9 @@ plumbing do not qualify.
 - **The HTTP upload example keeps same-name uploads distinct and checks stored bytes (Huly QB-791).**
   A per-server sequence prevents rapid uploads from truncating one another; failed writes,
   flushes, closes, or an incomplete stored size no longer receive 201 or metadata.
+- **The HTTP file API rejects path-shaped filenames before deletion or metadata lookup (Huly QB-987).**
+  A decoded parent path can no longer delete a file beside `uploads`; GET, PUT and DELETE
+  accept only one filename component and return 400 for separators, NUL, dot names or a Windows drive/colon.
 - **The HTTP Book PATCH and file metadata update commit only a fully valid change (Huly QB-788).**
   If a later field has the wrong JSON type, the 400 response leaves the existing object unchanged.
 - **Redis Pub/Sub lesson describes disconnect and deferred resumption (Huly QB-252).**

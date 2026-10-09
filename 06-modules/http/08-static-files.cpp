@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <ctime>
 #include <system_error>
+#include <string_view>
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/parse.h>   // qb::to_number (non-throwing string-to-number)
@@ -44,6 +45,15 @@
 #include <qbm/http/middleware/security_headers.h>
 #include <qbm/http/headers.h> // Pour parse_header_attributes
 #include "upload_write.h"
+
+// Route parameters are already percent-decoded. Restrict a stored filename to
+// one component on every supported platform; ':' also excludes Windows drive
+// names and alternate data streams.
+[[nodiscard]] static bool
+is_single_filename_component(std::string_view filename) noexcept {
+    return !filename.empty() && filename != "." && filename != ".." && filename.find_first_of("/\\:") == std::string_view::npos
+           && filename.find('\0') == std::string_view::npos;
+}
 
 // File metadata structure
 struct FileMetadata {
@@ -141,6 +151,18 @@ public:
     }
 
 private:
+    static bool
+    valid_filename_or_reply(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx, std::string_view filename) {
+        if (is_single_filename_component(filename)) {
+            return true;
+        }
+        ctx->response().status() = qb::http::Status::BAD_REQUEST;
+        ctx->response().add_header("Content-Type", "application/json");
+        ctx->response().body() = qb::json{{"error", "Invalid filename"}};
+        ctx->complete();
+        return false;
+    }
+
     void
     create_directories() {
         // Create static files directory structure
@@ -326,7 +348,10 @@ private:
 
     void
     handle_get_file_metadata(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        std::string           filename = ctx->path_param("filename");
+        std::string filename = ctx->path_param("filename");
+        if (!valid_filename_or_reply(ctx, filename)) {
+            return;
+        }
         std::filesystem::path filepath = _upload_dir / filename;
 
         if (!std::filesystem::exists(filepath)) {
@@ -411,13 +436,7 @@ private:
                 return;
             }
 
-            // A stored name must remain one path component on every platform.
-            if (uploaded_filename.find_first_of("/\\") != std::string::npos || uploaded_filename.find('\0') != std::string::npos
-                || uploaded_filename == "." || uploaded_filename == "..") {
-                ctx->response().status() = qb::http::Status::BAD_REQUEST;
-                ctx->response().add_header("Content-Type", "application/json");
-                ctx->response().body() = qb::json{{"error", "Invalid filename"}};
-                ctx->complete();
+            if (!valid_filename_or_reply(ctx, uploaded_filename)) {
                 return;
             }
 
@@ -514,7 +533,10 @@ private:
 
     void
     handle_delete_file(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
-        std::string           filename = ctx->path_param("filename");
+        std::string filename = ctx->path_param("filename");
+        if (!valid_filename_or_reply(ctx, filename)) {
+            return;
+        }
         std::filesystem::path filepath = _upload_dir / filename;
 
         try {
@@ -545,6 +567,9 @@ private:
     void
     handle_update_metadata(std::shared_ptr<qb::http::Context<qb::http::DefaultSession>> ctx) {
         std::string filename = ctx->path_param("filename");
+        if (!valid_filename_or_reply(ctx, filename)) {
+            return;
+        }
 
         try {
             auto body_json = ctx->request().body().as<qb::json>();
