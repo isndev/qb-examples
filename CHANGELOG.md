@@ -35,6 +35,10 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **The Redis cardinality example handles refused or short `BITFIELD` replies (Huly QB-828).**
+  It prints `n/a` for an unavailable counter, completes cleanup and exits with a failed verdict
+  instead of reading past the reply vector and crashing. The normal run now requires the
+  measured counter line; its verdict checks the values.
 - **Market Data Hub exits after either end of its wire fails (Huly QB-808).** A failed
   publisher bind no longer launches a feed thread that waits forever. A subscriber
   connect failure or disconnect before the end marker stops the engine, releases the

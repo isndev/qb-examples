@@ -5,14 +5,14 @@ Redis client functionality integrated with the QB C++ Actor Framework.
 
 ## Prerequisites
 
-- **A running Redis server instance — all ten need one.** `dev/agent/run-examples.py` records
+- **A running Redis server instance — all fourteen need one.** `dev/agent/run-examples.py` records
   `needs = redis` for every target here and reports a SKIP, never a pass, when nothing answers.
 - The QB Framework, including `qb-core`, `qb-io`, and `qbm-redis`, must be built.
-- Eight of the ten define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
-  edit it if your server is elsewhere. The two exceptions spell the URI inline:
-  `03-coroutines-and-pipelining.cpp` repeats `{"tcp://localhost:6379"}` per client, and
-  `09-reliability.cpp` uses named constants `URI` / `DEAD_URI` (`:78-79`) — the second deliberately
-  points at a port where nothing listens.
+- Nine define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
+  edit it if your server is elsewhere. `06-streams` uses a string macro, `03-coroutines-and-pipelining`
+  spells the URI inline, and `09-reliability` and `11-callbacks-and-consumers` use named constants.
+  `12-cardinality-and-bitmaps` accepts `QB_EXAMPLE_REDIS_URI` for an isolated server and otherwise
+  uses `tcp://localhost:6379`.
 
 ## Building the Examples
 
@@ -276,6 +276,9 @@ These examples provide a practical starting point for leveraging Redis with the 
   per user only if your ids are dense integers — `SETBIT` at 4,000,000,000 allocates 500 MB for one
   user. What you buy is `BITOP`: AND is retention, OR is reach, executed server-side, result is
   another bitmap.
+* **A refused or short `BITFIELD` reply** prints `n/a` for the missing counter, reports a failed
+  verdict and exits nonzero after cleanup. The measured counter line is part of the normal run's
+  checked output.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-cardinality-and-bitmaps`
 
 ---
