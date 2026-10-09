@@ -37,4 +37,17 @@ qb_example(
         INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        TARGET_VAR QB_APP_TARGET
 )
+
+if (QB_BUILD_TESTS AND TARGET ${QB_APP_TARGET})
+    qb_add_test(MODULE qb-examples TIER system NAME market-feed-stop
+                SOURCES tests/feed-stop.cpp DEPENDS qb-core
+                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src
+                LABELS serial)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME qb-examples-test-system-market-data-hub-shutdown
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_startup_failure.py $<TARGET_FILE:${QB_APP_TARGET}>)
+    set_tests_properties(qb-examples-test-system-market-data-hub-shutdown
+                         PROPERTIES LABELS "tier:system;module:qb-examples;network" RUN_SERIAL TRUE TIMEOUT 20)
+endif ()

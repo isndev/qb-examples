@@ -79,7 +79,8 @@
  * (ordered, so it lands after the last `send<>`), each aggregator does a FINAL manual `flush()` —
  * the batcher's window timer is cancelled with the actor, so buffered items would otherwise be
  * dropped — the publisher writes an empty-symbol sentinel record, and only when the SUBSCRIBER has
- * decoded it does anything call `qb::Main::stop()`. Nothing here sleeps and hopes.
+ * decoded it does the successful path call `qb::Main::stop()`. A failed connect or a disconnect
+ * before that sentinel stops the engine with an explicit failed verdict. Nothing sleeps and hopes.
  *
  * Build:
  *   cmake --preset release
@@ -90,6 +91,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <random>
 #include <thread>
@@ -111,11 +113,12 @@ constexpr std::uint16_t kPort = 18432;
 /// The foreign thread. It knows nothing about actors, cores or events — it produces `Tick`s into a
 /// bounded ring, exactly as a vendor SDK callback would.
 void
-feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &subscriber_ready, std::atomic<bool> &stop_requested) {
-    // Wait for the wire's other end before producing anything. Without this the first ~10000
-    // quotes are published into an empty session list — measured — and the record count at the
-    // end becomes a number about startup timing rather than about the pipeline.
-    while (!subscriber_ready.load(std::memory_order_acquire)) {
+feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &publisher_accepted, std::atomic<bool> &subscriber_started,
+            std::atomic<bool> &stop_requested) {
+    // Wait for both ends of the local wire before producing anything. Without the publisher's
+    // accept, the first ~10000 quotes are sent into an empty session list; without the
+    // subscriber's start, the receive side may not yet be draining its socket.
+    while (!publisher_accepted.load(std::memory_order_acquire) || !subscriber_started.load(std::memory_order_acquire)) {
         if (stop_requested.load(std::memory_order_acquire)) {
             feeding.store(false, std::memory_order_release);
             return;
@@ -155,6 +158,7 @@ feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &subsc
 
 } // namespace
 
+#ifndef QB_MARKET_DATA_FEED_TEST
 int
 main() {
     // Spelled out rather than through the `TickRing` alias: the capacity is part of the design
@@ -162,7 +166,8 @@ main() {
     // show) and the type is what the guard can check this file for.
     qb::lockfree::spsc::ringbuffer<Tick, 4096> ring;
     std::atomic<bool>                          feeding{true};
-    std::atomic<bool>                          subscriber_ready{false};
+    std::atomic<bool>                          publisher_accepted{false};
+    std::atomic<bool>                          subscriber_started{false};
     std::atomic<bool>                          stop_feed{false};
     Report                                     report;
 
@@ -177,7 +182,7 @@ main() {
     // Core 0 publishes and serves the socket; cores 1..N aggregate; the last core ingests. The
     // placement is explicit because a pipeline's whole point is that its stages do not share a
     // thread.
-    qb::ActorId publisher = engine.addActor<PublisherActor>(0, kPort, &subscriber_ready, &report);
+    qb::ActorId publisher = engine.addActor<PublisherActor>(0, kPort, &publisher_accepted, &report);
 
     std::vector<qb::ActorId> shards;
     shards.reserve(kAggregators);
@@ -185,7 +190,10 @@ main() {
         shards.push_back(engine.addActor<AggregatorActor>(static_cast<qb::CoreId>(1 + i), publisher));
 
     engine.addActor<IngestActor>(static_cast<qb::CoreId>(kAggregators + 1), &ring, &feeding, shards, &report);
-    engine.addActor<SubscriberActor>(0, publisher, kPort, &report);
+    // The private test probe sends only the subscriber to a reserved adjacent port. The
+    // publisher still binds kPort, so its successful startup cannot mask a failed connect.
+    const std::uint16_t subscriber_port = std::getenv("QB_MARKET_DATA_TEST_SUBSCRIBER_PORT") ? kPort + 1 : kPort;
+    engine.addActor<SubscriberActor>(0, publisher, subscriber_port, &subscriber_started, &report);
 
     qb::io::cout() << "market-data-hub: " << kSymbols << " symbols, " << kTotalTicks << " ticks, " << kAggregators << " shards, on "
                    << engine.usedCoreSet().size() << " cores\n\n";
@@ -198,7 +206,8 @@ main() {
 
     std::thread feed;
     if (!engine.hasError())
-        feed = std::thread(feed_thread, std::ref(ring), std::ref(feeding), std::ref(subscriber_ready), std::ref(stop_feed));
+        feed = std::thread(feed_thread, std::ref(ring), std::ref(feeding), std::ref(publisher_accepted), std::ref(subscriber_started),
+                           std::ref(stop_feed));
     else
         feeding.store(false, std::memory_order_release);
 
@@ -232,10 +241,13 @@ main() {
     // The pipeline's own verdict, and the only one worth exiting on: every quote the aggregators
     // emitted reached the wire and was decoded there. A run that loses a record must not exit 0
     // just because the engine had no error of its own.
-    const bool complete = report.quotes > 0 && report.quotes == report.emitted && report.wire_records == report.quotes;
+    const bool complete = report.wire_complete && !report.subscriber_failed && report.quotes > 0 && report.quotes == report.emitted
+                          && report.wire_records == report.quotes;
     const bool ok       = !engine.hasError() && complete;
     if (!ok)
-        qb::io::cerr() << "[fatal] engine error=" << (engine.hasError() ? "yes" : "no") << ", quotes=" << report.quotes
+        qb::io::cerr() << "[fatal] engine error=" << (engine.hasError() ? "yes" : "no")
+                       << ", subscriber finished=" << (report.wire_complete ? "yes" : "no")
+                       << ", subscriber failed=" << (report.subscriber_failed ? "yes" : "no") << ", quotes=" << report.quotes
                        << ", emitted=" << report.emitted << ", decoded=" << report.wire_records << "\n";
     qb::io::cout() << "\n=== market-data-hub complete: "
                    << (ok ? "feed, fan-out, batch, wire — every quote emitted was decoded at the other end"
@@ -243,3 +255,4 @@ main() {
                    << " ===\n";
     return ok ? 0 : 1;
 }
+#endif

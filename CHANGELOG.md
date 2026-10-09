@@ -35,10 +35,11 @@ plumbing do not qualify.
 
 ### Fixed
 
-- **Market Data Hub exits after publisher startup fails (Huly QB-808).** A failed bind no
-  longer launches a feed thread that waits forever for a subscriber. If the engine stops
-  while the producer waits on a full ring, the feed also stops and joins. The normal
-  20,000-tick pipeline and its delivery verdict are unchanged.
+- **Market Data Hub exits after either end of its wire fails (Huly QB-808).** A failed
+  publisher bind no longer launches a feed thread that waits forever. A subscriber
+  connect failure or disconnect before the end marker stops the engine, releases the
+  feed's subscriber/full-ring waits, and returns a failed verdict. A disconnect after
+  the marker remains a normal completion. The 20,000-tick pipeline is unchanged.
 - **Redis Pub/Sub lesson describes disconnect and deferred resumption (Huly QB-252).**
   Disconnect closes the receive channel before shutdown kills the actor, but the parked
   coroutine resumes on a later scheduler pass and may outlive the actor. The lesson no
