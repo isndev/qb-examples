@@ -103,11 +103,15 @@ Client TCP connect
 ```
 GET /ws
   └─ TaskManager::handle_ws_upgrade
-      └─ extractSession(http_session_id)       ← steals TCP socket from HTTP pool
+      ├─ reject incomplete handshake headers   ← HTTP still owns the response pipe
+      └─ suppress_response + extractSession     ← transfers TCP socket from HTTP pool
           └─ WebSocketHandler::upgrade_connection(socket, req, resp)
               └─ registerSession(socket)        ← WsSession created
                   └─ switch_protocol<ws>()     ← WS handshake → 101 response
 ```
+
+Once the socket leaves the HTTP pool, a rejected handshake closes that socket;
+the HTTP context cannot send another response over it.
 
 ### Real-time event flow (after a mutation)
 
@@ -316,4 +320,7 @@ curl -s -X DELETE http://localhost:8080/tasks/1 | jq
 
 # WebSocket (requires websocat)
 websocat ws://localhost:8080/ws
+
+# HTTP response ownership and WebSocket handoff (running server required)
+python3 scripts/test_ws_handoff.py
 ```

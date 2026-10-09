@@ -117,10 +117,15 @@ WebSocketHandler::upgrade_connection(qb::io::tcp::socket &&sock, const qb::http:
         return false;
     }
 
-    if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
-        *ws_session << response;
-        qb::io::cout() << "[WebSocketHandler] upgrade OK: " << ws_session->id() << '\n';
-        return true;
+    try {
+        if (ws_session->switch_protocol<WsSession::ws_protocol>(*ws_session, request, response)) {
+            *ws_session << response;
+            qb::io::cout() << "[WebSocketHandler] upgrade OK: " << ws_session->id() << '\n';
+            return true;
+        }
+    } catch (...) {
+        ws_session->disconnect();
+        throw;
     }
 
     qb::io::cerr() << "[WebSocketHandler] upgrade failed (bad handshake)\n";

@@ -230,18 +230,42 @@ TaskManager::handle_health(ctx_t ctx) {
 qb::io::async::task<void>
 TaskManager::handle_ws_upgrade(ctx_t ctx) {
     try {
-        auto [transport, ok] = this->extractSession(ctx->session()->id());
-        if (!ok) {
-            ctx->internal_server_error("Session extraction failed");
+        // Reject incomplete handshakes while HTTP still owns the response pipe.
+        // The WebSocket protocol checks the key itself after handoff.
+        const auto &request = ctx->request();
+        if (request.method() != HTTP_GET || !request.upgrade || !qb::http::ws::detail::iequal_ascii(request.header("Upgrade"), "websocket")
+            || !qb::http::ws::detail::has_token_ci(request.header("Connection"), "Upgrade")
+            || qb::http::ws::detail::trim_ows(request.header("Sec-WebSocket-Key")).empty()
+            || !qb::http::ws::detail::iequal_ascii(qb::http::ws::detail::trim_ows(request.header("Sec-WebSocket-Version")), "13")) {
+            ctx->bad_request("WebSocket upgrade failed");
             co_return;
         }
-        if (_ws_handler.upgrade_connection(std::move(transport), ctx->request(), ctx->response()))
-            ctx->suppress_response(); // the 101 went directly on the wire
-        else
-            ctx->bad_request("WebSocket upgrade failed");
+
+        const auto session = ctx->session();
+        if (!session) {
+            ctx->internal_server_error("HTTP session unavailable");
+            co_return;
+        }
+
+        // extractSession invokes the HTTP session's extracted event, which
+        // cancels its context. Finalize it first so that event cannot send a
+        // second HTTP response over the socket being transferred.
+        ctx->suppress_response();
+        auto [transport, ok] = this->extractSession(session->id());
+        if (!ok) {
+            qb::io::cerr() << "[TaskManager] WS session extraction failed\n";
+            co_return;
+        }
+        if (!_ws_handler.upgrade_connection(std::move(transport), request, ctx->response())) {
+            // The WS handler disconnects a rejected session (or registration
+            // closes the socket). Also close an unconsumed transport.
+            transport.close();
+            qb::io::cerr() << "[TaskManager] WS upgrade failed after handoff\n";
+        }
     } catch (const std::exception &e) {
         qb::io::cerr() << "[TaskManager] WS upgrade exception: " << e.what() << '\n';
-        ctx->internal_server_error("WebSocket upgrade error");
+        if (!ctx->is_completed())
+            ctx->internal_server_error("WebSocket upgrade error");
     }
     co_return;
 }
