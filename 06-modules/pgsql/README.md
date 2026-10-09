@@ -1,8 +1,8 @@
 # QB PostgreSQL (`qbm-pgsql`) Module Examples
 
 This directory contains a set of examples demonstrating the usage of the `qbm-pgsql` module, a C++20 asynchronous
-PostgreSQL client integrated with the QB Actor Framework. All five use the **coroutine** API: every statement is
-`co_await`ed and yields a `qb::pg::Reply<T>`.
+PostgreSQL client integrated with the QB Actor Framework. Most lessons use the **coroutine** API;
+`09-callbacks-and-await` teaches the callback chain and its synchronous `await()` drain.
 
 ## Table of Contents
 
@@ -34,9 +34,9 @@ These examples are designed to illustrate core functionalities of the `qbm-pgsql
 - Implementing error handling strategies.
 
 Only `05-errors.cpp` is an actor application (`ErrorHandlingActor`, driven by `qb::Main`,
-`05-errors.cpp:69`, `:261-267`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
+`05-errors.cpp:70`, `:277-284`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
 coroutines, scaffolded as `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(...)`
-(`01-connect-and-query.cpp:14-15`).
+(`01-connect-and-query.cpp:90-96`).
 
 ### The API in one block
 
@@ -67,11 +67,11 @@ if (!(co_await db.begin()).ok())
 co_await db.commit();
 ```
 
-There is **no** `.then()` / `.success()` / `.error()` continuation chain and no `tr.execute(...)` transaction object —
-that API is gone, and error handling is now linear (`05-errors.cpp:19-25`). `db_error` carries `what()`,
+The coroutine examples use linear error handling; `09-callbacks-and-await` shows the separate
+`.then()` / `.success()` / `.error()` callback chain. `db_error` carries `what()`,
 `severity`, `code` (SQLSTATE string), `detail` and a structured `sqlstate` enum. Client-side conversion failures are
 still **thrown**: `qb::pg::error::value_is_null` and `qb::pg::error::field_type_mismatch`, caught with `try`/`catch`
-(`05-errors.cpp:224`, `:234`).
+(`05-errors.cpp:241`, `:251`).
 
 ## Prerequisites
 
@@ -87,15 +87,31 @@ still **thrown**: `qb::pg::error::value_is_null` and `qb::pg::error::field_type_
 
 ## Connection String
 
-Each example C++ file contains a `PG_CONNECTION_STRING` constant:
+Every lesson reads `QB_EXAMPLE_PG_URI` at startup, falling back to:
 
-```cpp
-// IMPORTANT: Replace with your actual PostgreSQL connection string
-const char* PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+```text
+tcp://test:test@localhost:5432[test]
 ```
 
-**CRITICAL**: You **MUST** update this string to match your PostgreSQL server's host, port, database name, username, and
-password before attempting to run any example.
+Set the variable to match your PostgreSQL server's host, port, database name, username, and password.
+For example: `QB_EXAMPLE_PG_URI='tcp://test:test@127.0.0.1:55432[test]' ./qb-example-modules-pgsql-parameters`.
+Use a disposable database when running a whole corpus. Lessons 02, 04–07, 09 and 10 create
+connection-local temporary tables, so same-named permanent tables remain untouched. Lesson 03
+uses a random table name because a READ ONLY transaction is allowed to update a temporary table;
+its read-only demonstration needs a permanent table. It drops that table only after successful
+creation. Lesson 07 also puts its trigger function in `pg_temp` and derives its channel from the
+publisher's backend PID, isolating simultaneous runs.
+The callback lesson qualifies every table reference with `pg_temp` and stops after failed
+temporary-table setup, so a public table cannot answer its later queries. The transaction
+lesson checks rollback and DROP; cleanup failure exits nonzero and names the table for repair.
+
+The ownership regression check creates its own PostgreSQL cluster on a free loopback port, seeds
+same-named public tables, runs each affected lesson twice concurrently, and checks that only those
+sentinels remain. Run it after building the PostgreSQL targets:
+
+```sh
+python3 examples/06-modules/pgsql/test-ownership.py build/presets/release --strict
+```
 
 The format is `schema://[user[:password]@]host[:port][database_name]`.
 
@@ -140,14 +156,14 @@ target here and reports a SKIP, never a pass, when nothing answers.
   executing a simple query.
 * **Key Features**:
     * Standalone `qb-io` scaffolding — no actor, no `qb::Main`: `init()` + `coro_scheduler().spawn()` + `run_until()`
-      (`01-connect-and-query.cpp:14-15`).
-    * Creating a `qb::pg::tcp::database` client (`:44`).
-    * `co_await db.connect(uri)` — yields `bool`; on failure `db.error().what()` says why (`:47-51`).
+      (`01-connect-and-query.cpp:90-96`).
+    * Creating a `qb::pg::tcp::database` client (`:53`).
+    * `co_await db.connect(uri)` — yields `bool`; on failure `db.error().what()` says why (`:56-59`).
     * `co_await db.execute("SELECT version();")` — yields `Reply<resultset>`; no explicit transaction is opened
-      (`:56`).
+      (`:65`).
     * `reply.ok()` / `reply.result()` / `reply.error()`, then `rs[0][0].as<std::string>()` to read one field
-      (`:57-64`).
-    * A scope guard flips the `running` flag on **every** exit path so `run_until()` stops (`:37-42`).
+      (`:66-73`).
+    * A scope guard flips the `running` flag on **every** exit path so `run_until()` stops (`:46-51`).
 * **Database Operations**:
     * `SELECT version();`
 
@@ -155,22 +171,22 @@ target here and reports a SKIP, never a pass, when nothing answers.
 
 * **Purpose**: Illustrates the use of prepared statements for enhanced performance and security.
 * **Key Features**:
-    * Creating the `users` table with a plain `co_await db.execute(sql)` (`02-parameters.cpp:124`) —
+    * Creating the temporary `users` table with a plain `co_await db.execute(sql)` (`02-parameters.cpp:125`) —
       DDL is not prepared.
     * Preparing the INSERT and SELECT with
-      `co_await db.prepare(name, sql, qb::pg::type_oid_sequence{...})` → `Reply<PreparedQuery>` (`:129`, `:139`),
+      `co_await db.prepare(name, sql, qb::pg::type_oid_sequence{...})` → `Reply<PreparedQuery>` (`:138`, `:148`),
       specifying parameter type OIDs (`qb::pg::oid::text`, `qb::pg::oid::int4`).
     * Executing them by **name** with packed parameters:
-        * `co_await db.execute(PREPARE_INSERT_USER, qb::pg::params{name, email})` (`:53`)
-        * `co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{new_id})` (`:70`)
+        * `co_await db.execute(PREPARE_INSERT_USER, qb::pg::params{name, email})` (`:62`)
+        * `co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{new_id})` (`:79`)
     * Retrieving a generated id from the `RETURNING id` result set.
-    * `std::optional` for nullable columns — `qb::pg::params` accepts `std::nullopt` transparently (`:151`).
-    * Detecting a unique-constraint violation by SQLSTATE: `std::string(err.code) == "23505"` (`:57-58`).
-    * A miss: selecting id `999` and finding an empty result set (`:157`).
+    * `std::optional` for nullable columns — `qb::pg::params` accepts `std::nullopt` transparently (`:160`).
+    * Detecting a unique-constraint violation by SQLSTATE: `std::string(err.code) == "23505"` (`:64-67`).
+    * A miss: selecting id `999` and finding an empty result set (`:165-170`).
     * Cleanup is an ordinary awaited statement at the end of the coroutine, not a destructor and not a blocking
-      `.await()` (`:168`).
+      `.await()` (`:177-181`).
 * **Database Operations**:
-    * `CREATE TABLE IF NOT EXISTS users (...)`
+    * `CREATE TEMP TABLE users (...)`
     * `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;`
     * `SELECT id, name, email FROM users WHERE id = $1;`
     * `DROP TABLE IF EXISTS users;`
@@ -203,11 +219,9 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
     * **`transaction_mode`** for isolation level and READ ONLY.
     * **`set_timeout`** for a `statement_timeout` that fails with SQLSTATE 57014.
 * **Database Operations** — one table, created and dropped by the program:
-    * `CREATE TABLE IF NOT EXISTS qb_tx_accounts (...)`
-    * `INSERT INTO qb_tx_accounts (name, balance) VALUES ($1, $2), ($3, $4)`
-    * `UPDATE qb_tx_accounts SET balance = balance ± $1 WHERE name = $2`
-    * `SELECT balance FROM qb_tx_accounts WHERE name = $1` and `SELECT SUM(balance) FROM qb_tx_accounts`
-    * `DROP TABLE IF EXISTS qb_tx_accounts;`
+    * `CREATE TABLE qb_tx_accounts_<run-id> (...)` (a fresh random name)
+    * `INSERT`, `UPDATE`, and `SELECT` against that run's table
+    * `DROP TABLE qb_tx_accounts_<run-id>;`
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-transactions`
 
 ### `04-types.cpp`
@@ -226,7 +240,7 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
     * Retrieving data using `row[column_name].as<ExpectedCppType>()`.
     * Displaying the retrieved data, including formatting for timestamps and byte arrays.
 * **Database Operations**:
-    * `CREATE TABLE IF NOT EXISTS data_types_test (...)` (with numerous data types)
+    * `CREATE TEMP TABLE data_types_test (...)` (with numerous data types)
     * `INSERT INTO data_types_test (...) VALUES ($1, $2, ..., $21) RETURNING id;`
     * `SELECT * FROM data_types_test WHERE id = $1;`
     * `DROP TABLE IF EXISTS data_types_test;`
@@ -234,11 +248,11 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
 ### `05-errors.cpp`
 
 * **Purpose**: Focuses on demonstrating how `qbm-pgsql` reports various database and client-side errors.
-  **The only actor-based example here** — `ErrorHandlingActor : public qb::Actor` (`:60`) with
-  `qb::io::async::task<bool> onInit()` that `co_await db.connect(...)`, added to a `qb::Main` engine (`:252-258`).
+  **The only actor-based example here** — `ErrorHandlingActor : public qb::Actor` (`:70`) with
+  `qb::io::async::task<bool> onInit()` that `co_await db.connect(...)`, added to a `qb::Main` engine (`:277-284`).
 * **Key Features**:
     * A helper `printDbError` to display detailed information from a `qb::pg::error::db_error` (severity, SQLSTATE,
-      message, detail) — `:104`.
+      message, detail) — `:130`.
     * **Scenario 1: Syntax Error**: Executing an intentionally malformed SQL query to trigger a `42601 (syntax_error)`.
     * **Scenario 2: Unique Constraint Violation**: Attempting to insert a duplicate value into a column with a `UNIQUE`
       constraint, triggering a `23505 (unique_violation)`.
@@ -251,10 +265,10 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
           `qb::pg::error::field_type_mismatch` exception.
     * Two different mechanisms, deliberately: server-side failures arrive as data — `if (!reply.ok())
       printDbError(..., reply.error())` — while client-side conversion failures are **thrown** and caught with
-      `try`/`catch` (`:215`, `:225`).
+      `try`/`catch` (`:237-254`).
     * Driving an SQL-issuing coroutine from a synchronous actor handler with `spawn(...)`.
 * **Database Operations**:
-    * `CREATE TABLE IF NOT EXISTS error_test_items (...)` (with `UNIQUE` and `CHECK` constraints)
+    * `CREATE TEMP TABLE error_test_items (...)` (with `UNIQUE` and `CHECK` constraints)
     * `INSERT INTO error_test_items (name, quantity, description) VALUES ($1, $2, $3);`
     * `SELECT name, quantity, description FROM error_test_items WHERE name = $1;`
     * Deliberately malformed `SELEC * FRM non_existent_table;`

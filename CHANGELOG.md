@@ -35,6 +35,14 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **PostgreSQL lessons own the objects they remove (Huly QB-824).** Lessons 02, 04–07, 09 and 10
+  use connection-local temporary tables; the trigger function in 07 is temporary too, and its
+  notification channel is unique to the publisher session. The transactions lesson keeps a
+  permanent table for its READ ONLY check but gives each run a random name and reports failed
+  cleanup. The callback lesson stops on failed setup and qualifies reads with `pg_temp`. A disposable-cluster
+  check proves same-named public tables and a public function survive, two runs of each lesson
+  complete together, and run-owned tables are gone afterwards. `QB_EXAMPLE_PG_URI` selects the
+  test database without editing and rebuilding the lessons.
 - **HTTP account registration and login use the same demo password check (Huly QB-790).**
   Newly registered accounts accept their chosen password and reject another; seeded accounts keep their
   documented credentials. This in-memory example stores plain-text passwords and does not model production storage.

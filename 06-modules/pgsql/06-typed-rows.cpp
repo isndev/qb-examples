@@ -70,11 +70,12 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 namespace {
 
-const char           *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char           *PG_CONNECTION_STRING = example_pg_connection_string();
 constexpr const char *TABLE                = "qb_example_typed_rows";
 
 } // namespace
@@ -95,11 +96,10 @@ run_typed_rows(bool &running, bool &ok) {
     }
 
     // ---- setup ------------------------------------------------------------------------
-    (void) co_await db.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + ";");
-    auto created = co_await db.execute(std::string("CREATE TABLE ") + TABLE
+    auto created = co_await db.execute(std::string("CREATE TEMP TABLE ") + TABLE
                                        + " (id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT, score DOUBLE PRECISION NOT NULL);");
     if (!created.ok()) {
-        qb::io::cerr() << "CREATE TABLE failed: " << created.error().what() << std::endl;
+        qb::io::cerr() << "CREATE TEMP TABLE failed: " << created.error().what() << std::endl;
         co_return;
     }
 

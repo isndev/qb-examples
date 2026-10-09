@@ -29,6 +29,7 @@
  * - `qb::io::cout()` — thread-safe console output.
  */
 
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
@@ -36,7 +37,7 @@
 #include <string>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
 // All PostgreSQL work happens inside a coroutine; `running` is flipped to false on ANY exit path
 // (scope guard) so the run_until() loop in main() stops once the coroutine is done.

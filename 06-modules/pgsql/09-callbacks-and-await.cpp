@@ -76,13 +76,14 @@
 #include <vector>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 namespace {
 
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
-constexpr const char *TABLE    = "qb_example_callbacks";
+constexpr const char *TABLE    = "pg_temp.qb_example_callbacks";
 constexpr const char *STMT     = "qb_example_top_scores";
 constexpr const char *SQL_FILE = "resources/sql/top-scores.sql";
 
@@ -112,8 +113,8 @@ main() {
     // -----------------------------------------------------------------------------------
     // 1. THE CHAIN — built synchronously, executed by await().
     // -----------------------------------------------------------------------------------
-    // A previous run that died mid-way must not change what this one measures.
-    db.execute(std::string("DROP TABLE IF EXISTS ") + TABLE + ";", qb::pg::discard_query, qb::pg::discard_error);
+    // The table belongs to this connection's temporary schema. A previous run cannot
+    // leave one behind, and an unrelated public table with the same name is untouched.
 
     bool        created_fired = false;
     bool        seeded_fired  = false;
@@ -121,7 +122,7 @@ main() {
     std::size_t seeded_rows   = 0;
 
     db.execute(
-          std::string("CREATE TABLE ") + TABLE + " (id SERIAL PRIMARY KEY, name TEXT NOT NULL, score DOUBLE PRECISION NOT NULL);",
+          std::string("CREATE TEMP TABLE ") + TABLE + " (id SERIAL PRIMARY KEY, name TEXT NOT NULL, score DOUBLE PRECISION NOT NULL);",
           // on_success takes the Transaction and the result set. A DDL statement returns no
           // rows, so this one only records that it ran.
           [&created_fired](qb::pg::detail::Transaction &, qb::pg::results) { created_fired = true; },
@@ -142,6 +143,10 @@ main() {
 
     // THE DRAIN.
     auto setup = db.await();
+    if (!static_cast<bool>(setup) || !created_fired || !seeded_fired) {
+        qb::io::cerr() << "[setup] temporary table setup failed; stopping before later statements\n";
+        return 1;
+    }
 
     qb::io::cout() << "[chain] execute(sql, on_success, on_error) returns the Transaction, so the calls CHAIN.\n"
                       "        .then() / .success() append a node that fires only if the step before it\n"
@@ -161,7 +166,7 @@ main() {
                       "          callback overloads take the handler by value and call it unconditionally, with\n"
                       "          no per-reply branch, so a handler is never ABSENT. 'I do not care about this\n"
                       "          one' therefore needs a real callable, and those three constexpr no-ops are it\n";
-    qb::io::cout() << "          (the DROP above and the INSERT's error arm used discard_error; the inline prepare below\n"
+    qb::io::cout() << "          (the INSERT's error arm and cleanup use discard_error; the inline prepare below\n"
                       "          uses discard_prepare, whose signature is (Transaction&, PreparedQuery const&) and not\n"
                       "          the one execute() wants — which is why there are three and not one)\n\n";
 
@@ -296,9 +301,11 @@ main() {
 
     // ---- cleanup ----------------------------------------------------------------------
     bool dropped = false;
-    db.execute(
-        std::string("DROP TABLE IF EXISTS ") + TABLE + ";", [&dropped](qb::pg::detail::Transaction &, qb::pg::results) { dropped = true; },
-        qb::pg::discard_error);
+    if (created_fired) {
+        db.execute(
+            std::string("DROP TABLE ") + TABLE + ";", [&dropped](qb::pg::detail::Transaction &, qb::pg::results) { dropped = true; },
+            qb::pg::discard_error);
+    }
     auto cleaned = db.await();
 
     const bool ok = chain_ok && inline_prepared && error_ok && params_ok && status_ok && dropped && static_cast<bool>(cleaned);

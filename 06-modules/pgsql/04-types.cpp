@@ -32,6 +32,7 @@
  * - `qb::json` — JSON / JSONB columns.
  */
 
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
@@ -46,9 +47,9 @@
 #include <vector>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
-const char *DATA_TYPES_TABLE_SQL = "CREATE TABLE IF NOT EXISTS data_types_test ("
+const char *DATA_TYPES_TABLE_SQL = "CREATE TEMP TABLE data_types_test ("
                                    "id SERIAL PRIMARY KEY, "
                                    "integer_col INT, "
                                    "smallint_col SMALLINT, "

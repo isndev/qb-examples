@@ -80,13 +80,14 @@
 #include <string>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include "example-database.h"
 #include <qbm/pgsql/pgsql.h>
 
 using namespace std::chrono_literals;
 
 namespace {
 
-const char *PG_CONNECTION_STRING = "tcp://test:test@localhost:5432[test]";
+const char *PG_CONNECTION_STRING = example_pg_connection_string();
 
 } // namespace
 
