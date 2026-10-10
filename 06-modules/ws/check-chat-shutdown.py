@@ -76,8 +76,12 @@ def expect_tcp_closed(peer):
 
 
 class ClientPeer:
-    def __init__(self, binary):
+    def __init__(self, binary, receive_buffer=None):
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if receive_buffer is not None:
+            # Set this before the SYN so the accepted connection negotiates
+            # a small receive window, rather than shrinking it too late.
+            self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer)
         self.listener.bind(("127.0.0.1", 0))
         self.listener.listen(2)
         self.listener.settimeout(4)
@@ -207,17 +211,18 @@ def check_client_case(binary, peer_close):
 
 
 def check_client_backpressure(binary):
-    client = ClientPeer(binary)
+    client = ClientPeer(binary, receive_buffer=4096)
     try:
         client.command(f"/connect {client.url}")
         first = client.accept_upgrade()
-        first.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
         first.settimeout(8)
         # Ping replies have no CLI echo. Hold back their reads to fill the
         # client's TCP send buffer before it appends its Close reply.
         payload = b"x" * 125
         ping = b"\x89\x7d" + payload
-        count = 8192
+        # 8192 replies (~1 MiB) fit Linux's auto-grown send buffer. This
+        # train exceeds 4 MiB; the assertion below verifies backpressure.
+        count = 32768
         first.sendall(ping * count + b"\x88\x02\x03\xe8")
         client.wait_output("Connection closed:")
         time.sleep(0.1)
