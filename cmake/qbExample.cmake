@@ -208,7 +208,7 @@ endfunction()
 #     [DEFINES   ...] [INCLUDES ...]
 #     [TARGET_VAR <var>])                      # derived target name, back to the caller
 #
-# Forwards to `qb_add_executable` (qb/cmake/qbFunctions.cmake:287), which owns the
+# Forwards to `qb_add_executable` (qb/cmake/qbFunctions.cmake:293), which owns the
 # capability gate at :300-306. NAME and OUTPUT_NAME are refused, not forwarded: they
 # are the two strings whose hand-writing this wrapper exists to abolish.
 #

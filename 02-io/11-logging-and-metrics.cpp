@@ -38,7 +38,7 @@
  *
  * THE PART NOBODY EXPECTS
  * -----------------------
- * With `QB_WITH_LOGGING=ON` (the default), `qb/src/qb/io/logger.cpp:52-64` runs a static
+ * With `QB_WITH_LOGGING=ON` (the default), `qb/src/qb/io/logger.cpp:169-197` runs a static
  * initialiser that calls `qb::io::log::init("./qb", 512)` and `setLevel(INFO)` — so **every**
  * executable linking qb-io creates `./qb.1.log` in its working directory and starts a logging
  * thread before `main()` is entered, whether or not it ever logs a line. Measured on this tree:

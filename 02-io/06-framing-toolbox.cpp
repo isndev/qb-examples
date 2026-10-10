@@ -41,7 +41,8 @@
  * split is why the three custom protocols below are eight lines each, and `qb/io/protocol/text.h`
  * and `json.h` are the same two halves pre-written — `text::command` is `byte_terminated<'\n'>`
  * yielding a `std::string`, `text::binary8/16/32` are `size_as_header` yielding a pointer and a
- * length, and `json`/`json_packed` are `byte_terminated<'\0'>` yielding a parsed document.
+ * length, `json` is `byte_terminated<'\0'>` yielding a parsed document, and `json_packed` frames each
+ * message by the MessagePack value itself (Huly QB-305).
  *
  * FRAMING IS ALSO A BOUND, AND THAT IS THE PART TO REMEMBER
  * --------------------------------------------------------
