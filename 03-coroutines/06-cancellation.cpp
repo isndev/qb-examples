@@ -27,8 +27,8 @@
  * An actor may be killed at any time — by `kill()`, by a `KillEvent`, by SIGINT. Its
  * coroutines do not stop being suspended when that happens: a frame parked on a 30-second
  * timer is still parked and still owns whatever its locals own. `kill()` marks the actor dead
- * and queues it for reaping (`Actor.cpp:555-566`, `VirtualCore.cpp:1315-1317`); the reaper erases
- * it from the core's map (`VirtualCore.cpp:1283-1288`). Without cancellation that is either a
+ * and queues it for reaping (`Actor.cpp:555-566`, `VirtualCore.cpp:1327-1329`); the reaper erases
+ * it from the core's map (`VirtualCore.cpp:1295-1300`). Without cancellation that is either a
  * leak — the frame never unwinds — or use-after-free when it later touches the actor.
  *
  * The mechanism is one `qb::io::async::cancellation_token` per actor: its SCOPE. `kill()`
@@ -54,7 +54,7 @@
  * `co_await qb::io::async::sleep(400ms)` — the free function, without `ctx.` — registers no
  * hook. Kill the actor and that frame sleeps out its full duration and resumes into a world
  * where its actor no longer exists. The framework says as much about its own teardown
- * ("cancel_all cannot wake a plain sleep()", `scheduler.h:951-952`). Section 6 runs the two side
+ * ("cancel_all cannot wake a plain sleep()", `scheduler.h:945-946`). Section 6 runs the two side
  * by side and prints when each woke.
  *
  * Nothing is corrupted by it here, because that body only prints. `ctx.push(...)` or

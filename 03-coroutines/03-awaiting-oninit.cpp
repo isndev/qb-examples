@@ -118,7 +118,7 @@ public:
         // MEASURED, AND NOT WHAT THE PHASE TABLE SUGGESTS. Before the first `co_await` this
         // actor still reports `is_active() == true`, because `_activated` starts true and the
         // engine only clears it once the init frame has actually SUSPENDED
-        // (`VirtualCore.cpp:740`, reached from `__drive_init__` after the resume returns
+        // (`VirtualCore.cpp:751`, reached from `__drive_init__` after the resume returns
         // "still running"). "Activating" is therefore a state an actor enters at its first
         // suspension, not one it is born in — which is exactly right for the synchronous
         // majority, whose `onInit` never suspends and never sees `false`.
@@ -175,7 +175,7 @@ public:
 
         // ONE CLOCK CHOICE. `Actor::time()` reads a real wall-clock instant on first use,
         // including during the pre-loop `onInit` phase, and caches it for that pass
-        // (`VirtualCore.h:657-669`, `VirtualCore.cpp:1405-1411`). It is suitable for a
+        // (`VirtualCore.h:666-678`, `VirtualCore.cpp:1417-1423`). It is suitable for a
         // timestamp here; use steady_clock for the elapsed startup wait measured below so
         // a wall-clock adjustment cannot change the duration. The first read also fixes the
         // shared sample for every other actor that asks during this pre-loop phase.
