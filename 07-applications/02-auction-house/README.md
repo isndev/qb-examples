@@ -46,7 +46,7 @@ coroutines**.
 ### Prerequisites
 
 - PostgreSQL running with an `auction_house` database
-- Redis running on localhost:6379
+- Redis running on localhost:6379 by default (`REDIS_HOST` and `REDIS_PORT` may select another IPv4 endpoint)
 - QB Framework built
 
 ### Setup Database
@@ -74,7 +74,15 @@ cmake --build build/presets/dev --target qb-example-applications-auction-house -
 # Or override the DB via env
 PG_HOST=localhost PG_PORT=5432 PG_USER=auction_user PG_PASS=auction_pass PG_DB=auction_house \
     ./build/presets/dev/examples/07-applications/02-auction-house/qb-example-applications-auction-house
+
+# Run against a separately provisioned Redis endpoint
+REDIS_HOST=127.0.0.1 REDIS_PORT=16379 \
+    ./build/presets/dev/examples/07-applications/02-auction-house/qb-example-applications-auction-house
 ```
+
+`REDIS_PORT` must be an unsigned decimal port in `1..65535`. An empty or
+malformed Redis host or port exits before database initialization. The defaults
+remain `localhost:6379` when neither variable is set.
 
 The schema is bootstrapped automatically at startup (a `run_sync` coroutine runs the
 idempotent `init_db.sql`), so the DB just needs to exist and the user own its schema.

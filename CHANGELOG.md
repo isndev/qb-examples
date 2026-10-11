@@ -11,6 +11,10 @@ plumbing do not qualify.
 
 ### Added
 
+- **Auction House accepts a separate Redis endpoint (Huly QB-916).** `REDIS_HOST` and
+  `REDIS_PORT` select the connection at startup; the default remains `localhost:6379`.
+  Malformed endpoints fail before database initialization, allowing the normal application
+  binary to be validated against disposable services.
 - **`01-actors/04-cores-and-placement` reads its cores' counters (Huly QB-162).** Each worker reports what its core
   has received and published to other cores, and the dispatcher how many events core 0 published, with
   `getCoreStats()`: its pushes to the worker sharing core 0 never leave that core, so they show as received there and

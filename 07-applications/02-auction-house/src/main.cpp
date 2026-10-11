@@ -25,10 +25,17 @@
  * Then open: http://localhost:8080
  */
 
+#include <charconv>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <iostream>
+#include <string>
+#include <string_view>
+#include <system_error>
 #include <qbm/pgsql/pgsql.h>
 #include <qb/actor.h>
 #include <qb/io.h>
@@ -94,9 +101,32 @@ main(int argc, char *argv[]) {
     const char *pg_db   = std::getenv("PG_DB") ? std::getenv("PG_DB") : "auction_house";
     const char *pg_port = std::getenv("PG_PORT") ? std::getenv("PG_PORT") : "5432";
 
+    const char            *redis_host_env  = std::getenv("REDIS_HOST");
+    const char            *redis_port_env  = std::getenv("REDIS_PORT");
+    const std::string      redis_host      = redis_host_env ? redis_host_env : "localhost";
+    const std::string_view redis_port_text = redis_port_env ? redis_port_env : "6379";
+    unsigned int           redis_port      = 0;
+    const auto [port_end, port_error] = std::from_chars(redis_port_text.data(), redis_port_text.data() + redis_port_text.size(), redis_port);
+    if (redis_host.empty() || redis_host.find(':') != std::string::npos || port_error != std::errc{}
+        || port_end != redis_port_text.data() + redis_port_text.size() || redis_port == 0 || redis_port > 65535) {
+        qb::io::cerr() << "[Main] Invalid REDIS_HOST or REDIS_PORT (port must be 1..65535)\n";
+        return 1;
+    }
+
+    qb::io::uri redis_uri;
+    try {
+        redis_uri = qb::io::uri{std::string("tcp://") + redis_host + ":" + std::to_string(redis_port)};
+    } catch (const std::exception &) {
+        qb::io::cerr() << "[Main] Invalid Redis endpoint\n";
+        return 1;
+    }
+    if (!redis_uri.is_valid() || redis_uri.scheme() != "tcp" || redis_uri.host() != redis_host || redis_uri.u_port() != redis_port) {
+        qb::io::cerr() << "[Main] Invalid Redis endpoint\n";
+        return 1;
+    }
+
     const qb::io::uri listen_uri{"tcp://0.0.0.0:" + std::to_string(PORT)};
     const qb::io::uri pg_uri{std::string("tcp://") + pg_user + ":" + pg_pass + "@" + pg_host + ":" + pg_port + "[" + pg_db + "]"};
-    const qb::io::uri redis_uri{"tcp://localhost:6379"};
 
     // Find static resources
     std::filesystem::path static_root = RESOURCES_PATH;
@@ -127,6 +157,7 @@ main(int argc, char *argv[]) {
     qb::io::cout() << "  Port:        " << PORT << "\n";
     qb::io::cout() << "  Workers:     " << NUM_WORKERS << "\n";
     qb::io::cout() << "  Database:    " << pg_host << "/" << pg_db << "\n";
+    qb::io::cout() << "  Redis:       " << redis_host << ":" << redis_port << "\n";
     qb::io::cout() << "  Resources:   " << static_root << "\n";
     qb::io::cout() << "\n";
 
