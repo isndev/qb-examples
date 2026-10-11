@@ -47,9 +47,10 @@
  *    it hands you may belong to a service that has not finished initialising — or one that has
  *    been killed and not yet reaped. Read only what its constructor set, or ask it by event.
  * 4. **A service's id is COMPUTED, not looked up.** `getServiceId<Tag>(core)` is a static
- *    function returning `ActorId{ServiceIndex, core}` — it needs no registry and works for a
- *    core other than your own, which `getService` cannot do. That is how a service on core 0
- *    addresses its counterpart on core 1 with nothing passed in.
+ *    function returning the tag's service id paired with `core` — the id the tag registered once
+ *    per process, before any core started — so it needs no lookup and works for a core other
+ *    than your own, which `getService` cannot do. That is how a service on core 0 addresses its
+ *    counterpart on core 1 with nothing passed in. It proves nothing about that core hosting one.
  *
  * THE TAG MUST BE A COMPLETE TYPE
  * -------------------------------
@@ -167,8 +168,8 @@ public:
             qb::io::cout() << "[worker@" << getIndex() << "] this core does host a TelemetryService\n";
 
         // 3. The OTHER core's service, addressed without a lookup. `getServiceId<Tag>(core)` is
-        //    a static function over the tag: it builds `ActorId{ServiceIndex, core}` from the
-        //    type alone. `getService` could not answer this — it is same-core only.
+        //    a static function over the tag: it pairs the tag's registered service id with the
+        //    core, from the type alone. `getService` could not answer this — it is same-core only.
         if (getIndex() == 0) {
             const qb::ActorId peer = getServiceId<ConfigTag>(1);
             qb::io::cout() << "[worker@0] addressed the core-1 service with getServiceId, no lookup and no plumbing "

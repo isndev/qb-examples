@@ -43,7 +43,7 @@
  *
  * THREE ENQUEUE OVERLOADS, AND ONLY ONE OF THEM LOCKS
  * --------------------------------------------------
- *   ring.enqueue<I>(item)         compile-time slot I. No lock. (qb/system/lockfree/mpsc.h:76)
+ *   ring.enqueue_at<I>(item)      compile-time slot I. No lock. (qb/system/lockfree/mpsc.h:76)
  *   ring.enqueue(index, item)     runtime slot. **No lock.**  (mpsc.h:102)
  *   ring.enqueue(item)            round-robin. **Takes the slot's SpinLock.** (mpsc.h:131)
  *

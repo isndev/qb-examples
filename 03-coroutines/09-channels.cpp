@@ -311,8 +311,9 @@ demo_pipeline() {
     qb::io::cout() << "[pipeline] filter -> transform -> collect produced " << out.size() << " values: " << joined << "\n";
 
     // `make_pipeline` is the same idea packaged: it allocates both channels, spawns the worker,
-    // and hands you the two ends. The worker CO-OWNS both channels, so you may drop your own
-    // handles whenever you like.
+    // and hands you the two ends. The worker co-owns both channels, and the two handles (every
+    // copy of them) share one lease on the worker: it runs while any of them lives, and dropping
+    // the last one ends it wherever it waits. Keep a handle for as long as you feed or read it.
     auto [in_end, out_end] = make_pipeline<int, std::string>([](int v) { return "x" + std::to_string(v); }, 4);
     co_await in_end->send(21);
     auto one = co_await out_end->recv();
