@@ -97,6 +97,23 @@ python3 examples/07-applications/02-auction-house/scripts/check_bid_atomicity.py
 python3 examples/07-applications/02-auction-house/scripts/check_bid_reply_loss.py --build-dir build/presets/dev
 ```
 
+To compare accepted-bid latency on a quiet host, run the same profile against
+the control and candidate builds in separate, interleaved sessions:
+
+```bash
+python3 examples/07-applications/02-auction-house/scripts/measure_bid_path.py --self-test
+python3 examples/07-applications/02-auction-house/scripts/measure_bid_path.py \
+  --build-dir build/presets/release --iterations 200 --out /tmp/qb-bids.json
+```
+
+The profile verifies every response (`success`, price, bid ID and echoed request
+ID) and the final PostgreSQL price and row count before writing raw per-bid
+latencies. It generates UUIDs outside the timed interval. Use
+`--allow-legacy-response` only for a pre-request-ID control binary, which may
+omit the echoed ID; other response and database checks still apply. The
+profile does not measure allocations: an allocation claim needs a separate
+trace captured over its sampling interval.
+
 With Auction House running, check the HTTP/WS handoff from the qb-dev root:
 
 ```bash
