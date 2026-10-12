@@ -188,6 +188,10 @@ def post_bid(conn, lot_id, bidder_id, amount, request_id=None):
                  headers={"Content-Type": "application/json", "Connection": "keep-alive"})
     response = conn.getresponse()
     payload = json.loads(response.read())
+    if response.status == 201:
+        content_type = response.getheader("Content-Type")
+        if content_type != "application/json; charset=utf-8":
+            raise AssertionError(f"accepted bid has unexpected content type: {content_type!r}")
     return response.status, payload
 
 

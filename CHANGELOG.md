@@ -31,6 +31,11 @@ plumbing do not qualify.
 
 ### Changed
 
+- **Auction House builds accepted-bid replies with fewer temporary allocations (Huly QB-916).**
+  Success and replay retain the same six JSON fields, numeric types, status and content type.
+  The reply owns the request UUID and serializes the object once; database reconciliation,
+  cache invalidation and notification order are unchanged.
+
 - **`04-patterns/02-supervisor` shows `qb::supervision::watch` and reads exact totals (Huly QB-51).** A fifth phase
   runs the watch mode: slot 1 first `stop()`s, a `ChildDown` and a `DownEvent` for one death and one restart, then
   its replacement is `kill()`ed, which only the watch sees. Every phase that ends on a count now reads it after 20

@@ -511,9 +511,9 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
             replay.bid_id     = row["id"].as<int32_t>();
             replay.new_price  = row["amount"].as<double>();
             replay.time_left  = row["response_time_left"].as<int32_t>();
-            replay.request_id = request_id;
+            replay.request_id = std::move(request_id);
             co_await invalidate_lot_cache(lot_id);
-            ctx->json(replay.to_json(), qb::http::status::CREATED);
+            ctx->text(replay.to_json().dump(), qb::http::status::CREATED, "application/json; charset=utf-8");
             co_return;
         }
         if (!placed.ok()) {
@@ -557,8 +557,8 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     result.bid_id     = bid_id;
     result.new_price  = lot.current_price;
     result.time_left  = response_time_left;
-    result.request_id = request_id;
-    ctx->json(result.to_json(), qb::http::status::CREATED);
+    result.request_id = std::move(request_id);
+    ctx->text(result.to_json().dump(), qb::http::status::CREATED, "application/json; charset=utf-8");
 
     // Response is already sent — resolve the bidder name and broadcast the event.
     auto             user = co_await _db->execute("select_user_by_id", qb::pg::params{bidder_id});

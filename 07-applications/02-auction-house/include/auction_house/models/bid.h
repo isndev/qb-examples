@@ -92,8 +92,14 @@ struct BidResult {
 
     [[nodiscard]] qb::json
     to_json() const {
-        return qb::json{{"success", success}, {"message", message},     {"request_id", request_id},
-                        {"bid_id", bid_id},   {"new_price", new_price}, {"time_left", time_left}};
+        qb::json json      = qb::json::object();
+        json["success"]    = success;
+        json["message"]    = message;
+        json["request_id"] = request_id;
+        json["bid_id"]     = bid_id;
+        json["new_price"]  = new_price;
+        json["time_left"]  = time_left;
+        return json;
     }
 };
 

@@ -270,6 +270,11 @@ the HTTP context cannot send another response over that socket.
   reconciliation. The UUID index and nullable response snapshot add storage per new bid; old
   rows remain valid after the idempotent schema migration. Measure latency on the target host
   before assigning a throughput budget.
+- **Bid response work**: successful and replayed responses build the same six-field JSON object
+  and serialize it once into the owned HTTP body, retaining status 201 and
+  `application/json; charset=utf-8`. The UUID remains owned across database and cache awaits
+  and moves into the response model only after its final database use. This avoids initializer-list
+  temporaries, an extra UUID copy and separate key/value serialization buffers.
 - **Scaling**: AuctionManager workers can run on separate cores. Measure latency and connection capacity on the target host before setting a limit.
 
 ## 🛠️ Tech Stack
