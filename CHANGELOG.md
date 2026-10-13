@@ -43,6 +43,15 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **HTTP lesson text matches its client, routes and bundled certificate (Huly QB-843).** The
+  HTTP/1.1 batch timing is described as this client's serial queue policy, not a protocol ban
+  on pipelining. The HTTP/2 startup guide, cookie scope and attributes, certificate metadata,
+  and `/` versus `/static` routes now match the shipped source and files.
+- **PostgreSQL lessons distinguish wire and application contracts (Huly QB-848).** The callback
+  chain remains supported and may start work before `await()`; queued SQL still waits for
+  ReadyForQuery between statements. Stream row callbacks run after each FETCH completes.
+  Transaction notes distinguish server-side abort from local errors and zero-row updates, and
+  `rows<T>()` is described as a lazy view that materialises tuples on dereference.
 - **The HTTP static demo no longer serves stale framework metadata (Huly QB-847).** Its pages and
   sample data identify the C++20 language level and Apache-2.0 license, and label the sample version
   as illustrative instead of presenting a hand-written framework release.
