@@ -11,6 +11,13 @@ plumbing do not qualify.
 
 ### Added
 
+- **PostgreSQL COPY and CancelRequest have a live lesson (Huly QB-121).**
+  `11-copy-and-cancel` streams CSV in and out, observes session metadata and negotiated SCRAM,
+  cancels a server-confirmed active query with `cancel_async()`, and verifies the connection survives.
+- **Redis single-node lock has a live lesson (Huly QB-139).** `15-locks` uses a CSPRNG owner token,
+  SET NX PX, token-checked Lua renewal and release, and checks expiry against a stale owner.
+  It needs SSL for random bytes; the existing atomic rate limiter remains in lesson 08.
+
 - **Auction House accepts a separate Redis endpoint (Huly QB-916).** `REDIS_HOST` and
   `REDIS_PORT` select the connection at startup; the default remains `localhost:6379`.
   Malformed endpoints fail before database initialization, allowing the normal application
@@ -48,6 +55,11 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Redis and WebSocket lessons describe their actual execution and storage costs (Huly QB-861, QB-863).**
+  An unawaited Redis command sends nothing, detached task exceptions are reported, and the Redis
+  cardinality example compares `MEMORY USAGE` on both keys, labels Redis's sampled set estimate,
+  and describes `BITPOS` as a scan.
+  The chat guide explains the per-session serialization performed by `stream_if()`.
 - **Actor, I/O and coroutine lessons match current contracts (Huly QB-860, QB-784, QB-778, QB-770).**
   The hot-path lesson separates event destruction from byte relocation; the crypto lesson
   reports Argon2id or its PBKDF2 fallback, checks both password verdicts and exits nonzero

@@ -2,7 +2,7 @@
  * @file examples/06-modules/redis/12-cardinality-and-bitmaps.cpp
  * @tier 06-modules
  * @teaches Two families for the same question — "how many DISTINCT things?" — and the trade between
- *          them. HyperLogLog answers it in a fixed 12 KB for any cardinality, approximately, and
+ *          them. HyperLogLog uses bounded storage for an approximate answer, and
  *          MERGES without double counting; a bitmap answers it exactly at one bit per id, and
  *          supports server-side set algebra (AND/OR/XOR/NOT) you would otherwise write a job for.
  * @demonstrates qb::redis::tcp::client, pfadd, pfcount, pfmerge,
@@ -19,7 +19,7 @@
  * @expect "[merge] you cannot do that with counters — adding three daily totals counts every"
  * @expect "[bits] a bitmap is EXACT at one bit per id: 6 of 4096 ids set, BITCOUNT says "
  * @expect "[bitop] BITOP ran set algebra INSIDE the server: AND = retained users, OR = reach,"
- * @expect "[bitpos] BITPOS finds the first 0 or 1 without reading the string back — the O(1)-ish"
+ * @expect "[bitpos] BITPOS finds the first 0 or 1 without reading the string back — it scans"
  * @expect "[bitfield] BITFIELD packs SEVERAL counters into one string at sub-byte widths, and"
  * @expect "           (two u8 counters in "
  * @expect "[choose] pick by the question, not by taste: HLL when you cannot enumerate the ids and"
@@ -28,19 +28,19 @@
  * THE PROBLEM BOTH OF THESE SOLVE
  * -------------------------------
  * "How many unique visitors did we have?" is a set-cardinality question, and the obvious answer —
- * keep the set — costs memory proportional to the answer. Measured below, on this machine, for
- * 5000 ids: a Redis SET holding them costs ~247 KB. That is fine at 5000 and ruinous at 50 million,
- * and 50 million is exactly where somebody asks the question.
+ * keep the set — costs memory proportional to the answer. The live run compares both keys with
+ * MEMORY USAGE on the same server. Redis estimates aggregate sizes from five samples by default;
+ * the HLL string does not need nested-value sampling.
  *
  * HYPERLOGLOG: CONSTANT SPACE, APPROXIMATE ANSWER
  * -----------------------------------------------
  * A HyperLogLog is a fixed array of registers holding the longest run of leading zeros seen in the
  * hash of anything added to it. It never stores an element, so it cannot tell you WHICH ids it saw
  * — only roughly how many distinct ones there were, with a standard error of about 0.81%. Its size
- * is bounded at 12 KB no matter what you feed it. In Redis it is stored as an ordinary string, so
- * `STRLEN` reports its real byte size — which is how this program measures the claim instead of
- * repeating it. (Small cardinalities use a SPARSE encoding and are much smaller than 12 KB; the
- * conversion to the dense form is automatic and invisible.)
+ * is bounded internally at about 12 KB no matter what you feed it. Redis stores it as a string,
+ * initially sparse and later dense; the whole key also has allocation overhead. This program uses
+ * `MEMORY USAGE` for both keys, so the comparison includes that overhead on the same basis.
+ * The set's result is an estimate from Redis's default five samples, not an exact byte count.
  *
  * PFMERGE IS THE FEATURE, NOT PFCOUNT
  * -----------------------------------
@@ -151,10 +151,17 @@ run_cardinality(bool &running, bool &ok) {
 
     // Spelled out once rather than `auto`, because the TYPE is the thing to notice: PFCOUNT is a
     // cardinality ESTIMATE and comes back as a plain integer, not as anything approximate-looking.
-    qb::redis::Reply<long long> approx    = co_await redis.pfcount(K_HLL_ALL);
-    auto                        truth     = co_await redis.scard(K_SET_ALL);
-    auto                        hll_bytes = co_await redis.strlen(K_HLL_ALL); // an HLL IS a string, so STRLEN is its size
-    auto                        set_bytes = co_await redis.memory_usage(K_SET_ALL);
+    qb::redis::Reply<long long> approx = co_await redis.pfcount(K_HLL_ALL);
+    auto                        truth  = co_await redis.scard(K_SET_ALL);
+    // Same command and overhead basis; Redis samples five nested set members by default.
+    auto hll_bytes = co_await redis.memory_usage(K_HLL_ALL); // string: no nested sampling
+    auto set_bytes = co_await redis.memory_usage(K_SET_ALL); // set: estimated allocation
+
+    if (!hll_bytes.ok() || !set_bytes.ok()) {
+        qb::io::cerr() << "[hll] UNEXPECTED: MEMORY USAGE failed: " << hll_bytes.error() << " " << set_bytes.error() << "\n";
+        (void) co_await purge(redis);
+        co_return;
+    }
 
     const long long estimated = approx.ok() ? approx.result() : -1;
     const long long counted   = truth.ok() ? truth.result() : -1;
@@ -169,15 +176,15 @@ run_cardinality(bool &running, bool &ok) {
     if (!hll_ok)
         qb::io::cerr() << "      UNEXPECTED: the estimate is not within 5% of the truth\n";
 
-    const long long hll_size = hll_bytes.ok() ? hll_bytes.result() : -1;
-    const long long set_size = set_bytes.ok() ? set_bytes.result() : -1;
+    const long long hll_size = hll_bytes.result();
+    const long long set_size = set_bytes.result();
     qb::io::cout() << "[hll] and that is the whole trade: the HyperLogLog is " << hll_size
-                   << " bytes and stops growing\n"
-                      "      there for ANY cardinality, while the exact set holding the same ids costs "
+                   << " allocated bytes here;\n"
+                      "      the exact set holding the same ids costs "
                    << set_size
-                   << "\n"
-                      "      and grows for ever. At 5000 ids that ratio is already the argument; at 50 million it\n"
-                      "      is the difference between a key and an outage\n\n";
+                   << " estimated bytes here (Redis samples 5 set members by default).\n"
+                      "      Both use MEMORY USAGE, including Redis key/value overhead.\n"
+                      "      HLL storage is bounded while an exact set grows with distinct ids.\n\n";
 
     // -----------------------------------------------------------------------------------
     // 2. PFMERGE — the reason to keep a per-day HLL instead of a per-day integer.
@@ -275,8 +282,8 @@ run_cardinality(bool &running, bool &ok) {
 
     const bool pos_ok = first_free.ok() && first_free.result() == 5 && first_used.ok() && first_used.result() == 0;
 
-    qb::io::cout() << "[bitpos] BITPOS finds the first 0 or 1 without reading the string back — the O(1)-ish\n"
-                      "         answer to 'which slot is free?' and to 'where does the used range start?'\n";
+    qb::io::cout() << "[bitpos] BITPOS finds the first 0 or 1 without reading the string back — it scans\n"
+                      "         O(N) bytes in the selected range to answer 'which slot is free?'\n";
     qb::io::cout() << "         (first free bit = " << (first_free.ok() ? first_free.result() : -1)
                    << ", first used bit = " << (first_used.ok() ? first_used.result() : -1) << ")\n\n";
 

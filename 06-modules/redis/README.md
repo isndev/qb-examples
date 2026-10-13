@@ -5,7 +5,7 @@ Redis client functionality integrated with the QB C++ Actor Framework.
 
 ## Prerequisites
 
-- **A running Redis server instance — all fourteen need one.** `dev/agent/run-examples.py` records
+- **A running Redis server instance — all fifteen need one.** `dev/agent/run-examples.py` records
   `needs = redis` for every target here and reports a SKIP, never a pass, when nothing answers.
 - The QB Framework, including `qb-core`, `qb-io`, and `qbm-redis`, must be built.
 - Nine define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
@@ -214,9 +214,9 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
   stranding it, so `ok()` is false and `raw()` is `nullptr` — that null is the discriminator between
   a dead link and a nil value; auto-reconnect restores the CONNECTION, never the request; and a
   1 s `BRPOP` parks the coroutine while a second coroutine on the same thread keeps ticking.
-* **It also documents a silence**: `coro_scheduler().spawn(t)` never observes the task's result, so an
-  exception escaping a spawned task is discarded without a word. The `guarded()` wrapper at the
-  bottom of the file is the five lines that end it.
+* **It handles detached-task errors**: `coro_scheduler().spawn(t)` reports uncaught task exceptions
+  at `final_suspend`. The `guarded()` wrapper also catches an error in the application, records
+  failure and gives the program a nonzero exit status.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-reliability`
 
 ---
@@ -277,11 +277,14 @@ These examples provide a practical starting point for leveraging Redis with the 
 * **Purpose**: two families answering the same question — "how many DISTINCT things?" — with
   opposite trades, neither of which had a demonstrator.
 * **API**: `pfadd` / `pfcount` / `pfmerge`; `setbit` / `getbit` / `bitcount` / `bitop` / `bitpos` /
-  `bitfield`; plus `strlen` and `memory_usage`, which is how the claim below is MEASURED rather than
-  repeated.
-* **The measurement**: 5000 ids into both a HyperLogLog and an exact set. Measured on this tree —
-  `PFCOUNT` 5016 against `SCARD` 5000 (0.32% error, against a documented ~0.81% standard error), the
-  HLL 12304 bytes and bounded there for any cardinality, the exact set 247292 bytes and growing.
+  `bitfield`; `memory_usage` measures each complete Redis value on the same basis, while `strlen`
+  measures the bitmap's string length.
+* **The measurement**: 5000 ids into both a HyperLogLog and an exact set. `PFCOUNT` is checked
+  against `SCARD`; two successful `MEMORY USAGE` replies compare each whole key, including
+  overhead. [Redis MEMORY USAGE](https://redis.io/docs/latest/commands/memory-usage/) measures
+  the HLL string directly but estimates the aggregate set size from five members by default.
+  The printed values depend on that Redis instance; they are not an exact memory ratio.
+  `BITPOS` avoids transfer but scans O(N) bytes in the inspected range.
 * **`PFMERGE` is the feature, not `PFCOUNT`**: three daily uniques added together count every
   returning visitor once per day they came, and nothing in the totals can undo it because they threw
   the identities away. The union of the registers can. That is why you keep a per-day HLL rather than
@@ -343,3 +346,20 @@ These examples provide a practical starting point for leveraging Redis with the 
   program names them rather than faking them; it asks the one question that is always answerable and
   says what each answer means for `MULTI`, `MGET`, Lua `KEYS` and hash tags.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-acl-and-topology`
+
+---
+
+### 15. Single-Node Locks (`15-locks.cpp`) — **new**
+
+* **Purpose**: acquire a time-limited exclusive lease with one `SET key token PX ttl NX`, renew
+  it with atomic compare-and-`PEXPIRE` Lua, and release it with atomic compare-and-`DEL` Lua.
+  A second token is refused while the lease is live; after expiry it may acquire, while the old
+  token can neither extend nor erase the new owner's key. The final owner removes its key.
+* **Tokens**: each owner gets 128 unpredictable bits from `qb::crypto::generate_random_bytes`,
+  encoded as hex. This binary declares `REQUIRES ssl` because the generator uses OpenSSL, even
+  when the Redis connection is plain TCP.
+* **Scope**: one Redis node. The client does not route Cluster `MOVED`/`ASK`, and this lease has
+  no fencing token for an external resource. An expired owner must stop acting; workloads that
+  cannot tolerate overlap require fencing at that resource. The rate limiter is already the
+  atomic EVAL in `08-sorted-sets-and-ttl`, so this lesson does not repeat it.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-locks`

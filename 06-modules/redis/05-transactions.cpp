@@ -56,9 +56,10 @@
  *
  * The last one is the dangerous one: `co_await redis.get(k)` inside a MULTI block hands you a
  * perfectly healthy-looking reply whose value is the string "QUEUED". Nothing in the API stops
- * you reading it. **The rule for a MULTI block is therefore: `co_await` every command — you must
- * consume its reply or the reply FIFO desynchronises permanently — but never read a value out of
- * one.** Read values from the EXEC array, which is where they actually are.
+ * you reading it. **The rule for a MULTI block is therefore: `co_await` each command you intend
+ * to send, but never treat a QUEUED value as the command result.** An awaiter constructed and
+ * discarded without `co_await` sends nothing; a command already started must be allowed to
+ * consume its reply. Read the actual results from the EXEC array.
  *
  * READING THE EXEC ARRAY
  * ----------------------
@@ -121,9 +122,9 @@ run_transactions(bool &running) {
         co_return;
     }
 
-    // Every queued command is still `co_await`ed. The reply must be consumed — this client
-    // holds one FIFO of pending reply handlers, and skipping one desynchronises it for the rest
-    // of the connection's life.
+    // Each intended command is `co_await`ed to start it and read its QUEUED reply.
+    // Constructing then discarding an awaiter sends nothing; abandoning a command after
+    // it starts is a different lifetime issue.
     auto q1 = co_await redis.set(K_A, "first");
     auto q2 = co_await redis.set(K_B, "second");
     // Each asserted sentence below is a WHOLE literal chosen by the measurement, never a value

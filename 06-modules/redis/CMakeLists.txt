@@ -32,6 +32,7 @@
 #     12-cardinality-and-bitmaps.cpp     ->  qb-example-modules-redis-cardinality-and-bitmaps
 #     13-geospatial.cpp                  ->  qb-example-modules-redis-geospatial
 #     14-acl-and-topology.cpp            ->  qb-example-modules-redis-acl-and-topology
+#     15-locks.cpp                       ->  qb-example-modules-redis-locks
 #
 # 11..14 close the four command families that shipped, were tested, had a readme page and had no
 # demonstrator anywhere: the CALLBACK surface (every command is generated twice, and only the
@@ -46,7 +47,9 @@
 # demonstrated by a corpus that must run against a plain redis-server, and the program names them
 # rather than faking them.
 #
-# All fourteen are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
+# 15 uses qb's OpenSSL-backed CSPRNG for its lease tokens, so it requires ssl even with a plain
+# Redis connection. 08 already implements the atomic Lua rate limiter; 15 only adds locks.
+# All fifteen are written. 02-data-types is the MERGE of the two pre-3.0 hash/list programs plus SETS,
 # which had no demonstrator anywhere; those originals have since been RETIRED, and 02-data-types
 # picked up the five commands (HKEYS, HVALS, LINDEX, LSET, BLPOP) the merge had otherwise dropped.
 # 07-scripting, 08-sorted-sets-and-ttl and 09-reliability are new.
@@ -120,3 +123,4 @@ if(QB_BUILD_TESTS)
 endif()
 qb_example(SOURCE 13-geospatial.cpp DEPENDS qbm-redis)
 qb_example(SOURCE 14-acl-and-topology.cpp DEPENDS qbm-redis)
+qb_example(SOURCE 15-locks.cpp DEPENDS qbm-redis REQUIRES ssl)
