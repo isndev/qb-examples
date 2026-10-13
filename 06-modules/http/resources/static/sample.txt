@@ -29,4 +29,4 @@ For more information, visit:
 http://localhost:8080/static/about.html
 
 Last updated: 2024
-QB HTTP Framework - Built for performance and developer experience. 
+QB HTTP Framework - Built for performance and developer experience.
