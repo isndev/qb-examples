@@ -39,7 +39,7 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
   SHA-1 and base64.
 * [**View WebSocket Examples &raquo;**](./ws/README.md)
 
-### 3. PostgreSQL Module (`./pgsql/`) — 10 programs
+### 3. PostgreSQL Module (`./pgsql/`) — 11 programs
 
 * **Focus**: Asynchronous interaction with PostgreSQL databases.
 * **Content**: `01-connect-and-query`, `02-parameters` (prepared statements with explicit parameter OIDs),
@@ -49,12 +49,13 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
   `09-callbacks-and-await` — the whole NON-coroutine half of the client, which had zero call sites:
   the fluent `execute`/`then`/`success`/`error` chain, the three `discard_*` no-ops, `prepare_file()`
   and the `Transaction::await()` drain — and `10-streaming-results` (`query_stream()`, a server-side
-  cursor that reads a result set larger than memory).
+  cursor that reads a result set larger than memory), and `11-copy-and-cancel` (streaming COPY,
+  session metadata and nonblocking client CancelRequest).
 * **Needs a live server**: every one of them. `dev/agent/run-examples.py` reports a SKIP, never a pass, when
   PostgreSQL does not answer.
 * [**View PostgreSQL Module Examples &raquo;**](./pgsql/README.md)
 
-### 4. Redis Module (`./redis/`) — 14 programs
+### 4. Redis Module (`./redis/`) — 15 programs
 
 * **Focus**: Utilizing Redis for caching, messaging, and data storage within QB actor systems.
 * **Content**: `01-connect`, `02-data-types` (string, hash, list, set — the merge target of the two retired
@@ -67,7 +68,9 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
   `tcp::cb_consumer` — `12-cardinality-and-bitmaps` (HyperLogLog and bitmaps, the two ways to answer
   "how many distinct?"), `13-geospatial` (`GEOADD`/`GEOSEARCH` and the lossy `GEOPOS` round trip) and
   `14-acl-and-topology` (`ACL DRYRUN` for testable least-privilege rules, plus the one `CLUSTER`
-  question a standalone server can answer).
+  question a standalone server can answer), and `15-locks` (single-node SET NX PX lease,
+  token-checked Lua renewal/release and stale-owner rejection). The atomic Lua sliding-window
+  limiter already lives in `08-sorted-sets-and-ttl`.
 * **Needs a live server**: every one of them, same SKIP rule as pgsql.
 * [**View Redis Module Examples &raquo;**](./redis/README.md)
 
@@ -75,4 +78,4 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
 
 Navigate to the respective module's README for detailed instructions and example descriptions.
 
-[**&laquo; Back to Main Examples Overview**](../README.md) 
+[**&laquo; Back to Main Examples Overview**](../README.md)

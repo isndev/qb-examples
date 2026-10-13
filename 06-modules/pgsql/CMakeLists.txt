@@ -28,6 +28,7 @@
 #     08-tls-and-limits.cpp     ->  qb-example-modules-pgsql-tls-and-limits
 #     09-callbacks-and-await.cpp ->  qb-example-modules-pgsql-callbacks-and-await
 #     10-streaming-results.cpp   ->  qb-example-modules-pgsql-streaming-results
+#     11-copy-and-cancel.cpp     ->  qb-example-modules-pgsql-copy-and-cancel
 #
 # 09 and 10 close the two gaps this client had: the whole CALLBACK half of the API (every
 # operation is declared twice, and only the co_await half was ever shown — so `then`/`success`/
@@ -35,7 +36,8 @@
 # sites in the corpus), and `query_stream`, the server-side cursor that reads a result set larger
 # than memory. 09 contains no `co_await` at all, which is the point of it.
 #
-# All ten are written. Two names in the architecture document do not exist in the tree and
+# 11 shows COPY's source/sink and the client CancelRequest without parking the event loop.
+# All eleven are written. Two names in the architecture document do not exist in the tree and
 # 06-typed-rows is written against the header instead: `first_as` and `views<Ts...>` are shipped
 # as `one<Ts...>` and `rows<Ts...>` (qbm/pgsql/src/qbm/pgsql/resultset.h:214/230/248).
 # -----------------------------------------------------------------------------
@@ -62,6 +64,7 @@ qb_example(SOURCE 07-listen-notify.cpp DEPENDS qbm-pgsql)
 qb_example(SOURCE 08-tls-and-limits.cpp DEPENDS qbm-pgsql REQUIRES ssl)
 qb_example(SOURCE 09-callbacks-and-await.cpp DEPENDS qbm-pgsql TARGET_VAR _tgt_callbacks)
 qb_example(SOURCE 10-streaming-results.cpp DEPENDS qbm-pgsql)
+qb_example(SOURCE 11-copy-and-cancel.cpp DEPENDS qbm-pgsql)
 
 # One example reads an asset at runtime: 09-callbacks-and-await loads its statement from
 # resources/sql/top-scores.sql, which is the whole point of Transaction::prepare_file(). It says

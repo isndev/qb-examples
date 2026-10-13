@@ -5,7 +5,7 @@ Redis client functionality integrated with the QB C++ Actor Framework.
 
 ## Prerequisites
 
-- **A running Redis server instance — all fourteen need one.** `dev/agent/run-examples.py` records
+- **A running Redis server instance — all fifteen need one.** `dev/agent/run-examples.py` records
   `needs = redis` for every target here and reports a SKIP, never a pass, when nothing answers.
 - The QB Framework, including `qb-core`, `qb-io`, and `qbm-redis`, must be built.
 - Nine define `#define REDIS_URI {"tcp://localhost:6379"}` near the top of the `.cpp`;
@@ -346,3 +346,20 @@ These examples provide a practical starting point for leveraging Redis with the 
   program names them rather than faking them; it asks the one question that is always answerable and
   says what each answer means for `MULTI`, `MGET`, Lua `KEYS` and hash tags.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-acl-and-topology`
+
+---
+
+### 15. Single-Node Locks (`15-locks.cpp`) — **new**
+
+* **Purpose**: acquire a time-limited exclusive lease with one `SET key token PX ttl NX`, renew
+  it with atomic compare-and-`PEXPIRE` Lua, and release it with atomic compare-and-`DEL` Lua.
+  A second token is refused while the lease is live; after expiry it may acquire, while the old
+  token can neither extend nor erase the new owner's key. The final owner removes its key.
+* **Tokens**: each owner gets 128 unpredictable bits from `qb::crypto::generate_random_bytes`,
+  encoded as hex. This binary declares `REQUIRES ssl` because the generator uses OpenSSL, even
+  when the Redis connection is plain TCP.
+* **Scope**: one Redis node. The client does not route Cluster `MOVED`/`ASK`, and this lease has
+  no fencing token for an external resource. An expired owner must stop acting; workloads that
+  cannot tolerate overlap require fencing at that resource. The rate limiter is already the
+  atomic EVAL in `08-sorted-sets-and-ttl`, so this lesson does not repeat it.
+* **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-locks`

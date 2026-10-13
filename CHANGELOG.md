@@ -11,6 +11,13 @@ plumbing do not qualify.
 
 ### Added
 
+- **PostgreSQL COPY and CancelRequest have a live lesson (Huly QB-121).**
+  `11-copy-and-cancel` streams CSV in and out, observes session metadata and negotiated SCRAM,
+  cancels a server-confirmed active query with `cancel_async()`, and verifies the connection survives.
+- **Redis single-node lock has a live lesson (Huly QB-139).** `15-locks` uses a CSPRNG owner token,
+  SET NX PX, token-checked Lua renewal and release, and checks expiry against a stale owner.
+  It needs SSL for random bytes; the existing atomic rate limiter remains in lesson 08.
+
 - **Auction House accepts a separate Redis endpoint (Huly QB-916).** `REDIS_HOST` and
   `REDIS_PORT` select the connection at startup; the default remains `localhost:6379`.
   Malformed endpoints fail before database initialization, allowing the normal application

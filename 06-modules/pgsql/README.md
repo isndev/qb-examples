@@ -22,6 +22,7 @@ PostgreSQL client integrated with the QB Actor Framework. Most lessons use the *
     - [`08-tls-and-limits.cpp`](#8-tls-and-limits-08-tls-and-limitscpp--new)
     - [`09-callbacks-and-await.cpp`](#9-callbacks-and-await-09-callbacks-and-awaitcpp--new)
     - [`10-streaming-results.cpp`](#10-streaming-results-10-streaming-resultscpp--new)
+    - [`11-copy-and-cancel.cpp`](#11-copy-and-cancel-11-copy-and-cancelcpp--new)
 
 ## Overview
 
@@ -145,7 +146,7 @@ Once built, run each example from the build output directory:
 ```
 
 Make sure your PostgreSQL server is running and accessible with the connection string you've configured in the source
-file. **All eight need a live server**: `dev/agent/run-examples.py` records `needs = postgres` for every
+file. **All eleven need a live server**: `dev/agent/run-examples.py` records `needs = postgres` for every
 target here and reports a SKIP, never a pass, when nothing answers.
 
 ## Example Descriptions
@@ -395,3 +396,22 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
 * **Failure is a Reply, not an exception** — the exception path belongs to YOUR callback, and one
   that throws closes the cursor, rethrows, and leaves the connection usable.
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-streaming-results`
+
+---
+
+### 11. COPY and Cancel (`11-copy-and-cancel.cpp`) — **new**
+
+* **Purpose**: COPY FROM STDIN streams CSV through a source callback and COPY TO STDOUT streams
+  it back through a sink. The program checks three imported rows and compares exported bytes to
+  the expected CSV. The table is temporary and dropped on completion.
+* **Session evidence**: `set_startup_option("application_name", ...)` is called before connect;
+  `current_setting` confirms it reached the server. `parameter_status("server_version")` and
+  `server_version()` read its reported version. `scram_authenticated()` reports whether this
+  particular server selected SCRAM and verified its signature; the lesson does not assume that
+  authentication method.
+* **CancelRequest evidence**: a second session checks `pg_stat_activity` until the first is
+  actively executing `pg_sleep(5)`, then calls `cancel_async()` on the first client. The first
+  query must return SQLSTATE 57014 and the same connection must still answer `SELECT 1`.
+  `cancel()` sends the same request synchronously and can block the caller for two seconds;
+  call it from another thread, not an event-loop core.
+* **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-copy-and-cancel`
