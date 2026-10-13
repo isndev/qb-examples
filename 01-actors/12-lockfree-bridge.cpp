@@ -43,9 +43,9 @@
  *
  * THREE ENQUEUE OVERLOADS, AND ONLY ONE OF THEM LOCKS
  * --------------------------------------------------
- *   ring.enqueue_at<I>(item)      compile-time slot I. No lock. (qb/system/lockfree/mpsc.h:76)
- *   ring.enqueue(index, item)     runtime slot. **No lock.**  (mpsc.h:102)
- *   ring.enqueue(item)            round-robin. **Takes the slot's SpinLock.** (mpsc.h:131)
+ *   ring.enqueue_at<I>(item)      compile-time slot I. No lock. (qb/system/lockfree/mpsc.h:78)
+ *   ring.enqueue(index, item)     runtime slot. **No lock.**  (mpsc.h:104)
+ *   ring.enqueue(item)            round-robin. **Takes the slot's SpinLock.** (mpsc.h:133)
  *
  * The middle one is the fast path and the sharp one: it is correct only if no two threads ever
  * pass the same `index` — i.e. only if you have assigned slots. Section 1 does that. The third is
@@ -97,7 +97,7 @@ namespace {
 
 // One unit of work handed across the boundary. Trivially copyable on purpose: the ring's bulk
 // paths use `std::memcpy` and `spsc::ringbuffer` static_asserts anything else away
-// (qb/system/lockfree/spsc.h:91-92). It is also the same rule an event payload obeys — nothing here
+// (qb/system/lockfree/spsc.h:104-105). It is also the same rule an event payload obeys — nothing here
 // may hold a pointer into itself.
 struct Job {
     std::uint32_t producer;

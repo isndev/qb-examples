@@ -70,7 +70,7 @@ init_db(const qb::io::uri &pg_uri, const std::filesystem::path &init_db_path) {
     qb::io::async::init(); // this thread needs an event loop to pump run_sync()
 
     qb::pg::tcp::database db;
-    const bool            ok = qb::io::async::run_sync([&db, &pg_uri, &init_db_path]() -> qb::io::async::task<bool> {
+    auto                  initialize = [&db, &pg_uri, &init_db_path]() -> qb::io::async::task<bool> {
         if (!co_await db.connect(pg_uri.source())) {
             qb::io::cerr() << "[Main] DB connect failed for initialization\n";
             co_return false;
@@ -81,8 +81,8 @@ init_db(const qb::io::uri &pg_uri, const std::filesystem::path &init_db_path) {
         else
             qb::io::cout() << "[Main] init_db.sql: " << r.error().what() << "\n";
         co_return r.ok();
-    }());
-
+    };
+    const bool ok = qb::io::async::run_sync(initialize());
     db.disconnect();
     return ok;
 }
