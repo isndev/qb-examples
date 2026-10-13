@@ -152,8 +152,8 @@ public:
         // the whole difference: dropping this handle would leave an actor nobody can reach.
         _orphan = addRefHandle<Member>(99);
 
-        qb::io::cout() << "[team] created 3 members + 1 orphan; a handle's id() is usable at once (member 1 is id "
-                       << static_cast<std::uint32_t>(_members[0].id()) << ", valid=" << (_members[0].valid() ? "yes" : "no") << ")\n";
+        qb::io::cout() << "[team] created 3 members + 1 orphan; a handle's id() is usable at once (member 1 is id " << _members[0].id().raw64()
+                       << ", valid=" << (_members[0].valid() ? "yes" : "no") << ")\n";
 
         // These children have a synchronous `onInit`, so they are ACTIVE the instant
         // `addRefActor` returns and `get()` already resolves. A child whose `onInit` awaits
