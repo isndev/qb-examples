@@ -412,8 +412,7 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
 * **CancelRequest evidence**: a second session checks `pg_stat_activity` until the first is
   actively executing `pg_sleep(5)`, then calls `cancel_async()` on the first client. The first
   query must return SQLSTATE 57014 and the same connection must still answer `SELECT 1`.
-  A deferred callback must fire before `cancel_async()` completes, witnessing event-loop progress
-  during the out-of-band request.
+  This checks cancellation delivery and recovery, not event-loop latency.
   `cancel()` sends the same request synchronously and can block the caller for two seconds;
   call it from another thread, not an event-loop core.
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-copy-and-cancel`

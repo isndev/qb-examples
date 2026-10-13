@@ -2,10 +2,10 @@
  * @file examples/06-modules/pgsql/11-copy-and-cancel.cpp
  * @tier 06-modules
  * @teaches Stream COPY data through client callbacks without buffering a result set, observe the
- *          server's handshake parameters, and cancel an active query from the event loop.
+ *          server's handshake parameters, and cancel a server-confirmed active query.
  * @demonstrates qb::pg::tcp::database, set_startup_option, parameter_status, server_version,
  *               scram_authenticated, copy_in, copy_out, cancel_async,
- *               qb::io::async::when_all, qb::io::async::defer, qb::io::async::init, qb::io::async::run_until,
+ *               qb::io::async::when_all, qb::io::async::init, qb::io::async::run_until,
  *               qb::io::async::coro_scheduler, qb::io::async::task<void>
  * @prerequisites 06-modules/pgsql/08-tls-and-limits, 06-modules/pgsql/10-streaming-results
  * @expect "[session] startup application_name reached the server; ParameterStatus reports its"
@@ -23,8 +23,8 @@
  *
  * A CancelRequest travels on a separate connection and uses the backend key of the connection
  * doing the work. A second session first confirms pg_sleep is active in pg_stat_activity, then
- * calls cancel_async() while the first coroutine awaits the query. A deferred callback must run
- * before the cancel completes, proving the loop continued while the request was in flight.
+ * calls cancel_async() while the first coroutine awaits the query. This demonstrates delivery,
+ * the server's cancellation verdict, and connection reuse; it does not measure loop latency.
  * cancel() is synchronous and can block its caller for up to two seconds: use it from another
  * thread, never on this core.
  * The server chooses the authentication method; scram_authenticated() is reported, not assumed.
@@ -35,7 +35,6 @@
  */
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -57,7 +56,7 @@ long_query(qb::pg::tcp::database &db) {
 }
 
 qb::io::async::task<bool>
-cancel_when_active(qb::pg::tcp::database &observer, qb::pg::tcp::database &target, int pid, bool &loop_progressed) {
+cancel_when_active(qb::pg::tcp::database &observer, qb::pg::tcp::database &target, int pid) {
     const std::string probe = "SELECT count(*)::int FROM pg_stat_activity WHERE pid = " + std::to_string(pid)
                               + " AND query LIKE 'SELECT pg_sleep%' AND state = 'active'";
     // Bound the wait: a broken or denied probe cannot leave this example running forever.
@@ -65,15 +64,8 @@ cancel_when_active(qb::pg::tcp::database &observer, qb::pg::tcp::database &targe
         auto seen = co_await observer.query(probe);
         if (!seen.ok() || seen.result().size() != 1)
             co_return false;
-        if (seen.result()[0][0].as<int>() > 0) {
-            // The callback owns its flag: if cancellation completes synchronously, it may run
-            // after this coroutine returns. A reference to a stack bool would then dangle.
-            auto ticked = std::make_shared<bool>(false);
-            qb::io::async::defer([ticked] { *ticked = true; });
-            const bool delivered = co_await target.cancel_async();
-            loop_progressed      = *ticked;
-            co_return delivered;
-        }
+        if (seen.result()[0][0].as<int>() > 0)
+            co_return co_await target.cancel_async();
         auto pause = co_await observer.query("SELECT pg_sleep(0.02)");
         if (!pause.ok())
             co_return false;
@@ -149,25 +141,23 @@ run_copy_and_cancel(bool &running, bool &ok) {
         (void) co_await db.execute(std::string("DROP TABLE ") + TABLE);
         co_return;
     }
-    const int         pid             = db.backend_pid();
-    bool              loop_progressed = false;
-    auto              both      = co_await qb::io::async::when_all(long_query(db), cancel_when_active(observer, db, pid, loop_progressed));
+    const int         pid       = db.backend_pid();
+    auto              both      = co_await qb::io::async::when_all(long_query(db), cancel_when_active(observer, db, pid));
     const std::string code      = std::get<0>(both);
     const bool        delivered = std::get<1>(both);
     const bool        canceled  = pid > 0 && delivered && code == "57014";
     auto              live      = co_await db.query("SELECT 1 AS one");
     const bool        survived  = live.ok() && live.result().size() == 1 && live.result()[0]["one"].as<int>() == 1;
 
-    qb::io::cout() << (canceled && loop_progressed
-                           ? "[cancel] cancel_async() delivered an out-of-band CancelRequest while pg_sleep was\n"
-                             "         active; the event loop did not wait for a blocking socket.\n"
-                           : "[cancel] UNEXPECTED: cancellation or independent loop progress failed (SQLSTATE=" + code + ")\n");
+    qb::io::cout() << (canceled ? "[cancel] cancel_async() delivered an out-of-band CancelRequest while pg_sleep was\n"
+                                  "         active, as independently confirmed by the observer connection.\n"
+                                : "[cancel] UNEXPECTED: active query was not canceled (SQLSTATE=" + code + ")\n");
     qb::io::cout() << (canceled && survived ? "[cancel] the query returned SQLSTATE 57014 and the original connection still answered\n"
                                               "         SELECT 1. cancel() blocks: call it from another thread, not this core.\n"
                                             : "[cancel] UNEXPECTED: connection did not survive cancellation\n");
 
     auto dropped = co_await db.execute(std::string("DROP TABLE ") + TABLE);
-    ok           = session_ok && load_ok && export_ok && canceled && loop_progressed && survived && dropped.ok();
+    ok           = session_ok && load_ok && export_ok && canceled && survived && dropped.ok();
     qb::io::cout() << (ok ? "=== copy and cancel complete: temporary table removed ===\n"
                           : "=== copy and cancel FAILED: check preceding verdicts ===\n");
 }

@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 844 distinct capabilities, 1691 claims.**
+**105 programs, 7 tiers, 844 distinct capabilities, 1690 claims.**
 
 ## 1. By capability
 
@@ -867,7 +867,7 @@ can disagree.
 | `qb::io::async::coro_with_timeout` | `03-coroutines/05-combinators.cpp` |
 | `qb::io::async::coroutine_scope` | `03-coroutines/07-structured-concurrency.cpp`, `03-coroutines/08-bounded-fan-out.cpp`, `03-coroutines/09-channels.cpp`, `03-coroutines/12-sync-primitives.cpp`, `03-coroutines/13-retry-and-single-flight.cpp`, `03-coroutines/14-foreign-awaitables.cpp` |
 | `qb::io::async::current_offload_stats` | `03-coroutines/15-offloading-blocking-work.cpp` |
-| `qb::io::async::defer` | `02-io/09-graceful-drain.cpp`, `06-modules/pgsql/11-copy-and-cancel.cpp` |
+| `qb::io::async::defer` | `02-io/09-graceful-drain.cpp` |
 | `qb::io::async::detaching_scope` | `03-coroutines/07-structured-concurrency.cpp` |
 | `qb::io::async::directory_watcher` | `02-io/08-timeouts-and-watchers.cpp` |
 | `qb::io::async::filter` | `03-coroutines/09-channels.cpp` |
@@ -1378,8 +1378,8 @@ can disagree.
   - qbm-pgsql from code that is NOT a coroutine — which is the half of this client the other eight programs never show. The fluent chain (execute/then/success/error), the three `discard_*` handlers that exist so a callback is never simply omitted, `prepare_file()` for SQL that lives in a .sql file, and `await()`, the one blocking drain that turns a queue of callbacks back into straight-line code.
 - **`06-modules/pgsql/10-streaming-results.cpp`** — 17 capabilities
   - The result set that does not fit: `query()` buffers every row before you see the first one, `query_stream()` walks a server-side CURSOR and hands you one batch at a time. What the row handed to your callback actually IS (a view, valid only during the call), what happens to the cursor when your callback throws, and the rule that decides whether two overlapping streams on one connection work or destroy each other.
-- **`06-modules/pgsql/11-copy-and-cancel.cpp`** — 14 capabilities
-  - Stream COPY data through client callbacks without buffering a result set, observe the server's handshake parameters, and cancel an active query from the event loop.
+- **`06-modules/pgsql/11-copy-and-cancel.cpp`** — 13 capabilities
+  - Stream COPY data through client callbacks without buffering a result set, observe the server's handshake parameters, and cancel a server-confirmed active query.
 - **`06-modules/redis/01-connect.cpp`** — 5 capabilities
   - The redis seam: a client as an ordinary object, connected with co_await, and the string commands with the Reply<T> you check before you read.
 - **`06-modules/redis/02-data-types.cpp`** — 43 capabilities

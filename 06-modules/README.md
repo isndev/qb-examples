@@ -50,7 +50,7 @@ Each subdirectory listed below contains a set of examples for a particular QB Mo
   the fluent `execute`/`then`/`success`/`error` chain, the three `discard_*` no-ops, `prepare_file()`
   and the `Transaction::await()` drain — and `10-streaming-results` (`query_stream()`, a server-side
   cursor that reads a result set larger than memory), and `11-copy-and-cancel` (streaming COPY,
-  session metadata and nonblocking client CancelRequest).
+  session metadata and asynchronous client CancelRequest).
 * **Needs a live server**: every one of them. `dev/agent/run-examples.py` reports a SKIP, never a pass, when
   PostgreSQL does not answer.
 * [**View PostgreSQL Module Examples &raquo;**](./pgsql/README.md)
