@@ -151,8 +151,8 @@ run_cardinality(bool &running, bool &ok) {
 
     // Spelled out once rather than `auto`, because the TYPE is the thing to notice: PFCOUNT is a
     // cardinality ESTIMATE and comes back as a plain integer, not as anything approximate-looking.
-    qb::redis::Reply<long long> approx    = co_await redis.pfcount(K_HLL_ALL);
-    auto                        truth     = co_await redis.scard(K_SET_ALL);
+    qb::redis::Reply<long long> approx = co_await redis.pfcount(K_HLL_ALL);
+    auto                        truth  = co_await redis.scard(K_SET_ALL);
     // Same command and overhead basis; Redis samples five nested set members by default.
     auto hll_bytes = co_await redis.memory_usage(K_HLL_ALL); // string: no nested sampling
     auto set_bytes = co_await redis.memory_usage(K_SET_ALL); // set: estimated allocation
