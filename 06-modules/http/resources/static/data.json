@@ -1,9 +1,9 @@
 {
   "framework": {
     "name": "QB HTTP Framework",
-    "version": "2.0.0",
-    "language": "C++17",
-    "license": "MIT",
+    "version": "illustrative sample data",
+    "language": "C++20",
+    "license": "Apache-2.0",
     "description": "High-performance asynchronous HTTP/1.1 and HTTP/2 framework"
   },
   "features": {

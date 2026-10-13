@@ -78,7 +78,11 @@ qb_example(SOURCE 08-timeouts-and-watchers.cpp DEPENDS qb-io)
 qb_example(SOURCE 09-graceful-drain.cpp DEPENDS qb-io)
 
 qb_example(SOURCE 10-crypto-and-compression.cpp DEPENDS qb-io REQUIRES ssl compression)
-qb_example(SOURCE 11-logging-and-metrics.cpp DEPENDS qb-io)
+# The source names qb::io::log, which does not exist in a logging-off build. AVAILABLE
+# records that resolved feature as a gate without teaching qb's generic REQUIRES helper
+# a module/example-specific rule; the target name still comes only from its path.
+qb_example(SOURCE 11-logging-and-metrics.cpp DEPENDS qb-io
+        AVAILABLE ${QB_WITH_LOGGING} REQUIRES logging)
 
 # 12-quic needs the QUIC backend AND a certificate: there is no plaintext QUIC, so the TLS files
 # are not an option the example adds, they are what `listen()` requires. Gated on `quic` alone —

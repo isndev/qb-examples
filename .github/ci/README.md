@@ -1,7 +1,9 @@
-# `.github/ci/` — why this repository has no CI of its own
+# `.github/ci/` — how this repository builds its corpus in CI
 
-`isndev/qb-examples` ships **no workflow**. That is a deliberate, recorded state, not an oversight,
-and this file exists so the next person does not rediscover the reasons from scratch.
+`isndev/qb-examples` ships [`.github/workflows/build.yml`](../workflows/build.yml). It assembles
+qb, the three qbm repositories and this repository, then builds the corpus through the superbuild
+driver in this directory. This page records why that shape is necessary, what the lane proves and
+what still belongs to the private superproject's runtime gate.
 
 ## 1. This tree cannot be configured on its own — and it fails *quietly*
 
@@ -24,15 +26,15 @@ and exits 0 having generated nothing.** A naive workflow here would be green and
 vacuous. Any lane that is ever added must therefore assert a floor on *targets created* and on
 *translation units compiled*, not merely on `cmake` and `cmake --build` exiting 0.
 
-## 2. A self-build lane *is* possible — it just needs five repositories
+## 2. The public lane assembles five repositories
 
 It is not impossible, and it should not be described that way. What this tree needs is not an
 installed qb but a **root that `add_subdirectory()`s a qb source tree first** — the same insight
 that let `isndev/qbm-{http,pgsql,redis}` start gating their own pull requests (each of them carries
 `.github/ci/superbuild/CMakeLists.txt` for exactly that).
 
-The difference in cost is the reason it has not been done here. A qbm module needs **two**
-checkouts, qb and itself. These examples need **five**: `examples/CMakeLists.txt`
+Unlike a qbm module's two-checkout lane, these examples need **five** repositories because
+`examples/CMakeLists.txt`
 `add_subdirectory()`s `qbm/redis`, `qbm/pgsql`, `qbm/http` and `qbm/ws`, so a driver root would
 have to assemble
 
@@ -44,23 +46,22 @@ have to assemble
 <workspace>/examples    this repository
 ```
 
-and then be, essentially, the private `qb-dev` superproject root with `QB_BUILD_EXAMPLES=ON`. Five
-refs to keep in step, against a tree whose content is demonstrations rather than tests, is a
-materially different proposition from the two-repo module lanes — so the coverage stays where it
-already is (see below) until someone decides that trade is worth making. If you are that person:
-copy the shape from `isndev/qbm-http`'s `.github/ci/superbuild/CMakeLists.txt` and
-`.github/workflows/tests.yml`, add the three module checkouts, and keep the target/TU floors.
+The workflow selects the same-named qb/qbm branch as the examples change (or an explicit manual
+ref), refuses a missing companion ref, and feeds those five paths to
+`.github/ci/superbuild/CMakeLists.txt`.
 
-## 3. Where these examples *are* built today
+## 3. What the public lane proves
 
-In the private **`qb-dev`** superproject, by `.github/workflows/examples-build.yml`, on every push
-and pull request. It builds the whole tree with both targeted toolchains and asserts non-vacuous
-floors — measured at 3.0.0 from a cold build directory: **135 translation units, 55 executables,
-0 warnings** — plus that SSL is genuinely on, because seven examples declare
-`qb_add_executable(... REQUIRES ssl)` and are **not created at all** in an SSL-off build rather
-than failing to compile.
+On pushes, pull requests, nightly runs and manual dispatches, `build.yml`:
 
-What that does **not** do is gate a pull request opened *here*: `qb-dev` is private, so its result
-arrives when a maintainer bumps this repository's submodule pointer, not when your PR is opened.
-Until section 2 is acted on, please build your change against a qb-dev checkout (or the five-repo
-assembly above) before opening it.
+1. configures the five-repository superbuild with pinned Clang;
+2. builds the corpus and requires a non-vacuous translation-unit floor;
+3. checks the generated roster's built/gated floor and every built binary's existence;
+4. permits only the exact expected QUIC-gated row on the hosted runner;
+5. smoke-runs one named self-contained example; and
+6. runs the PostgreSQL ownership checks in a disposable cluster.
+
+It does not replace `dev/agent/run-examples.py` in the private **`qb-dev`** superproject. That
+runner judges every program's ending and `@expect` output, probes live services, and verifies
+server second-instance behavior. Before opening a change, run the relevant program through a
+qb-dev checkout as well as relying on this repository's public build lane.

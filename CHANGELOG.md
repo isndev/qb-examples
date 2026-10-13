@@ -31,6 +31,10 @@ plumbing do not qualify.
 
 ### Changed
 
+- **The launch guide states which resource paths depend on the working directory (Huly QB-857).**
+  Build staging places `resources/` beside each binary, while the corpus runner also launches from
+  that directory. Examples that deliberately pass relative paths therefore need that working
+  directory; examples using qb's resource resolver remain relocatable.
 - **`04-patterns/02-supervisor` shows `qb::supervision::watch` and reads exact totals (Huly QB-51).** A fifth phase
   runs the watch mode: slot 1 first `stop()`s, a `ChildDown` and a `DownEvent` for one death and one restart, then
   its replacement is `kill()`ed, which only the watch sees. Every phase that ends on a count now reads it after 20
@@ -39,6 +43,11 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **The HTTP static demo no longer serves stale framework metadata (Huly QB-847).** Its pages and
+  sample data identify the C++20 language level and Apache-2.0 license, and label the sample version
+  as illustrative instead of presenting a hand-written framework release.
+- **The HTTP/2 demo's navigation and feature grid receive their intended styles (Huly QB-846).**
+  Desktop and mobile selectors now use the same class names as the served HTML.
 - **PostgreSQL lessons own the objects they remove (Huly QB-824).** Lessons 02, 04–07, 09 and 10
   use connection-local temporary tables; the trigger function in 07 is temporary too, and its
   notification channel is unique to the publisher session. The transactions lesson keeps a

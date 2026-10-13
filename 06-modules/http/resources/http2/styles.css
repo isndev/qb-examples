@@ -62,7 +62,7 @@ body {
 }
 
 /* Navigation */
-.nav {
+.navigation {
     display: flex;
     gap: 10px;
     margin-bottom: 30px;
@@ -128,7 +128,7 @@ body {
 }
 
 /* Features Grid */
-.features-grid {
+.feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 20px;
@@ -400,7 +400,7 @@ button {
         font-size: 2rem;
     }
 
-    .nav {
+    .navigation {
         flex-direction: column;
     }
 
@@ -417,7 +417,7 @@ button {
         align-items: stretch;
     }
 
-    .features-grid {
+    .feature-grid {
         grid-template-columns: 1fr;
     }
 } 

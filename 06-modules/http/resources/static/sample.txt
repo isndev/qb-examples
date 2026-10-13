@@ -11,7 +11,7 @@ Features demonstrated:
 
 The QB HTTP framework provides:
 ✓ High-performance asynchronous I/O
-✓ Modern C++17 architecture
+✓ Modern C++20 architecture
 ✓ HTTP/1.1 and HTTP/2 support
 ✓ Extensible middleware system
 ✓ Advanced routing capabilities

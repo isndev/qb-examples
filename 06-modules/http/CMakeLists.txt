@@ -49,10 +49,8 @@
 #   07-auth-jwt  — <qbm/http/auth/manager.h>; auth.h #errors "requires OpenSSL crypto library"
 #   11-https     — qb::http::ssl::Server<> / qb::http::ssl::DefaultSecureSession
 #   12-http2     — h2 is TLS+ALPN only: qb::io::transport::stcp, no h2c path
-# 13-http3 is deliberately NOT gated: it guards itself with #ifdef QBM_HTTP_HAS_HTTP3 and
-# degrades to a message-only stub. That is the right shape for it, because HTTP/3 also
-# needs nghttp3 — a condition the REQUIRES vocabulary (ssl/quic/compression) cannot
-# express, so a gate here would be wrong wherever ngtcp2 is present but nghttp3 is not.
+# 13-http3 is gated on qbm-http's resolved PUBLIC HTTP/3 definition below. Testing only
+# ssl/quic would be insufficient because the server also needs a usable nghttp3.
 #
 # 14-streaming-and-cookies is NOT gated on `compression` even though it demonstrates
 # Body::compress: that section is guarded with #ifdef QB_HAS_COMPRESSION and states which
@@ -81,7 +79,18 @@ qb_example(SOURCE 09-coroutine-handlers.cpp DEPENDS qbm-http)
 qb_example(SOURCE 10-client.cpp DEPENDS qbm-http)
 qb_example(SOURCE 11-https.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_https)
 qb_example(SOURCE 12-http2.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_http2)
-qb_example(SOURCE 13-http3.cpp DEPENDS qbm-http TARGET_VAR _tgt_http3)
+# qbm-http resolves HTTP/3 from three inputs (SSL, QUIC and a usable nghttp3). Its CMake
+# variable is local to the module subdirectory, but its PUBLIC definition is the contract
+# consumers actually receive. Read that target property and gate the server on the same
+# resolved fact; otherwise the source's message-only fallback cannot satisfy a `serves`
+# manifest entry and turns a supported HTTP/3-off profile red.
+get_target_property(_qbm_http_public_definitions qbm-http INTERFACE_COMPILE_DEFINITIONS)
+set(_qbm_http3_available FALSE)
+if ("QBM_HTTP_HAS_HTTP3=1" IN_LIST _qbm_http_public_definitions)
+    set(_qbm_http3_available TRUE)
+endif ()
+qb_example(SOURCE 13-http3.cpp DEPENDS qbm-http TARGET_VAR _tgt_http3
+        AVAILABLE ${_qbm_http3_available} REQUIRES http3)
 qb_example(SOURCE 14-streaming-and-cookies.cpp DEPENDS qbm-http)
 qb_example(SOURCE 15-http2-and-http3-clients.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_h2h3_clients)
 
