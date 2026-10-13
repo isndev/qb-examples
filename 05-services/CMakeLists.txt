@@ -62,3 +62,14 @@ endif ()
 
 add_subdirectory(04-shutdown-and-drain)
 add_subdirectory(05-sharded-accept)
+
+if (QB_BUILD_TESTS)
+    qb_add_test(
+            MODULE qb-examples
+            TIER unit
+            NAME service-protocol-framing
+            SOURCES 01-tcp-chat/tests/protocol-framing.cpp
+            DEPENDS qb-io
+            INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+endif ()
