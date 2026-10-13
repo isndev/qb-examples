@@ -18,6 +18,7 @@
  * @prerequisites none
  * @expect "=== qb-io: crypto and compression, without adding OpenSSL by hand ==="
  * @expect "[aead] tampered ciphertext REJECTED (decrypt returned nothing)"
+ * @expect "[password] correct password accepted: yes"
  * @expect "[password] wrong password rejected"
  * @expect "[jwt] expired token rejected: TOKEN_EXPIRED"
  * @expect "[gzip] bomb REFUSED by the output bound: "
@@ -190,10 +191,12 @@ main() {
     const char       *variant = stored.rfind("$argon2id$", 0) == 0 ? "Argon2id" : "PBKDF2-HMAC-SHA256";
     qb::io::cout() << "[password] " << variant << " stored form: " << stored.substr(0, 20)
                    << "… (variant, cost, salt and digest, all in one column)\n";
-    qb::io::cout() << "[password] correct password accepted: "
-                   << (qb::crypto::verify_password("correct horse battery staple", stored) ? "yes" : "NO — broken") << "\n";
-    qb::io::cout() << (qb::crypto::verify_password("Tr0ub4dor&3", stored) ? "[password] WRONG PASSWORD ACCEPTED — broken\n"
-                                                                          : "[password] wrong password rejected\n");
+    const bool correct_password_accepted = qb::crypto::verify_password("correct horse battery staple", stored);
+    const bool wrong_password_rejected   = !qb::crypto::verify_password("Tr0ub4dor&3", stored);
+    qb::io::cout() << "[password] correct password accepted: " << (correct_password_accepted ? "yes" : "NO — broken") << "\n";
+    qb::io::cout() << (wrong_password_rejected ? "[password] wrong password rejected\n" : "[password] WRONG PASSWORD ACCEPTED — broken\n");
+    if (!correct_password_accepted || !wrong_password_rejected)
+        return 1;
 
     // ------------------------------------------------------------ comparing secrets
     section("6. comparing two secrets without leaking how far you got");
