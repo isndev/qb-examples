@@ -34,6 +34,15 @@ def read_frame(sock):
 
 
 class BidFaultProxy:
+    @staticmethod
+    def _close_socket(sock):
+        # close alone may leave the other relay blocked in recv until its timeout.
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # already closed, disconnected, or a listening socket
+        sock.close()
+
     def __init__(self, host, port):
         self.upstream = (host, port)
         self.listener = socket.socket()
@@ -75,7 +84,7 @@ class BidFaultProxy:
             with self.lock:
                 blocked = self.blocked
             if blocked:
-                client.close()
+                self._close_socket(client)
                 continue
             threading.Thread(target=self.connection, args=(client,), daemon=True).start()
 
@@ -83,7 +92,7 @@ class BidFaultProxy:
         try:
             server = socket.create_connection(self.upstream, timeout=8)
         except OSError:
-            client.close()
+            self._close_socket(client)
             return
         client.settimeout(20)
         server.settimeout(20)
@@ -113,8 +122,8 @@ class BidFaultProxy:
                 pass
             finally:
                 closing.set()
-                client.close()
-                server.close()
+                self._close_socket(client)
+                self._close_socket(server)
 
         def server_to_client():
             try:
@@ -134,8 +143,8 @@ class BidFaultProxy:
                 pass
             finally:
                 closing.set()
-                client.close()
-                server.close()
+                self._close_socket(client)
+                self._close_socket(server)
 
         a = threading.Thread(target=client_to_server, daemon=True)
         b = threading.Thread(target=server_to_client, daemon=True)
@@ -146,7 +155,7 @@ class BidFaultProxy:
 
     def close(self):
         self.stopped = True
-        self.listener.close()
+        self._close_socket(self.listener)
         self.thread.join(timeout=1)
 
 
