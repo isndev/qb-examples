@@ -72,6 +72,9 @@
  * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
+#include <cassert>
+#include <condition_variable>
+#include <deque>
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/system/allocator/pipe.h>
@@ -396,6 +399,14 @@ public:
 // Echo client
 class EchoClient : public qb::io::use<EchoClient>::tcp::client<> {
 private:
+    static constexpr std::size_t MAX_PENDING_INPUT = 64;
+
+    enum class InputKind { line, quit, end_of_input };
+    struct InputItem {
+        InputKind   kind;
+        std::string text;
+    };
+
     std::atomic<uint32_t> _next_id{1};
     std::mutex            _mutex;
     struct ResponseCallback {
@@ -403,10 +414,17 @@ private:
         std::chrono::steady_clock::time_point           expiry;
         bool                                            active = true;
     };
-    std::map<uint32_t, ResponseCallback> _callbacks;
-    std::atomic<bool>                    _connected{false};
-    std::atomic<bool>                    _running{true};
-    std::thread                          _input_thread;
+    std::map<uint32_t, ResponseCallback>  _callbacks;
+    std::atomic<bool>                     _connected{false};
+    std::atomic<bool>                     _running{true};
+    std::thread                           _input_thread;
+    std::thread::id                       _owner_thread{std::this_thread::get_id()};
+    qb::io::async::listener              &_owner_loop{qb::io::async::listener::current};
+    std::mutex                            _input_mutex;
+    std::condition_variable               _input_space;
+    std::deque<InputItem>                 _pending_input;
+    bool                                  _quit_requested{false}; // Owner thread only.
+    std::chrono::steady_clock::time_point _quit_deadline{};       // Owner thread only.
 
 public:
     using Protocol = qb::custom_protocol<EchoClient>;
@@ -416,9 +434,14 @@ public:
         qb::io::cout() << "EchoClient initialized" << std::endl;
     }
 
-    // Destructor - ensure thread is stopped
+    // Wake a worker waiting for queue space before joining it. A worker already
+    // blocked in getline on an open stdin still cannot be cancelled (QB-721).
     ~EchoClient() {
-        _running = false;
+        {
+            std::lock_guard<std::mutex> lock(_input_mutex);
+            _running = false;
+        }
+        _input_space.notify_all();
         if (_input_thread.joinable()) {
             _input_thread.join();
         }
@@ -491,8 +514,12 @@ public:
     void
     on(qb::io::async::event::disconnected &&) {
         qb::io::cout() << "Client disconnected from server" << std::endl;
-        _connected = false;
-        _running   = false;
+        {
+            std::lock_guard<std::mutex> lock(_input_mutex);
+            _connected = false;
+            _running   = false;
+        }
+        _input_space.notify_all();
     }
 
     bool
@@ -536,6 +563,8 @@ public:
     // Send an echo request asynchronously
     void
     sendEchoRequest(const std::string &data, std::function<void(bool success, const std::string &response)> callback, int timeout_ms = 5000) {
+        // Network output and its write watcher belong to the thread driving this listener.
+        assert(std::this_thread::get_id() == _owner_thread);
         if (!_connected) {
             qb::io::cerr() << "Cannot send echo request: not connected" << std::endl;
             if (callback)
@@ -573,9 +602,84 @@ public:
         qb::io::cout() << "Client sent ECHO_REQUEST, ID: " << msg_id << std::endl;
     }
 
+    // Called only by runClient's I/O loop. The stdin worker owns neither the
+    // connection nor its callbacks; it transfers complete lines through this queue.
+    void
+    drainInteractiveInput() {
+        assert(std::this_thread::get_id() == _owner_thread);
+        std::deque<InputItem> items;
+        {
+            std::lock_guard<std::mutex> lock(_input_mutex);
+            items.swap(_pending_input);
+        }
+        _input_space.notify_all();
+
+        for (const auto &item : items) {
+            if (!_connected)
+                break;
+            if (item.kind != InputKind::line) {
+                // All earlier lines have been published. Keep the owner loop alive
+                // until its output drains and their replies or timeouts arrive.
+                _quit_requested = true;
+                _quit_deadline  = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+                break;
+            }
+            sendEchoRequest(item.text, [](bool success, const std::string &response) {
+                if (success)
+                    qb::io::cout() << "Server response: " << response << std::endl;
+                else
+                    qb::io::cerr() << "Echo request failed" << std::endl;
+            });
+        }
+    }
+
+    [[nodiscard]] bool
+    isQuitting() const noexcept {
+        return _quit_requested;
+    }
+
+    void
+    finishInteractiveShutdown() {
+        assert(std::this_thread::get_id() == _owner_thread);
+        if (!_quit_requested)
+            return;
+
+        bool callbacks_pending;
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            callbacks_pending = !_callbacks.empty();
+        }
+        if (!callbacks_pending && !this->has_pending_write()) {
+            _running = false;
+        } else if (std::chrono::steady_clock::now() >= _quit_deadline) {
+            qb::io::cerr() << "Interactive shutdown timed out waiting for output or replies" << std::endl;
+            _running = false;
+        }
+    }
+
+private:
+    // Queue a complete command or EOF without touching the I/O component. The
+    // bounded wait is cancellable on disconnect; it does not cancel getline.
+    bool
+    enqueueInteractiveInput(InputItem item) {
+        std::unique_lock<std::mutex> lock(_input_mutex);
+        _input_space.wait(lock, [this] { return _pending_input.size() < MAX_PENDING_INPUT || !_running || !_connected; });
+        if (!_running || !_connected)
+            return false;
+        _pending_input.push_back(std::move(item));
+        lock.unlock();
+        _owner_loop.wake();
+        return true;
+    }
+
+public:
     // Start interactive mode in a separate thread
     void
     startInteractiveMode() {
+        assert(std::this_thread::get_id() == _owner_thread);
+        // Arm on the owner before publishing the loop reference to the worker.
+        // wake() is the listener's documented cross-thread operation.
+        _owner_loop.arm_wake();
         _input_thread = std::thread([this]() {
             // Main client loop for user input
             std::string line;
@@ -583,29 +687,26 @@ public:
 
             while (_running && _connected) {
                 qb::io::cout() << "> ";
-                std::getline(std::cin, line);
+                if (!std::getline(std::cin, line)) {
+                    // EOF/error is observable immediately. An open stdin with no
+                    // complete line still blocks here until QB-721 is addressed.
+                    enqueueInteractiveInput({InputKind::end_of_input, {}});
+                    break;
+                }
 
                 if (!_running || !_connected)
                     break;
 
-                if (line == "quit") {
-                    _running = false;
-                    break;
-                }
-
                 if (!line.empty()) {
-                    sendEchoRequest(line, [](bool success, const std::string &response) {
-                        if (success) {
-                            qb::io::cout() << "Server response: " << response << std::endl;
-                        } else {
-                            qb::io::cerr() << "Echo request failed" << std::endl;
-                        }
-                    });
+                    const bool quitting = line == "quit";
+                    if (!enqueueInteractiveInput({quitting ? InputKind::quit : InputKind::line, std::move(line)}))
+                        break;
+                    if (quitting)
+                        break;
                 }
             }
 
             qb::io::cout() << "Input thread exiting" << std::endl;
-            _running = false;
         });
     }
 };
@@ -699,16 +800,27 @@ runClient(const std::string &host, uint16_t port) {
         }
     });
 
-    // Main event loop - keep running until client disconnects
+    // Main event loop - keep running until disconnect or a drained interactive exit.
     while (client.isRunning()) {
-        // Process IO events
-        qb::io::async::run(EVRUN_ONCE);
+        // Before quit the worker's wake ends the regular blocking I/O turn.
+        // After quit, cap each turn so a silent peer cannot hold the shutdown
+        // deadline or callback timeouts hostage inside EVRUN_ONCE.
+        if (client.isQuitting())
+            qb::io::async::listener::current.run_once_for(std::chrono::milliseconds(10));
+        else
+            qb::io::async::run(EVRUN_ONCE);
+
+        // Only this owner thread may serialize onto the connection and arm its
+        // write watcher. A worker wake makes the blocking loop return here.
+        client.drainInteractiveInput();
 
         // Check for timeouts in callbacks
         client.checkTimeouts();
+        client.finishInteractiveShutdown();
 
-        // Small sleep to avoid busy waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // The bounded post-quit pump already paces idle turns.
+        if (!client.isQuitting())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     qb::io::cout() << "Client shutting down" << std::endl;

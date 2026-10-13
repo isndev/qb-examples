@@ -10,9 +10,10 @@
  * - **Session Management**: Keeps track of all active client sessions (`_sessions` map)
  *   and their associated usernames (`_usernames` map for quick lookup).
  * - **Authentication**: Handles `AuthEvent`s sent by `ServerActor`s. It checks for username
- *   uniqueness, registers new users, and sends an authentication response.
+ *   uniqueness, rejects repeat authentication for a session, registers new users, and sends
+ *   an authentication response.
  * - **Message Broadcasting**: Receives `ChatEvent`s (containing messages from clients)
- *   and broadcasts them to all other connected and authenticated clients by sending
+ *   and broadcasts them to all connected and authenticated clients, including the sender, by sending
  *   `SendMessageEvent`s to the appropriate `ServerActor`s.
  * - **Disconnection Handling**: Processes `DisconnectEvent`s to remove users from its
  *   tracking maps and notify other users of departures.
@@ -108,6 +109,7 @@ public:
      *
      * Demonstrates QB's event handling pattern:
      * 1. Event Processing:
+     *    - Rejects repeat authentication for a session
      *    - Validates username availability
      *    - Updates session mappings
      *    - Sends response to user

@@ -36,8 +36,9 @@ they are subscribed to.
 
 * **`ClientActor`**: Connects to the broker server, sends user commands (subscribe, publish, unsubscribe) using
   `BrokerProtocol`, and displays messages received from the server.
-* **`InputActor`**: Handles console input, allowing the user to type commands like `SUB topic`, `PUB topic message`,
-  etc.
+* **`InputActor`**: Handles console input, allowing commands like `SUB topic` and `PUB topic message`.
+  Its `std::getline` call in `on(qb::LoopEvent const&)` blocks its dedicated core until a whole line arrives
+  (`client/InputActor.cpp:41-45`); an open partial line is not cancellable here.
 
 **Shared Components (`shared/` directory):**
 
@@ -117,4 +118,4 @@ minimizing data copies and improving performance.
     * `UNSUB <topic_name>`
     * `PUB <topic_name> <your message content>`
     * `help`
-    * `quit` 
+    * `quit`

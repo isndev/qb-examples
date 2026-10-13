@@ -5,15 +5,16 @@
  *
  * @details
  * This actor captures user commands from the console for interacting with the message broker.
- * It uses `qb::ICallback` for non-blocking input reading, periodically checking `std::cin`.
+ * It uses `qb::ICallback` to call `std::getline` on a dedicated core; that read
+ * blocks until a complete line or EOF.
  * Entered commands are packaged into `BrokerInputEvent`s and sent to the `ClientActor`
  * for parsing and network transmission.
  * Special commands like "quit" and "help" are handled locally.
  *
  * QB Features Demonstrated:
  * - `qb::Actor`: Base class.
- * - `qb::ICallback`: For periodic, non-blocking console input checks.
- *   - `registerCallback(*this)` and `onCallback()`.
+ * - `qb::ICallback`: For a per-loop callback, not asynchronous stdin.
+ *   - `registerCallback(*this)` and `on(qb::LoopEvent const&)`.
  * - `qb::Event`: Base for `BrokerInputEvent`.
  * - Inter-Actor Communication: `push<BrokerInputEvent>(...)` to `ClientActor`.
  * - Local Command Handling: Processing "quit" and "help" directly.
@@ -31,13 +32,13 @@
  * @brief Actor managing user input and command processing
  *
  * Architecture:
- * - Uses QB's callback system for non-blocking I/O
+ * - Uses QB's callback system, but the console read itself blocks this core
  * - Maintains clean separation from network logic
  * - Implements command parsing and routing
  * - Handles graceful shutdown sequences
  *
  * Input Processing:
- * - Reads from standard input non-blockingly
+ * - Reads complete lines from standard input, blocking until line or EOF
  * - Parses special commands (e.g., 'quit')
  * - Routes broker commands to ClientActor
  * - Manages application lifecycle
@@ -69,12 +70,12 @@ public:
      */
     qb::io::async::task<bool> onInit() override;
 
-    /// Ensures clean shutdown
+    /// Default destructor; a blocked input callback must return before the actor can stop.
     ~InputActor() = default;
 
 private:
     /**
-     * @brief Processes user input non-blockingly
+     * @brief Processes a complete console line; the read can block this core
      *
      * Input handling:
      * 1. Reads console input

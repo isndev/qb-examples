@@ -7,10 +7,11 @@
  * @details
  * This file provides the implementation for the `ChatRoomActor`.
  * - `onInit()`: Registers handlers for `AuthEvent`, `ChatEvent`, and `DisconnectEvent`.
- * - `on(AuthEvent&)`: Handles new user authentication. It checks if a username is taken.
- *   If not, it stores the user's session ID and username, then sends a welcome message
+ * - `on(AuthEvent&)`: Handles new user authentication. It rejects a second authentication
+ *   for the same session and checks if a username is taken. If accepted, it stores the
+ *   user's session ID and username, then sends a welcome message
  *   to the user (via `SendMessageEvent` to the relevant `ServerActor`) and broadcasts
- *   a "user has joined" message to all other users.
+ *   a "user has joined" message to all connected users, including the new user.
  * - `on(ChatEvent&)`: Processes incoming chat messages. It retrieves the sender's username
  *   using the session ID and then broadcasts the formatted message (e.g., "Username: message")
  *   to all connected clients.
@@ -56,7 +57,7 @@ ChatRoomActor::onInit() {
  * @brief Handles user authentication and registration
  *
  * Authentication flow:
- * 1. Validates username uniqueness
+ * 1. Rejects repeat authentication and validates username uniqueness
  * 2. Registers user in session and username maps
  * 3. Sends welcome message to the user
  * 4. Broadcasts join notification to all users
@@ -68,6 +69,13 @@ ChatRoomActor::on(AuthEvent &evt) {
     auto session_id = evt.session_id;
     auto username   = evt.username;
     auto server_id  = evt.getSource();
+
+    // One username per live session. Replacing _sessions without removing its old
+    // _usernames entry would leave that name reserved after disconnect.
+    if (_sessions.find(session_id) != _sessions.end()) {
+        sendError(session_id, server_id, "Already authenticated");
+        return;
+    }
 
     // Check if username is already taken
     if (_usernames.find(username) != _usernames.end()) {

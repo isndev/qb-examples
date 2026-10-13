@@ -6,7 +6,7 @@
  * @details
  * This file provides the `InputActor` implementation.
  * - `onInit()`: Registers the `qb::ICallback` and displays a welcome message and help info.
- * - `onCallback()`: Periodically called to read from `std::cin` using `std::getline`.
+ * - `on(qb::LoopEvent const&)`: Reads from `std::cin` using blocking `std::getline`.
  *   Handles "quit" to shut down the client and itself (by sending `qb::KillEvent`).
  *   Handles "help" to redisplay command usage.
  *   Other non-empty input is sent as a `BrokerInputEvent` to the `ClientActor`.
@@ -26,7 +26,7 @@ InputActor::InputActor(qb::ActorId client_id)
 
 qb::io::async::task<bool>
 InputActor::onInit() {
-    // Register for non-blocking input handling
+    // Register a loop callback; getline below still blocks this dedicated core.
     registerCallback(*this);
 
     // Display initialization and usage information
@@ -41,7 +41,7 @@ void
 InputActor::on(qb::LoopEvent const & /*loop*/) {
     std::string line;
 
-    // Read user input non-blockingly
+    // Wait for a whole line. An open stdin without newline blocks this core.
     std::getline(std::cin, line);
 
     // Handle special commands

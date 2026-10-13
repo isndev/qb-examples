@@ -1,17 +1,14 @@
 /**
  * @file examples/05-services/01-tcp-chat/client/InputActor.cpp
  * @example TCP Chat Client - User Input Actor Implementation
- * @brief Implements the `InputActor` for handling non-blocking console input.
+ * @brief Implements the `InputActor` with a blocking read on its dedicated core.
  *
  * @details
  * This file contains the implementation of `InputActor`.
  * - `onInit()`: Registers the `qb::ICallback` and displays initial user prompts.
- * - `onCallback()`: This method is called periodically by the QB engine. It attempts
- *   to read a line from `std::cin`. If input is available (e.g., user pressed Enter),
- *   it processes the input. The `std::getline` itself can be blocking if input isn't ready,
- *   so for a truly non-blocking GUI or more complex console input, platform-specific
- *   non-blocking I/O or a separate input thread that messages the actor would be more robust.
- *   However, for simple console examples, `ICallback` with `std::getline` is often used for simplicity.
+ * - `on(qb::LoopEvent const&)`: Reads a line from `std::cin` with `std::getline`.
+ *   An open stdin without a complete line blocks this core; EOF is not yet a
+ *   terminal path here. The network actor runs on another core.
  *   - If the input is "quit", it signals the `ClientActor` and itself to terminate using `qb::KillEvent`.
  *   - Otherwise, non-empty input is sent as a `ChatInputEvent` to the `ClientActor`.
  *
@@ -29,7 +26,7 @@ InputActor::InputActor(qb::ActorId client_id)
 
 qb::io::async::task<bool>
 InputActor::onInit() {
-    // Register for non-blocking input handling
+    // Register a loop callback; getline below still blocks this dedicated core.
     registerCallback(*this);
 
     // Display initialization and usage information
@@ -43,7 +40,7 @@ void
 InputActor::on(qb::LoopEvent const &) {
     std::string line;
 
-    // Read user input non-blockingly
+    // Wait for a whole line. An open stdin without newline blocks this core.
     std::getline(std::cin, line);
 
     // Handle quit command

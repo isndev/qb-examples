@@ -27,7 +27,7 @@
  *   - `onMessage()`: Reconstructs `broker::Message` from the buffer and dispatches it to the
  *     `IO_` handler (e.g., `ClientActor` or `BrokerSession`) via `this->_io.on(std::move(parsed_message))`
  *     (using `std::move` for potential optimization if payload is large).
- *   - `reset()`: Resets parsing state on error.
+ *   - `reset()`: No-op because framing is stateless; invalid headers terminate the protocol.
  *
  * QB Features Demonstrated:
  * - Custom Protocol Design: Binary header for message framing.
@@ -42,7 +42,6 @@
 
 #include <qb/io/async.h>
 #include <string>
-#include <vector>
 #include <cstring>
 #include <qb/system/allocator/pipe.h>
 
@@ -155,7 +154,7 @@ namespace broker {
  * - Message framing and boundary detection
  * - Protocol state management
  * - Automatic message dispatching
- * - Error handling and recovery
+ * - Terminal handling of invalid or oversized frames
  *
  * The implementation follows QB's CRTP pattern for zero-overhead abstractions
  * while maintaining type safety and compile-time polymorphism.
@@ -165,10 +164,8 @@ namespace broker {
 template <typename IO_>
 class BrokerProtocol : public qb::io::async::AProtocol<IO_> {
 private:
-    static constexpr size_t HEADER_SIZE     = sizeof(MessageHeader);
-    bool                    _reading_header = true; ///< Current reading state
-    MessageHeader           _header{};              ///< Buffer for current message header
-    std::vector<char>       _payload;               ///< Buffer for message payload
+    static constexpr std::size_t HEADER_SIZE      = sizeof(MessageHeader);
+    static constexpr std::size_t MAX_PAYLOAD_SIZE = 64 * 1024;
 
 public:
     using message = Message; ///< Type alias required by QB framework
@@ -185,9 +182,9 @@ public:
      *
      * This method is called by QB to determine if we have a complete message.
      * It implements our protocol's framing logic:
-     * 1. Read the header (if in header reading state)
-     * 2. Validate the header
-     * 3. Return the total message size (header + payload)
+     * 1. Inspect and validate the header
+     * 2. Reject payloads beyond the application or I/O limits
+     * 3. Return the total size only when the full frame is buffered
      *
      * @return Size of complete message, or 0 if more data needed
      */
@@ -195,28 +192,25 @@ public:
     getMessageSize() noexcept override {
         auto &buffer = this->_io.in();
 
-        if (buffer.empty())
-            return 0;
+        if (buffer.size() < HEADER_SIZE)
+            return qb::io::async::IProtocol::kNoMessage;
 
-        if (_reading_header) {
-            if (buffer.size() < HEADER_SIZE)
-                return 0;
+        MessageHeader header{};
+        std::memcpy(&header, buffer.cbegin(), HEADER_SIZE);
 
-            std::memcpy(&_header, buffer.cbegin(), HEADER_SIZE);
-
-            // Validate protocol magic and version
-            if (_header.magic != PROTOCOL_MAGIC || _header.version != PROTOCOL_VERSION) {
-                reset();
-                return 0;
-            }
-
-            _reading_header = false;
-            _payload.resize(_header.length);
-
-            return HEADER_SIZE + _header.length;
+        if (header.magic != PROTOCOL_MAGIC || header.version != PROTOCOL_VERSION) {
+            this->not_ok();
+            return qb::io::async::IProtocol::kNoMessage;
         }
 
-        return HEADER_SIZE + _header.length;
+        const auto max_message_size = this->_io.max_message_size();
+        if (header.length > MAX_PAYLOAD_SIZE || max_message_size < HEADER_SIZE || header.length > max_message_size - HEADER_SIZE) {
+            this->not_ok();
+            return qb::io::async::IProtocol::kNoMessage;
+        }
+
+        const auto total_size = HEADER_SIZE + static_cast<std::size_t>(header.length);
+        return buffer.size() < total_size ? qb::io::async::IProtocol::kNoMessage : total_size;
     }
 
     /**
@@ -235,33 +229,22 @@ public:
     onMessage(std::size_t size) noexcept override {
         auto &buffer = this->_io.in();
 
-        // Copy payload if present
-        if (_header.length > 0) {
-            std::memcpy(_payload.data(), buffer.cbegin() + HEADER_SIZE, _header.length);
-        }
+        MessageHeader header{};
+        std::memcpy(&header, buffer.cbegin(), HEADER_SIZE);
 
-        // Construct and dispatch message
-        Message msg;
-        msg.type = static_cast<MessageType>(_header.type);
-        if (_header.length > 0) {
-            msg.payload.assign(_payload.data(), _header.length);
-        }
+        Message msg{static_cast<MessageType>(header.type), std::string(buffer.cbegin() + HEADER_SIZE, buffer.cbegin() + size)};
 
         // Use move semantics to avoid copying the message
         this->_io.on(std::move(msg));
-        _reading_header = true; // Ready for next message
     }
 
     /**
      * @brief Resets the protocol state
      *
-     * Called when an error occurs or when we need to resynchronize.
+     * The framer keeps no partial state; invalid input is terminal via not_ok().
      */
     void
-    reset() noexcept override {
-        _reading_header = true;
-        _payload.clear();
-    }
+    reset() noexcept override {}
 };
 
 } // namespace broker

@@ -20,10 +20,10 @@ in a common chat room.
 * **`ChatSession`**: Not an actor itself, but a class managed by `ServerActor`. Each instance represents a single
   connected client, handling the `ChatProtocol` for that client's connection, including message parsing and session
   timeouts.
-* **`ChatRoomActor`**: Runs on a dedicated core (e.g., Core 3). This is the central hub for chat logic. It manages user
-  authentication (ensuring unique usernames), keeps track of all connected sessions, and broadcasts chat messages
+* **`ChatRoomActor`**: Runs on a dedicated core (e.g., Core 3). This is the central hub for chat logic. It accepts
+  one username per session and rejects a second authentication (`server/ChatRoomActor.cpp:68-88`), keeps track of connected sessions, and broadcasts chat messages
   received from one client to **every** connected session — the sender included. `broadcastMessage()` iterates the
-  whole `_sessions` map with no exclusion (`server/ChatRoomActor.cpp:183-191`), so a client sees its own message come
+  whole `_sessions` map with no exclusion (`server/ChatRoomActor.cpp:191-199`), so a client sees its own message come
   back from the server. Add a sender check there if you want the usual "everyone else" semantics.
 
 **Client-Side Architecture:**
@@ -31,14 +31,15 @@ in a common chat room.
 * **`ClientActor`**: Runs on a dedicated core (e.g., Core 1 on the client machine). It manages the TCP connection to the
   server, handles sending user messages (received from `InputActor`), and processes incoming messages from the server (
   authentication responses, chat messages from others, error messages). It also implements reconnection logic.
-* **`InputActor`**: Runs on a dedicated core (e.g., Core 0 on the client machine). It handles user input from the
-  console in a non-blocking way using `qb::ICallback` and sends the input as `ChatInputEvent`s to the `ClientActor`.
+* **`InputActor`**: Runs on a dedicated core (e.g., Core 0 on the client machine). It uses `qb::ICallback` to forward
+  console lines as `ChatInputEvent`s to `ClientActor`, but `std::getline` blocks that core until a whole line arrives
+  (`client/InputActor.cpp:43-47`). An open input without newline cannot be cancelled by this example yet.
 
 **Shared Components (`shared/` directory):**
 
-* **`Protocol.h/.cpp`**: Defines the custom binary `ChatProtocol` used for communication. This includes message
-  framing (header with magic, version, type, length) and serialization/deserialization logic integrated with QB-IO (
-  `AProtocol`, `pipe::put` specialization).
+* **`Protocol.h/.cpp`**: Defines the custom binary `ChatProtocol` used for communication. Its framer waits for a
+  complete frame and rejects invalid headers or payloads beyond 64 KiB before allocation
+  (`shared/Protocol.h:193-216`); serialization uses the `pipe::put` specialization.
 * **`Events.h`**: Defines the various `qb::Event` types used for asynchronous communication between the server-side
   actors (`NewSessionEvent`, `AuthEvent`, `ChatEvent`, `SendMessageEvent`, `DisconnectEvent`) and for client-side
   input (`ChatInputEvent`).
@@ -86,8 +87,8 @@ This example showcases a wide range of QB framework features:
     * Using `switch_protocol<Protocol>()` to activate the protocol on a connection.
 * **Stream-Based Sending**: `*this << message_object;` — for example `*this << auth;`
   (`client/ClientActor.cpp:238`) and `*this << msg;` (`:267`). **There is no `Protocol::end` here**: `ChatProtocol`
-  (`shared/Protocol.h:168-265`) declares none, because the frame is self-delimiting — its fixed `MessageHeader`
-  (`shared/Protocol.h:78-83`: magic, version, type, **length**) carries the payload length, and the
+  (`shared/Protocol.h:167-250`) declares none, because the frame is self-delimiting — its fixed `MessageHeader`
+  (`shared/Protocol.h:77-82`: magic, version, type, **length**) carries the payload length, and the
   `qb::allocator::pipe<char>::put<Message>` specialization writes header and payload in one go. `Protocol::end` is a real idiom, but only for qb's **text** protocols (`qb::protocol::text::command`), where it
   is the delimiter byte that terminates a message.
 * **Timeout Handling**: `qb::io::use<T>::timeout` mixin used by `ChatSession` for inactivity timeouts (`setTimeout`,
@@ -134,4 +135,4 @@ This example showcases a wide range of QB framework features:
    to disconnect a client.
 
 4. **Shutdown**:
-   To stop the server, press Enter in the terminal where the server is running. 
+   To stop the server, press Enter in the terminal where the server is running.

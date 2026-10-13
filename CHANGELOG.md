@@ -38,6 +38,10 @@ plumbing do not qualify.
 
 ### Changed
 
+- **Chat and broker client guides state their console input limit (Huly QB-750).**
+  `std::getline` still blocks the dedicated input core until a whole line arrives, and EOF
+  does not yet stop those two input actors. Their comments and guides no longer present
+  the callback as non-blocking; the runtime fix remains open.
 - **Auction House builds accepted-bid replies with fewer temporary allocations (Huly QB-916).**
   Success and replay retain the same six JSON fields, numeric types, status and content type.
   The reply owns the request UUID and serializes the object once; database reconciliation,
@@ -55,6 +59,16 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Chat and broker wait for incomplete frames and reject invalid ones (Huly QB-472, QB-473, QB-752).**
+  Their parsers wait for the complete body, cap payloads at 64 KiB and the connection's I/O limit
+  before allocation, and close on bad magic, version or length. Fragmented and coalesced frames
+  remain valid; the guides show the same contract.
+- **Chat keeps one accepted username per session (Huly QB-753).** A second authentication is
+  rejected before either name index changes, so disconnect releases the original name.
+- **The interactive custom-protocol client publishes only on its I/O owner (Huly QB-720).**
+  A bounded queue transfers stdin lines to that thread; `quit` waits for earlier output and
+  replies, or a six-second deadline, before exit. EOF is handled, while an open partial stdin read can still block shutdown
+  and remains tracked separately under QB-721.
 - **Application bootstrap and TaskManager status display match their actual contracts (Huly QB-799, QB-800).**
   TaskManager's psql script connects to the new database on one meta-command and grants its
   application role neither CREATEDB nor SUPERUSER. Auction House creates its application role

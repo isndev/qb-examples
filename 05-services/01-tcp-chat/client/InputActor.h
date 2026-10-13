@@ -1,23 +1,22 @@
 /**
  * @file examples/05-services/01-tcp-chat/client/InputActor.h
  * @example TCP Chat Client - User Input Actor
- * @brief Actor responsible for handling user console input in a non-blocking manner.
+ * @brief Actor handling console input on a dedicated core.
  *
  * @details
- * This actor interfaces with the user via the console. It uses `qb::ICallback` to
- * periodically check for console input without blocking the actor's thread or the
- * QB engine's event loop. When input is detected, it's packaged into a
- * `ChatInputEvent` and sent to the `ClientActor` for processing and network transmission.
+ * This actor uses `qb::ICallback` to invoke `std::getline` on its core. That call
+ * blocks the core until a complete line or EOF; it is not asynchronous input.
+ * Other nonempty lines are packaged into `ChatInputEvent`s and sent to `ClientActor`;
+ * `quit` and empty lines are handled locally.
  *
- * It demonstrates a common pattern for integrating blocking I/O (like `std::getline`
- * from `std::cin` in a naive way) into the QB actor model by using a non-blocking check
- * within a periodic callback.
+ * The dedicated core keeps the network actor on another core responsive, but an
+ * open stdin without a newline still prevents this core from processing events.
  *
  * QB Features Demonstrated:
  * - `qb::Actor`: Base class for concurrent entities.
  * - `qb::ICallback`: Interface for periodic execution within an actor's lifecycle.
- *   - `registerCallback(*this)`: To enable periodic calls to `onCallback()`.
- *   - `onCallback()`: Method called by the QB engine periodically.
+ *   - `registerCallback(*this)`: Enables calls to `on(qb::LoopEvent const&)`.
+ *   - `on(qb::LoopEvent const&)`: Called by the QB engine each loop pass.
  * - `qb::Event`: Base for `ChatInputEvent`.
  * - Inter-Actor Communication: `push<ChatInputEvent>(_client_id, ...)` to send user input to the `ClientActor`.
  * - Actor Lifecycle: Handles `qb::KillEvent` implicitly for shutdown (though explicit handling could be added).
@@ -35,13 +34,13 @@
  * @brief Actor managing user input and command processing
  *
  * Architecture:
- * - Uses QB's callback system for non-blocking I/O
+ * - Uses QB's callback system, but the console read itself blocks this core
  * - Maintains clean separation from network logic
  * - Implements command parsing and routing
  * - Handles graceful shutdown sequences
  *
  * Input Processing:
- * - Reads from standard input non-blockingly
+ * - Reads complete lines from standard input, blocking until line or EOF
  * - Parses special commands (e.g., 'quit')
  * - Routes chat messages to ClientActor
  * - Manages application lifecycle
@@ -73,12 +72,12 @@ public:
      */
     qb::io::async::task<bool> onInit() override;
 
-    /// Ensures clean shutdown
+    /// Default destructor; a blocked input callback must return before the actor can stop.
     ~InputActor() = default;
 
 private:
     /**
-     * @brief Processes user input non-blockingly
+     * @brief Processes a complete console line; the read can block this core
      *
      * Input handling:
      * 1. Reads console input
