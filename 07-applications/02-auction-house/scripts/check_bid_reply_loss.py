@@ -113,6 +113,13 @@ class BidFaultProxy:
                 pass
             finally:
                 closing.set()
+                # shutdown() first: on Linux a close() does not wake the other thread blocked in recv() on the same
+                # socket, so the application would only see the drop at its 20 s socket timeout, after the 8 s HTTP one.
+                for sock in (client, server):
+                    try:
+                        sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
                 client.close()
                 server.close()
 
@@ -134,6 +141,13 @@ class BidFaultProxy:
                 pass
             finally:
                 closing.set()
+                # shutdown() first: on Linux a close() does not wake the other thread blocked in recv() on the same
+                # socket, so the application would only see the drop at its 20 s socket timeout, after the 8 s HTTP one.
+                for sock in (client, server):
+                    try:
+                        sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
                 client.close()
                 server.close()
 
