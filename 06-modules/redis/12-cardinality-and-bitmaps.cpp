@@ -29,7 +29,8 @@
  * -------------------------------
  * "How many unique visitors did we have?" is a set-cardinality question, and the obvious answer —
  * keep the set — costs memory proportional to the answer. The live run compares both keys with
- * MEMORY USAGE on the same server. That matters more as the cardinality grows.
+ * MEMORY USAGE on the same server. Redis estimates aggregate sizes from five samples by default;
+ * the HLL string does not need nested-value sampling.
  *
  * HYPERLOGLOG: CONSTANT SPACE, APPROXIMATE ANSWER
  * -----------------------------------------------
@@ -39,6 +40,7 @@
  * is bounded internally at about 12 KB no matter what you feed it. Redis stores it as a string,
  * initially sparse and later dense; the whole key also has allocation overhead. This program uses
  * `MEMORY USAGE` for both keys, so the comparison includes that overhead on the same basis.
+ * The set's result is an estimate from Redis's default five samples, not an exact byte count.
  *
  * PFMERGE IS THE FEATURE, NOT PFCOUNT
  * -----------------------------------
@@ -151,8 +153,9 @@ run_cardinality(bool &running, bool &ok) {
     // cardinality ESTIMATE and comes back as a plain integer, not as anything approximate-looking.
     qb::redis::Reply<long long> approx    = co_await redis.pfcount(K_HLL_ALL);
     auto                        truth     = co_await redis.scard(K_SET_ALL);
-    auto                        hll_bytes = co_await redis.memory_usage(K_HLL_ALL);
-    auto                        set_bytes = co_await redis.memory_usage(K_SET_ALL);
+    // Same command and overhead basis; Redis samples five nested set members by default.
+    auto hll_bytes = co_await redis.memory_usage(K_HLL_ALL); // string: no nested sampling
+    auto set_bytes = co_await redis.memory_usage(K_SET_ALL); // set: estimated allocation
 
     if (!hll_bytes.ok() || !set_bytes.ok()) {
         qb::io::cerr() << "[hll] UNEXPECTED: MEMORY USAGE failed: " << hll_bytes.error() << " " << set_bytes.error() << "\n";
@@ -179,7 +182,8 @@ run_cardinality(bool &running, bool &ok) {
                    << " allocated bytes here;\n"
                       "      the exact set holding the same ids costs "
                    << set_size
-                   << " allocated bytes here. Both use MEMORY USAGE, including Redis key/value overhead.\n"
+                   << " estimated bytes here (Redis samples 5 set members by default).\n"
+                      "      Both use MEMORY USAGE, including Redis key/value overhead.\n"
                       "      HLL storage is bounded while an exact set grows with distinct ids.\n\n";
 
     // -----------------------------------------------------------------------------------

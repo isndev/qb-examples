@@ -280,9 +280,11 @@ These examples provide a practical starting point for leveraging Redis with the 
   `bitfield`; `memory_usage` measures each complete Redis value on the same basis, while `strlen`
   measures the bitmap's string length.
 * **The measurement**: 5000 ids into both a HyperLogLog and an exact set. `PFCOUNT` is checked
-  against `SCARD`; two successful `MEMORY USAGE` replies compare allocated bytes for each key.
-  The printed values are specific to the Redis instance used for that run. `BITPOS` finds a bit
-  without transferring the bitmap, but scans O(N) bytes in the inspected range.
+  against `SCARD`; two successful `MEMORY USAGE` replies compare each whole key, including
+  overhead. [Redis MEMORY USAGE](https://redis.io/docs/latest/commands/memory-usage/) measures
+  the HLL string directly but estimates the aggregate set size from five members by default.
+  The printed values depend on that Redis instance; they are not an exact memory ratio.
+  `BITPOS` avoids transfer but scans O(N) bytes in the inspected range.
 * **`PFMERGE` is the feature, not `PFCOUNT`**: three daily uniques added together count every
   returning visitor once per day they came, and nothing in the totals can undo it because they threw
   the identities away. The union of the registers can. That is why you keep a per-day HLL rather than

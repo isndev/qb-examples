@@ -1386,7 +1386,7 @@ can disagree.
 - **`06-modules/redis/11-callbacks-and-consumers.cpp`** — 26 capabilities
   - The half of qbm-redis the other ten programs never touch: the CALLBACK surface. Every command has a second overload whose FIRST argument is the handler, `await()` is the drain that replaces `co_await`, `tcp::pipeline` batches without a single coroutine, and `tcp::cb_consumer` is Pub/Sub for code that has no coroutine to park.
 - **`06-modules/redis/12-cardinality-and-bitmaps.cpp`** — 24 capabilities
-  - Two families for the same question — "how many DISTINCT things?" — and the trade between them. HyperLogLog answers it in a fixed 12 KB for any cardinality, approximately, and MERGES without double counting; a bitmap answers it exactly at one bit per id, and supports server-side set algebra (AND/OR/XOR/NOT) you would otherwise write a job for.
+  - Two families for the same question — "how many DISTINCT things?" — and the trade between them. HyperLogLog uses bounded storage for an approximate answer, and MERGES without double counting; a bitmap answers it exactly at one bit per id, and supports server-side set algebra (AND/OR/XOR/NOT) you would otherwise write a job for.
 - **`06-modules/redis/13-geospatial.cpp`** — 24 capabilities
   - "What is near here?" answered by the server: GEOADD builds an index that is really a SORTED SET keyed on a 52-bit geohash, GEODIST and GEOPOS read it back (lossily — that is measured, not glossed), GEOSEARCH is the modern query and GEORADIUS the one it replaced, and the typed Reply's shape is what decides which query options you can actually use.
 - **`06-modules/redis/14-acl-and-topology.cpp`** — 25 capabilities
