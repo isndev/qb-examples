@@ -33,7 +33,7 @@
 /**
  * @brief Example 1: Simple GET/SET operations
  */
-qb::io::async::task<void>
+qb::io::async::task<bool>
 example_simple_get_set() {
     std::cout << "\n=== Example 1: Simple GET/SET ===" << std::endl;
 
@@ -41,7 +41,7 @@ example_simple_get_set() {
     qb::redis::tcp::client redis{{"tcp://localhost:6379"}};
     if (!co_await redis.connect()) {
         std::cerr << "Failed to connect to Redis" << std::endl;
-        co_return;
+        co_return false;
     }
 
     // Set a value - linear code!
@@ -50,40 +50,45 @@ example_simple_get_set() {
         std::cout << "SET user:1:name = Alice" << std::endl;
     } else {
         std::cerr << "SET failed" << std::endl;
+        co_return false;
     }
 
     // Get the value back.
     // get() returns Reply<optional<string>>; result() is optional<string>&.
     auto get_reply = co_await redis.get("user:1:name");
-    if (get_reply.ok() && get_reply.result().has_value()) {
+    if (get_reply.ok() && get_reply.result() == std::optional<std::string>{"Alice"}) {
         std::cout << "GET user:1:name = " << *get_reply.result() << std::endl;
     } else {
         std::cerr << "GET failed or key not found" << std::endl;
+        co_return false;
     }
 
     // Example 3 already deleted its own keys and these two did not, which is the corpus rule
     // ("every key a program writes is deleted on the way out") broken in the one file nobody
     // re-read after writing it. Measured: `user:1:name` and `user:123` survived every run.
-    (void) (co_await redis.del("user:1:name"));
+    auto removed = co_await redis.del("user:1:name");
+    co_return removed.ok() && removed.result() == 1;
 }
 
 /**
  * @brief Example 2: Sequential operations with error handling
  */
-qb::io::async::task<void>
+qb::io::async::task<bool>
 example_sequential_operations() {
     std::cout << "\n=== Example 2: Sequential Operations ===" << std::endl;
 
     qb::redis::tcp::client redis{{"tcp://localhost:6379"}};
     if (!co_await redis.connect()) {
         std::cerr << "Failed to connect to Redis" << std::endl;
-        co_return;
+        co_return false;
     }
 
     // Setup test data - hset returns Reply<long long> (new fields added).
-    (void) (co_await redis.hset("user:123", "name", "Bob"));
-    (void) (co_await redis.hset("user:123", "email", "bob@example.com"));
-    (void) (co_await redis.hset("user:123", "age", "30"));
+    auto set_name  = co_await redis.hset("user:123", "name", "Bob");
+    auto set_email = co_await redis.hset("user:123", "email", "bob@example.com");
+    auto set_age   = co_await redis.hset("user:123", "age", "30");
+    if (!set_name.ok() || !set_email.ok() || !set_age.ok())
+        co_return false;
 
     std::cout << "User data created" << std::endl;
 
@@ -93,34 +98,42 @@ example_sequential_operations() {
     auto email = co_await redis.hget("user:123", "email");
     auto age   = co_await redis.hget("user:123", "age");
 
-    if (name.ok() && email.ok() && age.ok()) {
+    const bool values_ok = name.ok() && name.result() == std::optional<std::string>{"Bob"} && email.ok()
+                           && email.result() == std::optional<std::string>{"bob@example.com"} && age.ok()
+                           && age.result() == std::optional<std::string>{"30"};
+    if (values_ok) {
         std::cout << "User Profile:" << std::endl;
         std::cout << "  Name:  " << name.result().value_or("N/A") << std::endl;
         std::cout << "  Email: " << email.result().value_or("N/A") << std::endl;
         std::cout << "  Age:   " << age.result().value_or("N/A") << std::endl;
+    } else {
+        co_return false;
     }
 
     // As in example 1: this hash used to be left on the server after every run.
-    (void) (co_await redis.del("user:123"));
+    auto removed = co_await redis.del("user:123");
+    co_return removed.ok() && removed.result() == 1;
 }
 
 /**
  * @brief Example 3: Multiple keys operations — parallel fetch with when_all
  */
-qb::io::async::task<void>
+qb::io::async::task<bool>
 example_multiple_keys() {
     std::cout << "\n=== Example 3: Multiple Keys ===" << std::endl;
 
     qb::redis::tcp::client redis{{"tcp://localhost:6379"}};
     if (!co_await redis.connect()) {
         std::cerr << "Failed to connect to Redis" << std::endl;
-        co_return;
+        co_return false;
     }
 
     // Set multiple keys
-    (void) (co_await redis.set("key1", "value1"));
-    (void) (co_await redis.set("key2", "value2"));
-    (void) (co_await redis.set("key3", "value3"));
+    auto s1 = co_await redis.set("key1", "value1");
+    auto s2 = co_await redis.set("key2", "value2");
+    auto s3 = co_await redis.set("key3", "value3");
+    if (!s1.ok() || !s2.ok() || !s3.ok())
+        co_return false;
 
     std::cout << "Created 3 keys" << std::endl;
 
@@ -141,31 +154,32 @@ example_multiple_keys() {
     auto [r1, r2, r3] = co_await qb::io::async::when_all(fetch("key1"), fetch("key2"), fetch("key3"));
 
     int success = 0;
-    if (r1.ok() && r1.result().has_value())
+    if (r1.ok() && r1.result() == std::optional<std::string>{"value1"})
         ++success;
-    if (r2.ok() && r2.result().has_value())
+    if (r2.ok() && r2.result() == std::optional<std::string>{"value2"})
         ++success;
-    if (r3.ok() && r3.result().has_value())
+    if (r3.ok() && r3.result() == std::optional<std::string>{"value3"})
         ++success;
 
     std::cout << "Fetched " << success << "/3 keys successfully" << std::endl;
 
     // Cleanup - del() returns Reply<long long> (keys deleted).
-    (void) (co_await redis.del("key1", "key2", "key3"));
+    auto removed = co_await redis.del("key1", "key2", "key3");
     std::cout << "Cleaned up test keys" << std::endl;
+    co_return success == 3 && removed.ok() && removed.result() == 3;
 }
 
 /**
  * @brief Example 4: Error handling patterns
  */
-qb::io::async::task<void>
+qb::io::async::task<bool>
 example_error_handling() {
     std::cout << "\n=== Example 4: Error Handling ===" << std::endl;
 
     qb::redis::tcp::client redis{{"tcp://localhost:6379"}};
     if (!co_await redis.connect()) {
         std::cerr << "Failed to connect to Redis" << std::endl;
-        co_return;
+        co_return false;
     }
 
     // Try to get a non-existent key.
@@ -176,10 +190,12 @@ example_error_handling() {
             std::cout << "Value: " << *reply.result() << std::endl;
         } else {
             std::cout << "Key not found (expected)" << std::endl;
+            co_return true;
         }
     } else {
         std::cerr << "Redis error: " << reply.error() << std::endl;
     }
+    co_return false;
 }
 
 /**
@@ -189,7 +205,7 @@ example_error_handling() {
  * run_until() loop in main() stops once this coroutine is done.
  */
 qb::io::async::task<void>
-run_all_examples(bool &running) {
+run_all_examples(bool &running, bool &ok) {
     struct StopOnExit {
         bool &r;
         ~StopOnExit() {
@@ -200,12 +216,13 @@ run_all_examples(bool &running) {
     std::cout << "QB Redis Coroutine Examples (Pure qb-io)" << std::endl;
     std::cout << "Make sure Redis is running on localhost:6379" << std::endl;
 
-    co_await example_simple_get_set();
-    co_await example_sequential_operations();
-    co_await example_multiple_keys();
-    co_await example_error_handling();
+    ok = co_await example_simple_get_set();
+    ok = (co_await example_sequential_operations()) && ok;
+    ok = (co_await example_multiple_keys()) && ok;
+    ok = (co_await example_error_handling()) && ok;
 
-    std::cout << "\n=== All Examples Complete ===" << std::endl;
+    if (ok)
+        std::cout << "\n=== All Examples Complete ===" << std::endl;
     co_return;
 }
 
@@ -216,10 +233,12 @@ main(int /*argc*/, char * /*argv*/[]) {
 
     // Spawn the main coroutine and drive the event loop until it completes.
     bool running = true;
-    auto task    = run_all_examples(running);
+    bool ok      = false;
+    auto task    = run_all_examples(running, ok);
     qb::io::async::coro_scheduler().spawn(std::move(task));
     qb::io::async::run_until(running);
 
-    std::cout << "\nExamples completed successfully!" << std::endl;
-    return 0;
+    if (ok)
+        std::cout << "\nExamples completed successfully!" << std::endl;
+    return ok ? 0 : 1;
 }

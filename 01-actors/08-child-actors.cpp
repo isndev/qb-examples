@@ -66,6 +66,7 @@
  */
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 #include <qb/actor.h>
@@ -74,6 +75,8 @@
 #include <qb/string.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_child_oracle_ok{true};
 
 // The team's script runs as a sequence of self-addressed steps. A coroutine may not touch its
 // actor's members after a suspension, so the pattern throughout is: sleep in the coroutine,
@@ -175,7 +178,8 @@ public:
                 break;
 
             case 2: {
-                const bool alive = is_actor_alive(_members[1].id());
+                const auto dead_handle = _members[1];
+                const bool alive       = is_actor_alive(dead_handle.id());
                 qb::io::cout() << "[team] member 2 killed itself; is_actor_alive says " << (alive ? "yes" : "no")
                                << " — the parent was not notified, it had to ask\n";
 
@@ -185,8 +189,13 @@ public:
                 std::erase_if(_members, [this](qb::ActorHandle<Member> const &h) { return !is_actor_alive(h.id()); });
                 qb::io::cout() << "[team] registry pruned from " << before << " to " << _members.size()
                                << " — is_actor_alive is what keeps it bounded\n";
-                qb::io::cout() << "[team] handle.get() for the dead member now returns nullptr, same signal from the "
-                                  "other API\n";
+                if (dead_handle.get() == nullptr) {
+                    qb::io::cout() << "[team] handle.get() for the dead member now returns nullptr, same signal from the "
+                                      "other API\n";
+                } else {
+                    g_child_oracle_ok.store(false);
+                    qb::io::cerr() << "[team] UNEXPECTED: handle.get() still resolved the dead member\n";
+                }
                 step_later(3, 60ms);
                 break;
             }
@@ -279,5 +288,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_child_oracle_ok.load() ? 1 : 0;
 }

@@ -34,7 +34,7 @@ These examples are designed to illustrate core functionalities of the `qbm-pgsql
 - Implementing error handling strategies.
 
 Only `05-errors.cpp` is an actor application (`ErrorHandlingActor`, driven by `qb::Main`,
-`05-errors.cpp:70`, `:277-284`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
+`05-errors.cpp:73`, `:297-304`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
 coroutines, scaffolded as `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(...)`
 (`01-connect-and-query.cpp:90-96`).
 
@@ -71,7 +71,7 @@ The coroutine examples use linear error handling; `09-callbacks-and-await` shows
 `.then()` / `.success()` / `.error()` callback chain. `db_error` carries `what()`,
 `severity`, `code` (SQLSTATE string), `detail` and a structured `sqlstate` enum. Client-side conversion failures are
 still **thrown**: `qb::pg::error::value_is_null` and `qb::pg::error::field_type_mismatch`, caught with `try`/`catch`
-(`05-errors.cpp:241`, `:251`).
+(`05-errors.cpp:258`, `:269`).
 
 ## Prerequisites
 
@@ -180,11 +180,11 @@ target here and reports a SKIP, never a pass, when nothing answers.
         * `co_await db.execute(PREPARE_INSERT_USER, qb::pg::params{name, email})` (`:62`)
         * `co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{new_id})` (`:79`)
     * Retrieving a generated id from the `RETURNING id` result set.
-    * `std::optional` for nullable columns — `qb::pg::params` accepts `std::nullopt` transparently (`:160`).
+    * `std::optional` for nullable columns — `qb::pg::params` accepts `std::nullopt` transparently (`:158`).
     * Detecting a unique-constraint violation by SQLSTATE: `std::string(err.code) == "23505"` (`:64-67`).
-    * A miss: selecting id `999` and finding an empty result set (`:165-170`).
+    * A miss: selecting id `999` and finding an empty result set (`:163-173`).
     * Cleanup is an ordinary awaited statement at the end of the coroutine, not a destructor and not a blocking
-      `.await()` (`:177-181`).
+      `.await()` (`:175-185`).
 * **Database Operations**:
     * `CREATE TEMP TABLE users (...)`
     * `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;`

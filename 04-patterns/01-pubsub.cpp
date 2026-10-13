@@ -54,12 +54,15 @@
  *   ./build/presets/release/examples/04-patterns/qb-example-patterns-pubsub
  */
 
+#include <atomic>
 #include <string_view>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/main.h>
 #include <qb/patterns.h>
 #include <qb/string.h>
+
+std::atomic_bool g_pubsub_ok{false};
 
 // The published topic. `qb::string<8>` and not `std::string`: the engine relocates an event with
 // memcpy and never runs the source destructor, so a payload member may hold no pointer into
@@ -82,9 +85,11 @@ struct DeskReady : public qb::Event {};
 struct DeskReport : public qb::Event {
     qb::string<16> desk;
     int            received;
-    DeskReport(std::string_view d, int n)
+    int            foreign;
+    DeskReport(std::string_view d, int n, int f)
         : desk(d)
-        , received(n) {}
+        , received(n)
+        , foreign(f) {}
 };
 
 // Reporter -> a desk: leave the bus. `polite` picks which of the two exits it takes.
@@ -148,7 +153,7 @@ public:
             return;
         qb::io::cout() << "[desk " << _name.c_str() << "] wave " << ++_wave << " complete: " << _received << " ticks, " << _foreign
                        << " from the other core's bus\n";
-        push<DeskReport>(_reporter, std::string_view{_name}, _received);
+        push<DeskReport>(_reporter, std::string_view{_name}, _received, _foreign);
     }
 
     void
@@ -240,6 +245,7 @@ class Reporter : public qb::Actor {
     qb::ActorId _polite_desk;
     int         _reports     = 0;
     int         _bus_reports = 0;
+    bool        _isolated    = true;
 
 public:
     qb::io::async::task<bool>
@@ -252,6 +258,7 @@ public:
     void
     on(DeskReport const &r) {
         ++_reports;
+        _isolated = _isolated && r.foreign == 0;
         if (std::string_view{r.desk} == "equities-B")
             _killed_desk = r.getSource();
         if (std::string_view{r.desk} == "crypto-C")
@@ -281,7 +288,11 @@ private:
     finish_if_done() {
         if (_reports < 4 || _bus_reports < 2)
             return;
-        qb::io::cout() << "=== pub/sub complete: 2 buses, 3 desks, no registry code ===\n";
+        if (_isolated)
+            qb::io::cout() << "=== pub/sub complete: 2 buses, 3 desks, no registry code ===\n";
+        else
+            qb::io::cerr() << "Pub/sub oracle failed: a desk received another core's symbol\n";
+        g_pubsub_ok.store(_isolated);
         qb::Main::stop();
     }
 };
@@ -308,5 +319,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_pubsub_ok.load() ? 1 : 0;
 }

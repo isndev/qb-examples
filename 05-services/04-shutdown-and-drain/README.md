@@ -53,13 +53,14 @@ Prerequisites: `05-services/01-tcp-chat` (the acceptor / pool / session layout),
 `hasError()` reports **engine** failures: a core that would not start, an actor whose *synchronous*
 `onInit()` returned false at startup, an escaped exception. It is necessary and **not sufficient**,
 and the gap is measurable in this very corpus: an actor whose **async** `onInit()` returns false once
-the engine is running is simply removed, silently, setting no engine flag — which is why both other
-servers in this tier stay up with their acceptors gone, holding no port, serving nothing, and exit 0.
-`dev/agent/example-run.manifest` records that as `known-bad-stays-up`.
+the engine is running is simply removed, silently, setting no engine flag. The chat and broker examples
+close that gap themselves: after their startup barrier they inspect the acceptor's `hasError()` result,
+stop the engine and return 1. Their manifest entries therefore require a second instance to fail.
 
 This program does the other thing: a failed bind records an **application** startup failure *and*
 asks the engine to stop, and `main()` reads both channels plus the work accounting before choosing a
-code.
+code. Its `--fail-bind` witness first reserves an ephemeral loopback port and keeps that listener alive,
+so the demonstrated bind failure does not depend on whether the process may bind a privileged port.
 
 ## Build and run
 

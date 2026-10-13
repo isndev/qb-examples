@@ -371,11 +371,16 @@ main() {
         send_once(w);
     }
 
-    // 7. the bound the toolbox gives free: 600 nested arrays, well under any message-size limit and
-    // fatal to a recursive parser that does not check. `protocol::json` pre-scans and refuses.
+    // 7. the bound the toolbox gives free: an object carrying an id around 600 nested arrays,
+    // well under any message-size limit and fatal to a recursive parser that does not check.
+    // Keeping the root an object means acceptance would reach the normal handler successfully;
+    // only the parser's depth refusal can produce the expected disconnect.
     {
-        std::string nested(600, '[');
+        std::string nested{"{\"id\":999,\"payload\":"};
+        nested.append(600, '[');
+        nested += '0';
         nested.append(600, ']');
+        nested += '}';
         Wire bomb{wires[4].port, delimited(nested, std::string_view("\0", 1)), "json-depth"};
         qb::io::cout() << "[wire] json-depth -> 127.0.0.1:" << bomb.port << ", " << nested.size() << " bytes nested 600 deep\n";
         send_once(bomb);

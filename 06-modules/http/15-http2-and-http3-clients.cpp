@@ -80,6 +80,7 @@
  *   ./build/presets/release/examples/06-modules/http/qb-example-modules-http-http2-and-http3-clients
  */
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -337,7 +338,12 @@ run_clients(bool &running, bool &ok) {
 
             const auto [total, succeeded, failed] = h3->get_stats();
 
-            h3_ok = h3_pong.status() == qb::http::status::OK && h3_responses.size() == BATCH_SIZE && h3_ms < serial_floor && failed == 0;
+            const bool h3_pong_ok = h3_pong.status() == qb::http::status::OK && h3_pong.body().as<std::string>() == "pong-h3";
+            const bool h3_batch_ok =
+                h3_responses.size() == BATCH_SIZE && std::all_of(h3_responses.begin(), h3_responses.end(), [](auto const &response) {
+                    return response.status() == qb::http::status::OK && response.body().template as<std::string>() == "slow-h3";
+                });
+            h3_ok = h3_pong_ok && h3_batch_ok && h3_ms < serial_floor && failed == 0;
 
             qb::io::cout() << "[h3] HTTP/3 is the same code again over QUIC — one origin, one connection, streams\n"
                               "     multiplexed like h2 but WITHOUT TCP underneath, so a lost packet stalls only the\n"

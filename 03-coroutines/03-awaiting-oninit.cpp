@@ -8,8 +8,9 @@
  *          wedging a core forever.
  * @demonstrates qb::io::async::task<bool>, context(), ctx.sleep, is_alive, is_active,
  *               addRefActor<Database>, qb::ActorHandle<Database>, id(), get(), ready_async,
- *               is_actor_alive, qb::VirtualCore::activation_deadline_ns, spawn,
- *               qb::ScopedCoroContext, registerEvent<E>, push<Ping>, qb::Main
+ *               qb::DownEvent, qb::DownReason::init_failed, watch,
+ *               qb::VirtualCore::activation_deadline_ns, spawn, qb::ScopedCoroContext,
+ *               registerEvent<E>, push<Ping>, qb::Main
  * @prerequisites 03-coroutines/02-actor-coroutines
  * @expect "nothing has suspended yet, so this actor still looks Active"
  * @expect "[client] two pings pushed BEFORE the DB was ready; handle.get() is nullptr"
@@ -19,7 +20,7 @@
  * @expect "[client] Actor::time() before the core's first loop pass reads "
  * @expect "[client] ready_async said "
  * @expect "[deadline] ready_async on a stalled child gave up and returned "
- * @expect "[deadline] and the engine failed the stalled init on its own: is_actor_alive = "
+ * @expect "[deadline] and the engine failed the stalled init on its own: DownEvent(init_failed) = "
  * @expect "=== awaiting onInit complete: mail stashed, handle resolved, stall reaped ==="
  *
  * THE CHANGE
@@ -81,11 +82,14 @@
  */
 
 #include <chrono>
+#include <atomic>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/main.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_stalled_reaped{false};
 
 // A constructor rather than an aggregate, because `push<Ping>(dest, 1)` direct-initialises the
 // event in place — `T(args...)` — and parenthesised aggregate initialisation (C++20's P0960)
@@ -202,12 +206,14 @@ class Conductor : public qb::Actor {
 public:
     qb::io::async::task<bool>
     onInit() override {
+        registerEvent<qb::DownEvent>(*this);
         spawn([this](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             // `this` is captured for ONE use, before the first suspension, and never touched
             // afterwards — the rest of the body talks only to `ctx` and to locals. Capturing
             // an actor pointer to use AFTER a co_await is the corpus's sharpest footgun.
             auto stalled = this->addRefActor<StalledDatabase>();
             auto bad_id  = stalled.id();
+            this->watch(bad_id);
 
             const auto t0 = ctx.time();
             const bool ok = co_await stalled.ready_async(ctx, 300ms);
@@ -219,14 +225,19 @@ public:
 
             // `is_actor_alive` is `is_active()`, same-core only. The stalled child was
             // cancelled, its frame unwound, its stash was disposed and it was removed.
-            const bool alive = this->is_actor_alive(bad_id);
-            qb::io::cout() << "[deadline] and the engine failed the stalled init on its own: is_actor_alive = " << (alive ? "yes" : "no")
-                           << " (deadline was " << qb::VirtualCore::activation_deadline_ns / 1'000'000 << " ms)\n";
+            const bool reaped = g_stalled_reaped.load();
+            qb::io::cout() << "[deadline] and the engine failed the stalled init on its own: DownEvent(init_failed) = "
+                           << (reaped ? "yes" : "no") << " (deadline was " << qb::VirtualCore::activation_deadline_ns / 1'000'000 << " ms)\n";
 
             qb::io::cout() << "\n=== awaiting onInit complete: mail stashed, handle resolved, stall reaped ===\n";
             qb::Main::stop();
         });
         co_return true;
+    }
+
+    void
+    on(qb::DownEvent const &event) {
+        g_stalled_reaped.store(event.reason == qb::DownReason::init_failed);
     }
 };
 
@@ -245,5 +256,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_stalled_reaped.load() ? 1 : 0;
 }

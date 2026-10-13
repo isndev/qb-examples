@@ -94,14 +94,16 @@ fs::path      g_live_cert; // the files the server is configured with -- the one
 fs::path      g_live_key;
 std::string   g_original_serial;
 
-bool g_early_before   = false;
-bool g_strict_refused = false;
-bool g_half_refused   = false;
-bool g_installed      = false;
-bool g_strict_after   = false;
-bool g_early_after    = false;
+bool g_early_before        = false;
+bool g_strict_refused      = false;
+bool g_half_refused        = false;
+bool g_original_after_half = false;
+bool g_installed           = false;
+bool g_strict_after        = false;
+bool g_early_after         = false;
 
 void renew_and_retry();
+void install_complete_renewal();
 
 // ------------------------------------------------------------------------- the server
 
@@ -188,6 +190,47 @@ strict_after_the_renewal() {
         5s, /*verify_peer=*/true);
 }
 
+void
+install_complete_renewal() {
+    if (!replace_file(kRenewedKey, g_live_key)) {
+        g_running = false;
+        return;
+    }
+    const auto renewed = qb::io::ssl::Context::server(g_live_cert, g_live_key);
+    g_installed        = g_server->transport().reload_context(renewed);
+    if (!g_installed) {
+        qb::io::cerr() << "[renewal] the complete renewal was refused: " << renewed.error() << "\n";
+        g_running = false;
+        return;
+    }
+    qb::io::cout() << "[renewal] complete: installed for the next connections\n\n";
+    strict_after_the_renewal();
+}
+
+void
+strict_original_after_half() {
+    qb::io::async::tcp::connect<qb::io::tcp::ssl::socket>(
+        trusting(kOriginalCert), remote(),
+        [](qb::io::tcp::ssl::socket &&sock) {
+            if (!sock.is_open()) {
+                qb::io::cerr() << "[renewal] the original certificate stopped serving after the rejected half-pair\n";
+                g_running = false;
+                return;
+            }
+            const auto serial     = sock.get_peer_certificate_details().serial_number;
+            g_original_after_half = serial == g_original_serial;
+            sock.disconnect();
+            if (!g_original_after_half) {
+                qb::io::cerr() << "[renewal] a new connection after the rejected half-pair saw a different certificate\n";
+                g_running = false;
+                return;
+            }
+            qb::io::cout() << "[renewal] a new connection after the refusal still received the original serial\n";
+            install_complete_renewal();
+        },
+        5s, /*verify_peer=*/true);
+}
+
 // ------------------------------------------------------------------------- 2. the renewal, in two steps
 
 void
@@ -219,20 +262,9 @@ renew_and_retry() {
             qb::io::cout() << "[renewal] half-done (new certificate, old key): REFUSED -- " << half.error() << "\n"
                            << "          the original certificate goes on serving\n";
 
-            // Step 2 lands: the pair is whole again. Built WHOLE, then installed for the next accepts.
-            if (!replace_file(kRenewedKey, g_live_key)) {
-                g_running = false;
-                return;
-            }
-            const auto renewed = qb::io::ssl::Context::server(g_live_cert, g_live_key);
-            g_installed        = g_server->transport().reload_context(renewed);
-            if (!g_installed) {
-                qb::io::cerr() << "[renewal] the complete renewal was refused: " << renewed.error() << "\n";
-                g_running = false;
-                return;
-            }
-            qb::io::cout() << "[renewal] complete: installed for the next connections\n\n";
-            strict_after_the_renewal();
+            // Prove the rejected update left the listener serving the old pair to NEW clients,
+            // then install the complete pair from that callback.
+            strict_original_after_half();
         },
         5s, /*verify_peer=*/true);
 }
@@ -305,7 +337,7 @@ main() {
     qb::io::cout() << "[3] a half-done renewal was refused, the original kept serving:       " << (g_half_refused ? "yes" : "NO") << "\n";
     qb::io::cout() << "[4] the complete renewal reached the next connection, new serial:     " << (g_installed && g_strict_after ? "yes" : "NO")
                    << "\n";
-    if (!(g_early_before && g_early_after && g_strict_refused && g_half_refused && g_installed && g_strict_after)) {
+    if (!(g_early_before && g_early_after && g_strict_refused && g_half_refused && g_original_after_half && g_installed && g_strict_after)) {
         qb::io::cerr() << "=== the renewal contract did not reproduce ===\n";
         return 1;
     }

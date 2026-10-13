@@ -24,8 +24,9 @@
  *     else            { inspect reply.error(); }
  *
  * `db_error` carries: `what()` (message), `severity`, `code` (SQLSTATE string), `detail`, and the
- * structured `sqlstate` enum. Client-side conversion failures (NULL into a non-optional, or a type
- * mismatch from `.as<T>()`) are still thrown as `qb::pg::error::value_is_null` /
+ * structured `sqlstate` enum. Client-side conversion failures (NULL into a non-optional, or a
+ * multidimensional SQL array requested as a flat `std::vector`) are still thrown as
+ * `qb::pg::error::value_is_null` /
  * `qb::pg::error::field_type_mismatch` and are caught with try/catch.
  *
  * The example reproduces four error categories:
@@ -50,9 +51,11 @@
 #include <qb/main.h>
 
 #include <chrono>
+#include <atomic>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <vector>
 
 // IMPORTANT: Replace with your actual PostgreSQL connection string.
 const char *PG_CONNECTION_STRING = example_pg_connection_string();
@@ -66,6 +69,8 @@ const char *ERROR_TEST_TABLE_SQL = "CREATE TEMP TABLE error_test_items ("
 
 const char *PREPARE_INSERT_ERROR_ITEM         = "insert_error_item_stmt_v5";
 const char *PREPARE_SELECT_ERROR_ITEM_BY_NAME = "select_error_item_by_name_stmt_v5";
+
+std::atomic_bool g_error_scenarios_ok{false};
 
 class ErrorHandlingActor : public qb::Actor {
 public:
@@ -108,9 +113,11 @@ public:
         // coroutine resumes *inside* `disconnect()` while the actor is still alive. Safe, but
         // reentrant: that body runs to completion in the middle of the shutdown handler.
         spawn([this](qb::ScopedCoroContext) -> qb::io::async::task<void> {
-            co_await runErrorScenarios();
-            co_await cleanupDatabase();
-            qb::io::cout() << "\nError scenarios complete. Shutting down." << std::endl;
+            const bool scenarios_ok = co_await runErrorScenarios();
+            const bool cleanup_ok   = co_await cleanupDatabase();
+            g_error_scenarios_ok.store(scenarios_ok && cleanup_ok);
+            if (g_error_scenarios_ok.load())
+                qb::io::cout() << "\nError scenarios complete. Shutting down." << std::endl;
             this->push<qb::KillEvent>(this->id());
         });
 
@@ -155,9 +162,10 @@ private:
             co_return false;
         }
 
-        auto prep_select =
-            co_await _db_connection->prepare(PREPARE_SELECT_ERROR_ITEM_BY_NAME,
-                                             "SELECT name, quantity, description FROM error_test_items WHERE name = $1;", {qb::pg::oid::text});
+        auto prep_select = co_await _db_connection->prepare(PREPARE_SELECT_ERROR_ITEM_BY_NAME,
+                                                            "SELECT name, quantity, description, ARRAY[[1,2],[3,4]]::int[] AS matrix "
+                                                            "FROM error_test_items WHERE name = $1;",
+                                                            {qb::pg::oid::text});
         if (!prep_select.ok()) {
             printDbError("Prepare Select Statement", prep_select.error());
             co_return false;
@@ -167,18 +175,22 @@ private:
         co_return true;
     }
 
-    qb::io::async::task<void>
+    qb::io::async::task<bool>
     runErrorScenarios() {
         qb::io::cout() << "\n--- Running Error Handling Scenarios ---" << std::endl;
+        bool ok = true;
 
         // Scenario 1: Syntax Error (expected SQLSTATE 42601, syntax_error).
         {
             qb::io::cout() << "\nScenario 1: Executing query with syntax error..." << std::endl;
             auto reply = co_await _db_connection->execute("SELEC * FRM non_existent_table;");
-            if (reply.ok())
+            if (reply.ok()) {
                 qb::io::cerr() << "UNEXPECTED SUCCESS: Syntax error query somehow succeeded." << std::endl;
-            else
+                ok = false;
+            } else {
+                ok = ok && std::string(reply.error().code) == "42601";
                 printDbError("Syntax Error Query", reply.error());
+            }
         }
 
         // Scenario 2: Unique Constraint Violation (expected SQLSTATE 23505, unique_violation).
@@ -187,15 +199,19 @@ private:
             auto first = co_await _db_connection->execute(PREPARE_INSERT_ERROR_ITEM,
                                                           qb::pg::params{std::string("UniqueItem"), 10, std::string("First instance")});
             if (!first.ok()) {
+                ok = false;
                 printDbError("Initial Insert for Unique Violation", first.error());
             } else {
                 qb::io::cout() << "Attempting to insert duplicate 'UniqueItem'..." << std::endl;
                 auto dup = co_await _db_connection->execute(
                     PREPARE_INSERT_ERROR_ITEM, qb::pg::params{std::string("UniqueItem"), 20, std::string("Second instance - should fail")});
-                if (dup.ok())
+                if (dup.ok()) {
                     qb::io::cerr() << "UNEXPECTED SUCCESS: Duplicate insert somehow succeeded." << std::endl;
-                else
+                    ok = false;
+                } else {
+                    ok = ok && std::string(dup.error().code) == "23505";
                     printDbError("Unique Constraint Violation", dup.error());
+                }
             }
         }
 
@@ -204,15 +220,18 @@ private:
             qb::io::cout() << "\nScenario 3: Check constraint violation (negative quantity)..." << std::endl;
             auto reply = co_await _db_connection->execute(
                 PREPARE_INSERT_ERROR_ITEM, qb::pg::params{std::string("CheckItem"), -5, std::string("Negative quantity - should fail")});
-            if (reply.ok())
+            if (reply.ok()) {
                 qb::io::cerr() << "UNEXPECTED SUCCESS: Insert with negative quantity succeeded." << std::endl;
-            else
+                ok = false;
+            } else {
+                ok = ok && std::string(reply.error().code) == "23514";
                 printDbError("Check Constraint Violation", reply.error());
+            }
         }
 
         // Scenario 4: Client-side result-processing errors.
         // - Reading a NULL field as a non-optional std::string -> value_is_null.
-        // - Reading an INT field as std::string -> field_type_mismatch.
+        // - Reading a two-dimensional array as a flat vector -> field_type_mismatch.
         {
             qb::io::cout() << "\nScenario 4: Client-side result processing errors..." << std::endl;
             auto inserted = co_await _db_connection->execute(
@@ -220,46 +239,51 @@ private:
                 qb::pg::params{std::string("ClientErrorItem"), 5, std::optional<std::string>()}); // description is NULL
             if (!inserted.ok()) {
                 printDbError("Insert for Client Errors", inserted.error());
-                co_return;
+                co_return false;
             }
 
             auto selected = co_await _db_connection->execute(PREPARE_SELECT_ERROR_ITEM_BY_NAME, qb::pg::params{std::string("ClientErrorItem")});
             if (!selected.ok()) {
                 printDbError("Select for Client Errors", selected.error());
-                co_return;
+                co_return false;
             }
             if (selected.result().empty()) {
                 qb::io::cerr() << "ClientErrorItem not found." << std::endl;
-                co_return;
+                co_return false;
             }
 
-            const auto &row = selected.result()[0];
+            const auto &row         = selected.result()[0];
+            bool        null_caught = false;
+            bool        type_caught = false;
             try {
                 qb::io::cout() << "Attempting to get NULL description as non-optional string..." << std::endl;
                 [[maybe_unused]] std::string desc = row["description"].as<std::string>(); // Should throw
                 qb::io::cerr() << "UNEXPECTED: Retrieved NULL as non-optional string." << std::endl;
             } catch (const qb::pg::error::value_is_null &e) {
+                null_caught = true;
                 qb::io::cout() << "CAUGHT EXPECTED: qb::pg::error::value_is_null: " << e.what() << std::endl;
             } catch (const std::exception &e) {
                 qb::io::cerr() << "UNEXPECTED EXCEPTION (value_is_null): " << e.what() << std::endl;
             }
 
             try {
-                qb::io::cout() << "Attempting to get quantity (INT) as std::string..." << std::endl;
-                [[maybe_unused]] std::string qty_str = row["quantity"].as<std::string>(); // Should throw
-                qb::io::cerr() << "UNEXPECTED: Retrieved INT quantity as string." << std::endl;
+                qb::io::cout() << "Attempting to flatten a two-dimensional array into std::vector<int>..." << std::endl;
+                [[maybe_unused]] auto flat = row["matrix"].as<std::vector<int>>(); // Must preserve shape by refusing.
+                qb::io::cerr() << "UNEXPECTED: Flattened a two-dimensional array silently." << std::endl;
             } catch (const qb::pg::error::field_type_mismatch &e) {
+                type_caught = true;
                 qb::io::cout() << "CAUGHT EXPECTED: qb::pg::error::field_type_mismatch: " << e.what() << std::endl;
             } catch (const std::exception &e) {
                 qb::io::cerr() << "UNEXPECTED EXCEPTION (field_type_mismatch): " << e.what() << std::endl;
             }
+            ok = ok && null_caught && type_caught;
         }
 
         qb::io::cout() << "\nError scenarios initiated. Check output for results." << std::endl;
-        co_return;
+        co_return ok;
     }
 
-    qb::io::async::task<void>
+    qb::io::async::task<bool>
     cleanupDatabase() {
         qb::io::cout() << "Cleaning up error_test_items table..." << std::endl;
         auto reply = co_await _db_connection->execute("DROP TABLE IF EXISTS error_test_items;");
@@ -267,7 +291,7 @@ private:
             qb::io::cout() << "error_test_items table dropped." << std::endl;
         else
             printDbError("Cleanup Database", reply.error());
-        co_return;
+        co_return reply.ok();
     }
 
     std::unique_ptr<qb::pg::tcp::database> _db_connection;
@@ -287,5 +311,5 @@ main(int /*argc*/, char * /*argv*/[]) {
         return 1;
     }
     qb::io::cout() << "Application finished." << std::endl;
-    return 0;
+    return g_error_scenarios_ok.load() ? 0 : 1;
 }

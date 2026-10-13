@@ -38,7 +38,7 @@
 // All Redis work happens inside a coroutine; `running` is flipped to false on ANY exit path
 // (scope guard) so the run_until() loop in main() stops once the coroutine is done.
 qb::io::async::task<void>
-run_basic_operations(bool &running) {
+run_basic_operations(bool &running, bool &ok) {
     struct StopOnExit {
         bool &r;
         ~StopOnExit() {
@@ -64,7 +64,7 @@ run_basic_operations(bool &running) {
 
     // Basic GET operation (result() is std::optional<std::string>).
     auto get_result = co_await redis.get("example:greeting");
-    if (get_result.ok() && get_result.result().has_value()) {
+    if (get_result.ok() && get_result.result() == std::optional<std::string>{"Hello, Redis!"}) {
         qb::io::cout() << "Retrieved value: " << *get_result.result() << std::endl;
     } else {
         qb::io::cerr() << "Key not found or GET operation failed" << std::endl;
@@ -77,6 +77,10 @@ run_basic_operations(bool &running) {
         co_return;
     }
     auto incr_result = co_await redis.incr("example:counter");
+    if (!incr_result.ok() || incr_result.result() != 11) {
+        qb::io::cerr() << "INCR operation failed or returned an unexpected counter" << std::endl;
+        co_return;
+    }
     qb::io::cout() << "Counter value after INCR: " << incr_result.result() << std::endl;
 
     // Setting an expiration on a key.
@@ -88,9 +92,14 @@ run_basic_operations(bool &running) {
 
     // Delete the keys created during the example (result() = number deleted).
     auto deleted = co_await redis.del("example:greeting", "example:counter", "example:temporary");
+    if (!deleted.ok() || deleted.result() != 3) {
+        qb::io::cerr() << "DEL operation failed or removed an unexpected number of keys" << std::endl;
+        co_return;
+    }
     qb::io::cout() << "Deleted " << deleted.result() << " keys" << std::endl;
 
     qb::io::cout() << "Basic Redis operations completed successfully!" << std::endl;
+    ok = true;
     co_return;
 }
 
@@ -101,9 +110,10 @@ main() {
 
     // Spawn the coroutine and drive the event loop until it completes.
     bool running = true;
-    auto task    = run_basic_operations(running);
+    bool ok      = false;
+    auto task    = run_basic_operations(running, ok);
     qb::io::async::coro_scheduler().spawn(std::move(task));
     qb::io::async::run_until(running);
 
-    return 0;
+    return ok ? 0 : 1;
 }

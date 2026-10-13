@@ -74,6 +74,7 @@
  */
 
 #include <chrono>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -84,6 +85,8 @@
 #include <qb/string.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_timer_oracle_ok{false};
 
 // NOTE ON EVENT PAYLOADS, which governs every event below: the engine relocates an event with
 // `memcpy` and never runs the source destructor, so a payload member may hold no pointer into
@@ -281,6 +284,14 @@ public:
 
     void
     on(TimerFiredMsg &msg) {
+        const std::string_view name{msg.timer_name.c_str()};
+        if (name == "fast_timer") {
+            _timer_events_valid = _timer_events_valid && msg.count == ++_fast_fired;
+        } else if (name == "slow_timer") {
+            _timer_events_valid = _timer_events_valid && !_slow_cancelled && msg.count == ++_slow_fired;
+        } else {
+            _timer_events_valid = false;
+        }
         qb::io::cout() << "Application received timer event: " << msg.timer_name << " fired (count: " << msg.count << ")" << std::endl;
     }
 
@@ -289,6 +300,7 @@ public:
         switch (msg.step) {
             case AppStepMsg::Step::CANCEL_SLOW_TIMER:
                 qb::io::cout() << "Application stopping slow_timer...\n";
+                _slow_cancelled = true;
                 push<CancelTimerMsg>(_timer_manager_id, "slow_timer");
                 scheduleStep(AppStepMsg::Step::WAIT_FOR_TIMERS, 1500ms);
                 break;
@@ -299,6 +311,9 @@ public:
                 break;
 
             case AppStepMsg::Step::SHUT_DOWN:
+                g_timer_oracle_ok.store(_timer_events_valid && _fast_fired == 5 && _slow_fired == 2);
+                if (!g_timer_oracle_ok.load())
+                    qb::io::cerr() << "Timer oracle failed: fast=" << _fast_fired << ", slow=" << _slow_fired << "\n";
                 qb::io::cout() << "Application shutting down all actors...\n";
                 broadcast<qb::KillEvent>();
                 break;
@@ -321,6 +336,10 @@ private:
     }
 
     qb::ActorId _timer_manager_id;
+    int         _fast_fired{0};
+    int         _slow_fired{0};
+    bool        _slow_cancelled{false};
+    bool        _timer_events_valid{true};
 };
 
 int
@@ -339,5 +358,5 @@ main() {
     engine.join();
 
     qb::io::cout() << "Example completed.\n";
-    return 0;
+    return g_timer_oracle_ok.load() ? 0 : 1;
 }

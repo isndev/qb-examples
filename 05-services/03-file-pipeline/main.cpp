@@ -62,7 +62,9 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <atomic>
 #include <filesystem>
+#include <unordered_map>
 using namespace std::chrono_literals;
 
 #include "file_manager.h"
@@ -72,6 +74,8 @@ using namespace std::chrono_literals;
 // To simplify namespaces
 namespace fs = std::filesystem;
 using namespace file_processor;
+
+std::atomic_bool g_file_pipeline_ok{false};
 
 /**
  * @brief Self-addressed wake-ups for `ClientActor`'s two delays.
@@ -90,10 +94,12 @@ struct ShutdownTick : public qb::Event {};   ///< 1 s after the last response: b
  */
 class ClientActor : public qb::Actor {
 private:
-    qb::ActorId           _manager_id;
-    std::filesystem::path _test_directory;
-    uint32_t              _next_request_id  = 1;
-    uint32_t              _pending_requests = 0;
+    qb::ActorId                                        _manager_id;
+    std::filesystem::path                              _test_directory;
+    uint32_t                                           _next_request_id  = 1;
+    uint32_t                                           _pending_requests = 0;
+    bool                                               _failed           = false;
+    std::unordered_map<std::string, std::vector<char>> _expected;
 
 public:
     ClientActor(qb::ActorId manager_id, std::filesystem::path test_dir)
@@ -152,7 +158,13 @@ public:
                 qb::io::cout() << "... [plus " << (response.data->size() - max_display) << " bytes]";
             }
             qb::io::cout() << "\n";
+            const auto expected = _expected.find(response.filepath.c_str());
+            if (expected == _expected.end() || *response.data != expected->second) {
+                _failed = true;
+                qb::io::cerr() << "Read content did not match the bytes written\n";
+            }
         } else {
+            _failed = true;
             qb::io::cout() << "Error: " << response.error_msg.c_str() << std::endl;
         }
 
@@ -171,6 +183,7 @@ public:
             // Request to read the file that was just written
             requestReadFile(response.filepath.c_str());
         } else {
+            _failed = true;
             qb::io::cout() << "Write error: " << response.error_msg.c_str() << std::endl;
         }
 
@@ -225,6 +238,7 @@ private:
             }
 
             requestWriteFile(filename, content);
+            _expected.emplace(filename.string(), std::vector<char>{content.begin(), content.end()});
         }
     }
 
@@ -257,7 +271,11 @@ private:
     checkCompletion() {
         // If all requests have been processed, wait a bit then stop
         if (_pending_requests == 0) {
-            qb::io::cout() << "\n=== All tests completed ===\n" << std::endl;
+            g_file_pipeline_ok.store(!_failed && _expected.size() == 5);
+            if (g_file_pipeline_ok.load())
+                qb::io::cout() << "\n=== All tests completed ===\n" << std::endl;
+            else
+                qb::io::cerr() << "\n=== File operation tests failed ===\n" << std::endl;
 
             // Wait a bit then stop the system - use built-in KillEvent
             scheduleTick<ShutdownTick>(1s);
@@ -308,5 +326,5 @@ main(int argc, char **argv) {
         return 1;
     }
 
-    return 0;
+    return g_file_pipeline_ok.load() ? 0 : 1;
 }

@@ -272,6 +272,14 @@ main() {
         qb::io::cout() << "[fatal] the server counted a handshake it should never have seen\n";
         return 1;
     }
+    client.reply.clear();
+    server.last_stream.clear();
+    const auto proof_stream = client.open_bidirectional_stream();
+    client.send_stream_data(proof_stream.id(), "ping", true);
+    if (!pump_until([&] { return server.last_stream == "ping" && client.reply == "pong"; })) {
+        qb::io::cout() << "[fatal] the established connection did not survive the other peer's refusal\n";
+        return 1;
+    }
     qb::io::cout() << "[server] the listener is still up after the refusal, with " << server.stats().active_connections
                    << " active connection(s) — one bad peer is not a server outage\n";
 

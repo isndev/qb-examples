@@ -166,7 +166,8 @@ run_geospatial(bool &running, bool &ok) {
 
     // A missing member is not an error: the reply is a typed NULL, which is why the return type
     // is optional<double> and not double.
-    const bool dist_ok = d_km.ok() && d_m.ok() && d_far.ok() && d_none.ok() && !d_none.result().has_value()
+    const bool dist_ok = d_km.ok() && d_km.result().has_value() && d_m.ok() && d_m.result().has_value() && d_far.ok()
+                         && d_far.result().has_value() && d_none.ok() && !d_none.result().has_value()
                          && std::abs(d_km.value_or(0.0) * 1000.0 - d_m.value_or(0.0)) < 1.0;
 
     qb::io::cout() << "[dist] GEODIST is answered from the two scores alone — no member list is scanned, and\n"

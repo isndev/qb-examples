@@ -51,6 +51,7 @@
  *   ./build/presets/release/examples/04-patterns/qb-example-patterns-batching-and-idempotency
  */
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <vector>
@@ -60,6 +61,9 @@
 #include <qb/patterns.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_charge_responses_ok{false};
+std::atomic_bool g_idempotency_ok{false};
 
 // ---- part 1: batching -----------------------------------------------------
 // NOTE THE FIELD NAME, AND DO NOT "SIMPLIFY" IT TO `id`. `qb::Event` carries five private
@@ -227,7 +231,11 @@ public:
                        << " of " << _seen.capacity()
                        << " keys — the keyed charge cost ONE effect across "
                           "three arrivals; the keyless one always costs its own\n";
-        qb::io::cout() << "=== batching + idempotency complete: fewer writes, exactly-once effects ===\n";
+        g_idempotency_ok.store(g_charge_responses_ok.load() && _arrivals == 4 && _effects == 2 && _seen.size() == 1);
+        if (g_idempotency_ok.load())
+            qb::io::cout() << "=== batching + idempotency complete: fewer writes, exactly-once effects ===\n";
+        else
+            qb::io::cerr() << "Idempotency oracle failed\n";
         qb::Main::stop();
     }
 };
@@ -267,6 +275,8 @@ public:
             anonymous.cents = 4999;
             auto third      = co_await qb::ask(ctx, bank, anonymous, qb::duration{1s});
 
+            g_charge_responses_ok.store(first.response == 4999 && again.response == 4999 && third.response == 4999);
+
             qb::io::cout() << "[client] keyed charge answered " << first.response << " then " << again.response
                            << " (same value, one effect); keyless charge answered " << third.response << " and ran an effect of its own\n";
             ctx.push_to<Census>(bank);
@@ -292,5 +302,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_idempotency_ok.load() ? 1 : 0;
 }

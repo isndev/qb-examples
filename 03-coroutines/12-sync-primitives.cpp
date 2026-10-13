@@ -79,8 +79,9 @@ using namespace std::chrono_literals;
 
 // The two balances the summary is gated on: the same five transfers, without and with a lock.
 struct Balances {
-    int unsynchronised = -1;
-    int locked         = -1;
+    int  unsynchronised   = -1;
+    int  locked           = -1;
+    bool writer_exclusive = false;
 };
 using Sheet = std::shared_ptr<Balances>;
 
@@ -236,6 +237,7 @@ struct RwLedger {
     int         readers_now  = 0;
     int         readers_peak = 0;
     std::string order;
+    bool        writer_overlapped = false;
 };
 
 task<void>
@@ -249,13 +251,14 @@ reader(async_rw_lock &lock, std::shared_ptr<RwLedger> led) {
 
 task<void>
 writer(async_rw_lock &lock, std::shared_ptr<RwLedger> led) {
-    auto guard = co_await lock.scoped_write_lock();
+    auto guard             = co_await lock.scoped_write_lock();
+    led->writer_overlapped = led->readers_now != 0;
     led->order += "W";
     co_await sleep(5ms);
 }
 
 task<void>
-demo_rw_lock() {
+demo_rw_lock(Sheet sheet) {
     qb::io::cout() << "-- 4. async_rw_lock: concurrent reads, exclusive writes\n";
 
     async_rw_lock lock;
@@ -270,7 +273,8 @@ demo_rw_lock() {
         co_await scope.join_all();
     }
 
-    if (led->readers_peak == 3 && led->order == "W")
+    sheet->writer_exclusive = !led->writer_overlapped;
+    if (led->readers_peak == 3 && led->order == "W" && sheet->writer_exclusive)
         qb::io::cout() << "[async_rw_lock] 3 readers held it at once; the writer waited for the last of them "
                           "and then had it alone — worth the extra state only when reads dominate\n\n";
     else
@@ -442,7 +446,7 @@ task<void>
 run_all(Sheet sheet) {
     co_await demo_race(sheet);
     co_await demo_semaphore();
-    co_await demo_rw_lock();
+    co_await demo_rw_lock(sheet);
     co_await demo_barrier();
     co_await demo_event();
     co_await demo_latch();
@@ -459,9 +463,9 @@ main() {
 
     // Gated on the two balances. They are the lesson: identical code, one line apart.
     qb::io::cout() << "    measured: balance " << sheet->unsynchronised << " without a lock, " << sheet->locked << " with one\n";
-    if (sheet->unsynchronised == 10 && sheet->locked == 50)
+    if (sheet->unsynchronised == 10 && sheet->locked == 50 && sheet->writer_exclusive)
         qb::io::cout() << "=== sync primitives complete: 10 without a lock, 50 with one ===\n";
     else
         qb::io::cout() << "=== sync primitives INCONCLUSIVE: the two balances are not 10 and 50 ===\n";
-    return 0;
+    return sheet->unsynchronised == 10 && sheet->locked == 50 && sheet->writer_exclusive ? 0 : 1;
 }
