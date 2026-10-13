@@ -6,9 +6,11 @@
  * - TaskList  – list response wrapper (includes cache metadata).
  * - TaskEvent – lightweight notification published to Redis → WebSocket clients.
  *
- * JSON round-trip is handled by NLOHMANN_DEFINE_TYPE_INTRUSIVE (zero-copy,
- * bidirectional).  The Task constructor from a pg::resultset::row maps columns
- * by position (see prepared statement `select_all_tasks` / `select_task_by_id`).
+ * NLOHMANN_DEFINE_TYPE_INTRUSIVE generates value-based JSON conversion in both
+ * directions. Task owns its string fields, and TaskList::to_json builds a new
+ * JSON object and array; this is not a zero-copy conversion. The Task constructor
+ * from a pg::resultset::row maps columns by position (see prepared statements
+ * `select_all_tasks` / `select_task_by_id`).
  */
 #pragma once
 

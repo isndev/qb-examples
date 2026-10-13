@@ -320,19 +320,11 @@ public:
     qb::io::async::task<bool>
     onInit() override {
         registerEvent<SubscriberSocketReady>(*this);
-        // THE CONNECT IS SPAWNED, NOT AWAITED IN `onInit`, AND THAT IS A MEASUREMENT.
-        //
-        // The obvious form — `co_await qb::io::async::tcp::connect<transport::tcp>(uri, 2s)`
-        // written directly in `onInit` — SUSPENDS AND NEVER RESUMES on a VirtualCore. Measured on
-        // this tree: the TCP connection really is established (the publisher's `on(IOSession&)`
-        // fires, `sessions().size() == 1`), but the awaiting `onInit` is never woken, so this
-        // actor stays Activating for ever and the program hangs with no diagnostic — the 5 s
-        // activation deadline did not visibly reap it either. The SAME expression inside a
-        // `spawn()` from the same actor resumes normally, which is what this does.
-        //
-        // The cost of the workaround is stated rather than hidden: `onInit` returns true
-        // immediately, so this actor is ACTIVE before its socket exists. The feed waits for
-        // both the publisher's accept and this actor's start before producing any quote.
+        // A direct co_await of tcp::connect in onInit now resumes (qb's
+        // InitIoAwaiters.ConnectInInitResumes tests that first-suspension path). The
+        // observation before the 2026-08-16 connector fix is no longer a usage rule.
+        // Keep spawn here so onInit returns before the socket exists. SubscriberSocketReady
+        // installs and starts it; the feed waits for that start and the publisher's accept.
         const auto  port   = _port;
         auto *const report = _report; // main owns it until every core and the feed have joined
         spawn([port, report](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {

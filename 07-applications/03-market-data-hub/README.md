@@ -41,11 +41,15 @@ ring backlog dominate the tail by construction, so a p99 that looks bad is usual
 waiting on purpose. Compare the shape between two builds on one machine — never medians between
 machines.
 
-## Two measurements recorded in the source
+## Startup and stream controls
 
-* `co_await qb::io::async::tcp::connect<Transport>(uri, timeout)` written directly in an actor's
-  `onInit()` suspends and **never resumes**, although the TCP connection really is established.
-  The same expression inside `spawn()` resumes normally — see `src/actors.h`.
+* Before qb's 2026-08-16 connector fix (`e4fca78a`), this example observed a TCP connection
+  established while a direct `co_await` in `onInit()` did not resume. That is historical: current
+  qb tests a direct connect as the first suspension of `onInit()` and checks both resumption and an open socket
+  (`InitIoAwaiters.ConnectInInitResumes`). This example keeps the connection in `spawn()` so
+  `onInit()` returns before the socket is ready; `SubscriberSocketReady` installs the socket and
+  starts the subscriber before the feed begins. `spawn()` is an ordering choice here, not a
+  requirement for `tcp::connect` inside `onInit()`.
 * Publishing before a subscriber has attached sends those frames nowhere, so the feed thread waits
   for one. Without that gate the first ~10 000 quotes were lost and the final count measured
   startup timing rather than the pipeline.
