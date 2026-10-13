@@ -57,7 +57,8 @@ On pushes, pull requests, nightly runs and manual dispatches, `build.yml`:
 1. configures the five-repository superbuild with pinned Clang;
 2. builds the corpus and requires a non-vacuous translation-unit floor;
 3. checks the generated roster's built/gated floor and every built binary's existence;
-4. permits only the exact expected QUIC-gated row on the hosted runner;
+4. permits only the exact expected QUIC and HTTP/3 gated rows on the hosted runner, measured as
+   97 built + 2 gated, and rejects a planted false QUIC row with the same predicate;
 5. smoke-runs one named self-contained example; and
 6. runs the PostgreSQL ownership checks in a disposable cluster.
 
