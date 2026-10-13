@@ -193,10 +193,16 @@ main() {
                    << "… (variant, cost, salt and digest, all in one column)\n";
     const bool correct_password_accepted = qb::crypto::verify_password("correct horse battery staple", stored);
     const bool wrong_password_rejected   = !qb::crypto::verify_password("Tr0ub4dor&3", stored);
-    qb::io::cout() << "[password] correct password accepted: " << (correct_password_accepted ? "yes" : "NO — broken") << "\n";
-    qb::io::cout() << (wrong_password_rejected ? "[password] wrong password rejected\n" : "[password] WRONG PASSWORD ACCEPTED — broken\n");
-    if (!correct_password_accepted || !wrong_password_rejected)
+    if (!correct_password_accepted) {
+        qb::io::cout() << "[password] UNEXPECTED: correct password rejected\n";
         return 1;
+    }
+    qb::io::cout() << "[password] correct password accepted: yes\n";
+    if (!wrong_password_rejected) {
+        qb::io::cout() << "[password] WRONG PASSWORD ACCEPTED — broken\n";
+        return 1;
+    }
+    qb::io::cout() << "[password] wrong password rejected\n";
 
     // ------------------------------------------------------------ comparing secrets
     section("6. comparing two secrets without leaking how far you got");
