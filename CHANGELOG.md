@@ -43,6 +43,10 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Redis and WebSocket lessons describe their actual execution and storage costs (Huly QB-861, QB-863).**
+  An unawaited Redis command sends nothing, detached task exceptions are reported, and the Redis
+  cardinality example compares `MEMORY USAGE` on both keys while describing `BITPOS` as a scan.
+  The chat guide explains the per-session serialization performed by `stream_if()`.
 - **Actor, I/O and coroutine lessons match current contracts (Huly QB-860, QB-784, QB-778, QB-770).**
   The hot-path lesson separates event destruction from byte relocation; the crypto lesson
   reports Argon2id or its PBKDF2 fallback, checks both password verdicts and exits nonzero

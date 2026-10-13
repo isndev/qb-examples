@@ -47,15 +47,13 @@
  * 4. A blocking command (BRPOP and friends) blocks the SERVER-side call, not your process. The
  *    coroutine parks and the event loop keeps turning — section 4 counts the turns to prove it.
  *
- * A SILENCE WORTH KNOWING ABOUT, AND THE FIVE LINES THAT END IT
- * -------------------------------------------------------------
+ * HANDLE FAILURES WHERE THE APPLICATION CAN ACT
+ * ---------------------------------------------
  * `qb::io::async::coro_scheduler().spawn(t)` — the scaffolding every standalone example here uses
- * — does not observe the task's result. `task<void>::promise_type::unhandled_exception()` stores
- * the exception and nobody ever calls `await_resume()`, so an exception escaping a spawned task
- * is DISCARDED IN SILENCE: the program stops mid-way and exits as if it had finished. Measured
- * while writing `08-sorted-sets-and-ttl`, where a throwing constructor in a `co_await` argument
- * cost twenty minutes because there was nothing to read. `guarded()` below is the fix, and it is
- * worth copying into anything you ship: await the body from a wrapper that catches.
+ * — reports an uncaught exception from a detached task at `final_suspend`, but cannot choose
+ * the application's recovery or exit status. `guarded()` awaits the body and catches the error
+ * in the application: it prints context, marks the verdict failed and stops the run. Use this
+ * shape when an exception must affect the program's outcome, not merely reach diagnostics.
  *
  * Build:
  *   cmake --preset release
@@ -310,8 +308,8 @@ run_reliability(bool &ok) {
     co_return;
 }
 
-// The five lines the header argues for. `spawn` never looks at a task's result, so this wrapper —
-// which AWAITS the body — is the only thing between a thrown exception and total silence.
+// `spawn` reports an uncaught detached-task exception at final_suspend. This wrapper also
+// handles it as an application failure, preserving the verdict and stopping the run.
 qb::io::async::task<void>
 guarded(bool &running, bool &ok) {
     struct StopOnExit {

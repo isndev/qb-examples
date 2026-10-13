@@ -214,9 +214,9 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
   stranding it, so `ok()` is false and `raw()` is `nullptr` — that null is the discriminator between
   a dead link and a nil value; auto-reconnect restores the CONNECTION, never the request; and a
   1 s `BRPOP` parks the coroutine while a second coroutine on the same thread keeps ticking.
-* **It also documents a silence**: `coro_scheduler().spawn(t)` never observes the task's result, so an
-  exception escaping a spawned task is discarded without a word. The `guarded()` wrapper at the
-  bottom of the file is the five lines that end it.
+* **It handles detached-task errors**: `coro_scheduler().spawn(t)` reports uncaught task exceptions
+  at `final_suspend`. The `guarded()` wrapper also catches an error in the application, records
+  failure and gives the program a nonzero exit status.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-reliability`
 
 ---
@@ -277,11 +277,12 @@ These examples provide a practical starting point for leveraging Redis with the 
 * **Purpose**: two families answering the same question — "how many DISTINCT things?" — with
   opposite trades, neither of which had a demonstrator.
 * **API**: `pfadd` / `pfcount` / `pfmerge`; `setbit` / `getbit` / `bitcount` / `bitop` / `bitpos` /
-  `bitfield`; plus `strlen` and `memory_usage`, which is how the claim below is MEASURED rather than
-  repeated.
-* **The measurement**: 5000 ids into both a HyperLogLog and an exact set. Measured on this tree —
-  `PFCOUNT` 5016 against `SCARD` 5000 (0.32% error, against a documented ~0.81% standard error), the
-  HLL 12304 bytes and bounded there for any cardinality, the exact set 247292 bytes and growing.
+  `bitfield`; `memory_usage` measures each complete Redis value on the same basis, while `strlen`
+  measures the bitmap's string length.
+* **The measurement**: 5000 ids into both a HyperLogLog and an exact set. `PFCOUNT` is checked
+  against `SCARD`; two successful `MEMORY USAGE` replies compare allocated bytes for each key.
+  The printed values are specific to the Redis instance used for that run. `BITPOS` finds a bit
+  without transferring the bitmap, but scans O(N) bytes in the inspected range.
 * **`PFMERGE` is the feature, not `PFCOUNT`**: three daily uniques added together count every
   returning visitor once per day they came, and nothing in the totals can undo it because they threw
   the identities away. The union of the registers can. That is why you keep a per-day HLL rather than

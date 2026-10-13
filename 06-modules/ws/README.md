@@ -210,8 +210,12 @@ class ChatSession {
 
 ### 2. Efficient Broadcasting
 
-The `io_handler` base class provides the `stream_if()` method, which is a highly efficient way to broadcast messages to
-multiple clients without extra copies.
+The `io_handler` base class provides `stream_if()` to select sessions for a broadcast. It snapshots
+their `shared_ptr`s so a session remains alive during iteration, and reuses snapshot storage across
+broadcasts. It then writes the message to each selected session with `operator<<`: WebSocket bytes
+are serialized into each recipient's own output buffer. This does not share encoded bytes or
+eliminate a per-recipient copy. Measure allocations and bytes per recipient before changing that
+ownership model.
 
 ```cpp
 class ChatServer : public qb::io::use<ChatServer>::tcp::io_handler<ChatSession> {
