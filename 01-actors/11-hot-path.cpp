@@ -43,11 +43,15 @@
  *    event has one: the cross-core flush discards a `qos == 0` event on backpressure without
  *    disposing it, so a heap-owning member leaks there. Every other event is retried, and any
  *    event that is actually delivered has its destructor run exactly once by the receiver
- *    whichever primitive queued it — `send` included. So a `send` of a plain `qb::Event` holding
- *    a `std::string` compiles and is correct; a `qb::EventQOS0` holding one is rejected at every
- *    enqueue sink, `getPipe().push` and `allocated_push` included. Derive fire-and-forget events
- *    from `qb::EventQOS0` and the compiler will hold you to the rule. (`Actor.h:1131-1132`,
- *    `Event.h:1143-1148` in `routing_safe_type_id`, `VirtualCore.h:1273-1276`.)
+ *    whichever primitive queued it — `send` included. That answers destruction, NOT relocation:
+ *    cross-core delivery copies event bytes, and a short by-value `std::string` on libstdc++
+ *    keeps a pointer into its old inline buffer. Such a plain `qb::Event` may compile but is
+ *    unsafe across cores; box unbounded data behind `std::shared_ptr` or use a fixed inline
+ *    `qb::string<N>` (`01-actors/03-event-payloads`). Other owners whose pointers remain valid
+ *    after the byte copy can be used in ordinary events. A `qb::EventQOS0` holding an owner is
+ *    rejected at every enqueue sink, `getPipe().push` and `allocated_push` included, because
+ *    its drop path skips destruction. (`Actor.h:1131-1132`, `Event.h:1143-1148` in
+ *    `routing_safe_type_id`, `VirtualCore.h:1273-1276`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
  *    (`Event.h:556`, `:546`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.

@@ -1232,7 +1232,7 @@ can disagree.
 - **`02-io/09-graceful-drain.cpp`** — 23 capabilities
   - The shutdown and backpressure vocabulary, which had ZERO coverage in the pre-3.0 corpus: `pending_read` / `input_drained` on the way in, `pending_write` / `eos` on the way out, `close_after_deliver()` for "answer, THEN hang up", `disconnected` and `dispose` in the order they really run, `extracted` for handing a live socket to another owner — and `async::defer`, the one primitive that lets a handler replace the object it is running on.
 - **`02-io/10-crypto-and-compression.cpp`** — 30 capabilities
-  - The security and payload primitives qb-io already ships, on their own terms: digests and HMAC, an AEAD that REFUSES a tampered ciphertext, Argon2 password hashing, a constant-time comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND — because a decompression bomb is an attack, not a corner case.
+  - The security and payload primitives qb-io already ships, on their own terms: digests and HMAC, an AEAD that REFUSES a tampered ciphertext, build-selected password hashing, a constant-time comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND — because a decompression bomb is an attack, not a corner case.
 - **`02-io/11-logging-and-metrics.cpp`** — 26 capabilities
   - The two production surfaces a qb-io service needs and that nothing in the corpus used: the asynchronous logger behind QB_LOG_* — which every qb binary has ALREADY started before main() runs — and a fixed-capacity rolling window of measurements taken with the raw CPU counter, so a hot loop can report its own latency without allocating.
 - **`02-io/12-quic.cpp`** — 19 capabilities

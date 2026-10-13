@@ -2,7 +2,7 @@
  * @file examples/02-io/10-crypto-and-compression.cpp
  * @tier 02-io
  * @teaches The security and payload primitives qb-io already ships, on their own terms: digests and
- *          HMAC, an AEAD that REFUSES a tampered ciphertext, Argon2 password hashing, a constant-time
+ *          HMAC, an AEAD that REFUSES a tampered ciphertext, build-selected password hashing, a constant-time
  *          comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND —
  *          because a decompression bomb is an attack, not a corner case.
  * @demonstrates qb::generate_random_uuid, qb::uuid, qb::crypto::sha256, qb::crypto::to_hex_string,
@@ -18,7 +18,7 @@
  * @prerequisites none
  * @expect "=== qb-io: crypto and compression, without adding OpenSSL by hand ==="
  * @expect "[aead] tampered ciphertext REJECTED (decrypt returned nothing)"
- * @expect "[argon2] wrong password rejected"
+ * @expect "[password] wrong password rejected"
  * @expect "[jwt] expired token rejected: TOKEN_EXPIRED"
  * @expect "[gzip] bomb REFUSED by the output bound: "
  * @expect "=== done ==="
@@ -34,9 +34,10 @@
  * THE TWO RULES WORTH TAKING AWAY
  * -------------------------------
  * 1. **A digest is not a password hash.** `sha256("hunter2")` is computed billions of times a
- *    second on a GPU. `hash_password()` is Argon2id — deliberately slow and memory-hard — and it
- *    embeds its own salt and parameters in the string it returns, so `verify_password()` needs
- *    nothing else stored beside it.
+ *    second on a GPU. `hash_password()` uses Argon2id when built with Argon2 support, otherwise
+ *    PBKDF2-HMAC-SHA256. Both embed their variant, salt and cost in the stored string, so
+ *    `verify_password()` needs nothing else stored beside it. The PBKDF2 fallback is CPU-bound,
+ *    not memory-hard like Argon2id.
  * 2. **`uncompress` takes a `max`, and leaving it at 0 is a decision.** A few hundred compressed
  *    bytes can expand to gigabytes; the ratio is chosen by whoever sent them. `max` is the only
  *    thing between an attacker's ratio and your address space, and exceeding it throws rather than
@@ -45,7 +46,7 @@
  * WHAT IS DELIBERATELY NOT HERE
  * -----------------------------
  * The asymmetric surface (`generate_rsa_keypair`, `ed25519_sign`, ECIES envelopes) and the KDF
- * family beyond Argon2. They exist and are documented; a demonstration of each would make this a
+ * family beyond password hashing. They exist and are documented; a demonstration of each would make this a
  * catalogue rather than a lesson, and the shapes below are the ones a service actually reaches for.
  *
  * Build:
@@ -181,16 +182,18 @@ main() {
                                         : "[aead] TAMPERING WENT UNDETECTED — this build is not doing AEAD\n");
 
     // ----------------------------------------------------------------------- passwords
-    section("5. passwords: Argon2id, not a digest");
+    section("5. passwords: a stored password hash, not a fast digest");
     // `hash_password` embeds the variant, the cost parameters and a fresh random salt in the
-    // string it returns, so the ONE column you store is enough to verify later. It is deliberately
-    // slow (tens of milliseconds, tens of megabytes) — that cost is the whole point.
-    const std::string stored = qb::crypto::hash_password("correct horse battery staple");
-    qb::io::cout() << "[argon2] stored form: " << stored.substr(0, 20) << "… (variant, cost, salt and digest, all in one column)\n";
-    qb::io::cout() << "[argon2] correct password accepted: "
+    // string it returns, so the ONE column you store is enough to verify later. Both variants
+    // cost CPU; Argon2id also uses memory, while the PBKDF2 fallback does not.
+    const std::string stored  = qb::crypto::hash_password("correct horse battery staple");
+    const char       *variant = stored.rfind("$argon2id$", 0) == 0 ? "Argon2id" : "PBKDF2-HMAC-SHA256";
+    qb::io::cout() << "[password] " << variant << " stored form: " << stored.substr(0, 20)
+                   << "… (variant, cost, salt and digest, all in one column)\n";
+    qb::io::cout() << "[password] correct password accepted: "
                    << (qb::crypto::verify_password("correct horse battery staple", stored) ? "yes" : "NO — broken") << "\n";
-    qb::io::cout() << (qb::crypto::verify_password("Tr0ub4dor&3", stored) ? "[argon2] WRONG PASSWORD ACCEPTED — broken\n"
-                                                                          : "[argon2] wrong password rejected\n");
+    qb::io::cout() << (qb::crypto::verify_password("Tr0ub4dor&3", stored) ? "[password] WRONG PASSWORD ACCEPTED — broken\n"
+                                                                          : "[password] wrong password rejected\n");
 
     // ------------------------------------------------------------ comparing secrets
     section("6. comparing two secrets without leaking how far you got");

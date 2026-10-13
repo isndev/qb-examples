@@ -61,8 +61,9 @@
  * HOW TO WAIT FOR ONE, AND HOW NOT TO
  * -----------------------------------
  * `handle.ready_async(context())` is an awaitable that resolves to `true` once the child is
- * active, or `false` on its timeout (5 s by default). It is a 1 ms poll on `ready()`, and it
- * is cancellation-aware, so killing the WAITING actor unwinds it. The thing it replaces is a
+ * active, or `false` if activation fails or its timeout expires (5 s by default). The core
+ * resumes its activation waiter when the child becomes active or fails; there is no 1 ms poll.
+ * It is cancellation-aware, so killing the WAITING actor unwinds it. The thing it replaces is a
  * guessed `co_await ctx.sleep(100ms)`, which is a correctness bug wearing a duration.
  *
  * AND THE DEADLINE

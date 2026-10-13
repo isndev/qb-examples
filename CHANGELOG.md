@@ -43,6 +43,11 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Actor, I/O and coroutine lessons match current contracts (Huly QB-860, QB-784, QB-778, QB-770).**
+  The hot-path lesson separates event destruction from byte relocation; the crypto lesson
+  reports Argon2id or its PBKDF2 fallback and uses a variant-neutral password verdict. The
+  I/O guide records `eos` before graceful disconnection, and the coroutine guide describes
+  pass-zero time, event-driven `ready_async`, value-owned context IDs and current generator names.
 - **HTTP lesson text matches its client, routes and bundled certificate (Huly QB-843).** The
   HTTP/1.1 batch timing is described as this client's serial queue policy, not a protocol ban
   on pipelining. The HTTP/2 startup guide, cookie scope and attributes, certificate metadata,
