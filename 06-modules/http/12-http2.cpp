@@ -30,7 +30,6 @@
 #include <fstream>
 #include <cstdlib>
 #include <chrono>
-#include <random>
 
 using qb::json;
 
@@ -234,14 +233,20 @@ private:
 
         api_group->get("/multiplexing-demo", [](auto ctx) {
             qb::json response;
-            response["feature"]     = "HTTP/2 Multiplexing";
-            response["description"] = "Multiple requests over single connection";
+            response["feature"]     = "Concurrent request demo";
+            response["description"] = "Server stream ID when HTTP/2 was negotiated; connection reuse is not measured";
             response["timestamp"] =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             response["request_id"] = ctx->request().query_or("request", "unknown");
-            response["stream_id"]  = rand() % 1000 + 1;
-            response["benefits"]   = qb::json::array({"Reduced latency", "Better resource utilization", "Improved page load times"});
-
+            // Request::stream_id is set by the HTTP/2 session. HTTP/1.1 uses 0,
+            // which must not be shown as a real HTTP/2 stream identifier.
+            if (ctx->request().stream_id != 0) {
+                response["protocol"]  = "HTTP/2";
+                response["stream_id"] = ctx->request().stream_id;
+            } else {
+                response["protocol"]  = "HTTP/1.1";
+                response["stream_id"] = nullptr;
+            }
             ctx->response().body() = response;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->complete();
@@ -309,9 +314,6 @@ private:
             response["current_iteration"] = current;
             response["timestamp"] =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            response["latency_ms"]     = rand() % 50 + 10;
-            response["throughput_rps"] = 1000 + rand() % 500;
-
             ctx->response().body() = response;
             ctx->response().add_header("Content-Type", "application/json");
             ctx->complete();

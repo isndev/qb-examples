@@ -45,20 +45,22 @@ coroutines**.
 
 ### Prerequisites
 
-- PostgreSQL running with an `auction_house` database
+- PostgreSQL running; administrator access to create the `auction_user` role and
+  `auction_house` database
 - Redis running on localhost:6379 by default (`REDIS_HOST` and `REDIS_PORT` may select another IPv4 endpoint)
 - QB Framework built
 
 ### Setup Database
 
 ```bash
-# Create database and user
-psql -U postgres -c "CREATE DATABASE auction_house;"
-psql -U postgres -c "CREATE USER auction_user WITH PASSWORD 'auction_pass';"
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE auction_house TO auction_user;"
+# From the qb-dev root, create the login role before its database (as a PostgreSQL administrator).
+psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE auction_user LOGIN PASSWORD 'auction_pass';"
+psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE auction_house OWNER auction_user;"
 
-# Initialize schema (optional - server can auto-initialize)
-psql -U auction_user -d auction_house -f resources/init_db.sql
+# Optional: initialize now instead of letting the server do it at startup.
+# Enter auction_pass when prompted.
+psql -h localhost -U auction_user -W -d auction_house -v ON_ERROR_STOP=1 \
+  -f examples/07-applications/02-auction-house/resources/init_db.sql
 ```
 
 ### Build and Run

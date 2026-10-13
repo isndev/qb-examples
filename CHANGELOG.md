@@ -55,6 +55,21 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Application bootstrap and TaskManager status display match their actual contracts (Huly QB-799, QB-800).**
+  TaskManager's psql script connects to the new database on one meta-command and grants its
+  application role neither CREATEDB nor SUPERUSER. Auction House creates its application role
+  before the database and makes that role the owner, so PostgreSQL 16 permits schema creation.
+  Completed TaskManager cards color their own status stripe.
+- **The REST books lesson accepts its documented availability filter (Huly QB-789).**
+  `available=true/false` and `1/0` filter by the stored boolean; other nonempty values receive
+  HTTP 400 with a JSON explanation.
+- **The HTTP/2 page labels observations instead of invented transport metrics (Huly QB-844).**
+  Response time includes body consumption, the run rate uses elapsed wall time, body size is
+  decoded UTF-8 bytes, and concurrency counts pending fetch calls. The server returns its real
+  HTTP/2 stream ID when present; the page does not claim connection reuse from that ID.
+- **The hot-path lesson qualifies its raw tick samples (Huly QB-769).** It no longer concludes
+  that same-core and cross-core costs match or that allocations are zero from three undrained
+  single-run enqueue loops.
 - **Redis and WebSocket lessons describe their actual execution and storage costs (Huly QB-861, QB-863).**
   An unawaited Redis command sends nothing, detached task exceptions are reported, and the Redis
   cardinality example compares `MEMORY USAGE` on both keys, labels Redis's sampled set estimate,

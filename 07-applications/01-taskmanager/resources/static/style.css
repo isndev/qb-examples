@@ -467,7 +467,7 @@ body {
     background: var(--progress);
 }
 
-.task-card.completed ::before {
+.task-card.completed::before {
     background: var(--done);
     opacity: 0.6;
 }

@@ -1,25 +1,17 @@
 -- QB Task Manager - Database Initialization Script
--- Creates: user 'test' with password 'test' and database 'taskmanager'
+-- Creates: unprivileged user 'test' with password 'test' and database 'taskmanager'
 
--- Create user
+-- Run this bootstrap as a database administrator. The application role only owns its database;
+-- it does not need CREATEDB or SUPERUSER to create its tables there.
 CREATE
-USER test WITH PASSWORD 'test' CREATEDB;
-
--- Grant superuser privileges (optional, for development)
-ALTER
-USER test WITH SUPERUSER;
+USER test WITH PASSWORD 'test';
 
 -- Create database
 CREATE
 DATABASE taskmanager OWNER test;
 
 -- Connect to the new database
-\c
-taskmanager;
-
--- Grant all privileges on the database
-GRANT ALL PRIVILEGES ON DATABASE
-taskmanager TO test;
+\c taskmanager
 
 -- The tasks table will be created automatically by the application
 -- using prepared statements on first startup

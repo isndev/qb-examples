@@ -116,7 +116,7 @@ Below is a list of the available examples and the key features they showcase:
     * JSON request body parsing and response serialization.
     * A PATCH with invalid fields returns 400 without changing the stored Book.
     * Using `qb::json` (nlohmann::json).
-    * Standard middleware stack, installed in this order (`05-rest-api-json.cpp:116-163`): CORS, Compression,
+    * Standard middleware stack, installed in this order (`05-rest-api-json.cpp:117-164`): CORS, Compression,
       SecurityHeaders, Logging, RateLimit. There is no timing middleware in this example.
     * Custom error handling middleware (`ErrorHandlingMiddleware`).
     * Search/filter functionality.
@@ -267,7 +267,7 @@ Below is a list of the available examples and the key features they showcase:
 * **Description**: An HTTP/2 server demonstrating various HTTP/2 features using a static frontend.
 * **Features**:
     * Built on the CRTP server form: `class Http2StaticServer : public qb::Actor, public
-      qb::http2::use<Http2StaticServer>::server<Http2StaticSession>` (`12-http2.cpp:90-92`).
+      qb::http2::use<Http2StaticServer>::server<Http2StaticSession>` (`12-http2.cpp:89-91`).
     * Serves static files from `./resources/http2` to an interactive demo page (`index.html`).
     * ALPN for protocol negotiation (HTTP/2 over TLS).
     * Endpoints to simulate/demonstrate:

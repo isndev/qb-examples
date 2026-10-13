@@ -292,10 +292,11 @@ class Http2Demo {
                 body: options.body ? JSON.stringify(options.body) : undefined
             });
 
-            const endTime = performance.now();
-            const duration = endTime - startTime;
-
             const responseData = await response.text();
+            // Include body consumption in the elapsed time. Count decoded UTF-8
+            // body bytes, not compressed/wire bytes (which fetch does not expose).
+            const duration = performance.now() - startTime;
+            const bodyBytes = new TextEncoder().encode(responseData).byteLength;
 
             return {
                 success: response.ok,
@@ -303,6 +304,7 @@ class Http2Demo {
                 statusText: response.statusText,
                 data: responseData,
                 duration: Math.round(duration),
+                bodyBytes,
                 timestamp: new Date().toISOString()
             };
         } catch (error) {
@@ -313,6 +315,7 @@ class Http2Demo {
                 success: false,
                 error: error.message,
                 duration: Math.round(duration),
+                bodyBytes: 0,
                 timestamp: new Date().toISOString()
             };
         }
@@ -377,7 +380,7 @@ class Http2Demo {
         const chartWidth = canvas.width - 2 * padding;
         const chartHeight = canvas.height - 2 * padding;
 
-        const maxDuration = Math.max(...data.map(d => d.duration));
+        const maxDuration = Math.max(1, ...data.map(d => d.duration));
         const maxIndex = data.length - 1;
 
         ctx.strokeStyle = color;
@@ -412,7 +415,7 @@ class Http2Demo {
     // Event handler methods
     async testAllFeatures() {
         this.isRequestInProgress['testAll'] = true;
-        this.showToast('Testing all HTTP/2 features...', 'info');
+        this.showToast('Running demo request checks...', 'info');
 
         try {
             // Test each feature sequentially
@@ -431,7 +434,7 @@ class Http2Demo {
                 throw new Error('one or more feature checks failed');
             }
 
-            this.showToast('All HTTP/2 features tested successfully!', 'success');
+            this.showToast('Demo requests completed. Check browser network tools for HTTP/2 transport.', 'success');
         } catch (error) {
             this.showToast('Error testing features: ' + error.message, 'error');
         } finally {
@@ -445,7 +448,7 @@ class Http2Demo {
 
         try {
             const resultsContainer = document.getElementById('multiplexing-results');
-            resultsContainer.innerHTML = '<div class="info-message">Starting multiplexing test...</div>';
+            resultsContainer.innerHTML = '<div class="info-message">Starting concurrent requests...</div>';
 
             const requests = [
                 {url: '/api/multiplexing-demo?request=1', name: 'Request 1'},
@@ -457,11 +460,34 @@ class Http2Demo {
 
             resultsContainer.innerHTML = '';
 
-            // Start all requests simultaneously
+            // Start all fetches without awaiting one before the next. This
+            // counts pending fetch calls, not HTTP/2 streams/connections.
             const startTime = performance.now();
-            const promises = requests.map(async (req, index) => {
-                const result = await this.makeRequest(req.url);
-                const endTime = performance.now();
+            let inFlight = 0;
+            let peakInFlight = 0;
+            let http2StreamIds = 0;
+            const promises = requests.map(async req => {
+                inFlight++;
+                peakInFlight = Math.max(peakInFlight, inFlight);
+                let result;
+                try {
+                    result = await this.makeRequest(req.url);
+                } finally {
+                    inFlight--;
+                }
+
+                let streamId = 'N/A';
+                if (result.success && result.data) {
+                    try {
+                        const payload = JSON.parse(result.data);
+                        if (payload.protocol === 'HTTP/2' && Number.isInteger(payload.stream_id) && payload.stream_id > 0) {
+                            streamId = payload.stream_id;
+                            http2StreamIds++;
+                        }
+                    } catch (_) {
+                        // Keep the request status visible if its body is not JSON.
+                    }
+                }
 
                 const resultDiv = document.createElement('div');
                 resultDiv.className = 'request-result';
@@ -476,7 +502,7 @@ class Http2Demo {
                     <div class="request-details">
                         Status: ${escapeHtml(result.status || 'N/A')} | 
                         Response time: ${result.duration}ms |
-                        Stream ID: ${escapeHtml(result.data ? JSON.parse(result.data).stream_id : 'N/A')}
+                        Server HTTP/2 stream ID: ${escapeHtml(streamId)}
                     </div>
                 `;
 
@@ -491,17 +517,21 @@ class Http2Demo {
             const summaryDiv = document.createElement('div');
             summaryDiv.className = 'test-summary';
             summaryDiv.innerHTML = `
-                <h4>Multiplexing Test Summary</h4>
-                <p>Completed ${results.length} simultaneous requests in ${Math.round(totalTime)}ms</p>
+                <h4>Concurrent Request Summary</h4>
+                <p>Completed ${results.length} requests in ${Math.round(totalTime)}ms</p>
+                <p>Peak pending fetch calls: ${peakInFlight}</p>
+                <p>Responses with server HTTP/2 stream IDs: ${http2StreamIds}/${results.length}</p>
                 <p>Average response time: ${Math.round(results.reduce((sum, r) => sum + r.duration, 0) / results.length)}ms</p>
-                <p>All requests used the same HTTP/2 connection with different stream IDs</p>
+                <p>Connection reuse is not exposed by this page; inspect the browser network tools to verify it.</p>
             `;
             resultsContainer.appendChild(summaryDiv);
 
-            this.showToast(`Multiplexing test completed! ${results.length} requests in ${Math.round(totalTime)}ms`, 'success');
-            return results.every(result => result.success);
+            const allSucceeded = results.every(result => result.success);
+            this.showToast(`Concurrent request check: ${results.filter(result => result.success).length}/${results.length} succeeded`,
+                allSucceeded ? 'success' : 'error');
+            return allSucceeded;
         } catch (error) {
-            this.showToast('Multiplexing test failed: ' + error.message, 'error');
+            this.showToast('Concurrent request check failed: ' + error.message, 'error');
             return false;
         } finally {
             this.isRequestInProgress['multiplexing'] = false;
@@ -511,7 +541,7 @@ class Http2Demo {
     clearMultiplexingResults() {
         const results = document.getElementById('multiplexing-results');
         if (results) {
-            results.innerHTML = '<div class="info-message">Click "Start Multiplexing Test" to begin</div>';
+            results.innerHTML = '<div class="info-message">Click "Start Concurrent Request Check" to begin</div>';
         }
     }
 
@@ -687,11 +717,18 @@ class Http2Demo {
 
             const iterations = 50; // Fixed iterations for consistency
             this.performanceData = [];
+            let totalBodyBytes = 0;
 
             this.showToast(`Running performance test with ${iterations} iterations...`, 'info');
 
+            // This loop is deliberately sequential, including its 50 ms pauses.
+            // Use wall time for throughput so the pauses count in the run.
+            const runStartTime = performance.now();
             for (let i = 0; i < iterations; i++) {
+                if (activeStreamsEl) activeStreamsEl.textContent = '1';
                 const result = await this.makeRequest(`/api/performance/${iterations}?iteration=${i + 1}`);
+                if (activeStreamsEl) activeStreamsEl.textContent = '0';
+                totalBodyBytes += result.bodyBytes;
 
                 this.performanceData.push({
                     iteration: i + 1,
@@ -702,13 +739,12 @@ class Http2Demo {
 
                 // Update real-time metrics
                 const avgResponseTime = this.performanceData.reduce((sum, d) => sum + d.duration, 0) / this.performanceData.length;
-                const throughput = 1000 / avgResponseTime; // requests per second
-                const dataSize = 0.5; // KB estimate per request
+                const elapsedMs = performance.now() - runStartTime;
+                const throughput = this.performanceData.length * 1000 / elapsedMs;
 
                 if (responseTimeEl) responseTimeEl.textContent = `${Math.round(avgResponseTime)} ms`;
-                if (throughputEl) throughputEl.textContent = `${Math.round(throughput)} req/s`;
-                if (activeStreamsEl) activeStreamsEl.textContent = `${Math.min(i + 1, 10)}`;
-                if (dataTransferredEl) dataTransferredEl.textContent = `${Math.round((i + 1) * dataSize)} KB`;
+                if (throughputEl) throughputEl.textContent = `${throughput.toFixed(1)} req/s`;
+                if (dataTransferredEl) dataTransferredEl.textContent = `${totalBodyBytes.toLocaleString()} B`;
 
                 // Update progress
                 const progress = Math.round(((i + 1) / iterations) * 100);
@@ -723,7 +759,7 @@ class Http2Demo {
                         <div class="performance-stats">
                             <div>Current Response Time: ${result.duration}ms</div>
                             <div>Average Response Time: ${Math.round(avgResponseTime)}ms</div>
-                            <div>Throughput: ${Math.round(throughput)} req/s</div>
+                            <div>Run throughput: ${throughput.toFixed(1)} req/s</div>
                         </div>
                     </div>
                 `;
@@ -739,7 +775,8 @@ class Http2Demo {
             const avgResponseTime = this.performanceData.reduce((sum, d) => sum + d.duration, 0) / this.performanceData.length;
             const minResponseTime = Math.min(...this.performanceData.map(d => d.duration));
             const maxResponseTime = Math.max(...this.performanceData.map(d => d.duration));
-            const throughput = 1000 / avgResponseTime;
+            const runDurationMs = performance.now() - runStartTime;
+            const throughput = this.performanceData.length * 1000 / runDurationMs;
 
             // Display final results
             results.innerHTML = `
@@ -771,12 +808,16 @@ class Http2Demo {
                             <value>${maxResponseTime}ms</value>
                         </div>
                         <div class="stat-item">
-                            <label>Throughput:</label>
-                            <value>${Math.round(throughput)} req/s</value>
+                            <label>Run throughput (including pauses):</label>
+                            <value>${throughput.toFixed(1)} req/s</value>
                         </div>
                         <div class="stat-item">
-                            <label>Data Transferred:</label>
-                            <value>${Math.round(iterations * 0.5)} KB</value>
+                            <label>Decoded response bodies:</label>
+                            <value>${totalBodyBytes.toLocaleString()} B</value>
+                        </div>
+                        <div class="stat-item">
+                            <label>Run duration:</label>
+                            <value>${Math.round(runDurationMs)}ms</value>
                         </div>
                     </div>
                 </div>
@@ -789,6 +830,8 @@ class Http2Demo {
             this.showToast('Performance test failed: ' + error.message, 'error');
             return false;
         } finally {
+            const activeStreamsEl = document.getElementById('active-streams');
+            if (activeStreamsEl) activeStreamsEl.textContent = '0';
             this.isRequestInProgress['performance'] = false;
         }
     }
@@ -808,7 +851,7 @@ class Http2Demo {
         if (responseTimeEl) responseTimeEl.textContent = '-- ms';
         if (throughputEl) throughputEl.textContent = '-- req/s';
         if (activeStreamsEl) activeStreamsEl.textContent = '--';
-        if (dataTransferredEl) dataTransferredEl.textContent = '-- KB';
+        if (dataTransferredEl) dataTransferredEl.textContent = '-- B';
 
         this.performanceData = [];
         this.drawPerformanceChart();

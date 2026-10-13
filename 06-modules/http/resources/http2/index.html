@@ -94,22 +94,22 @@
 
         <section class="section" id="multiplexing">
             <h2>🔄 Request Multiplexing Demo</h2>
-            <p>HTTP/2 allows multiple requests to be sent simultaneously over a single connection.</p>
+            <p>HTTP/2 can multiplex requests over one connection. This page starts concurrent fetches; use browser network tools to verify transport and connection reuse.</p>
 
             <div class="demo-controls">
-                <button class="demo-btn" id="start-multiplexing">Start Multiplexing Test</button>
+                <button class="demo-btn" id="start-multiplexing">Start Concurrent Request Check</button>
                 <button class="demo-btn secondary" id="clear-multiplexing">Clear Results</button>
             </div>
 
             <div class="demo-results">
-                <h3>Simultaneous Requests Status:</h3>
+                <h3>Concurrent Fetch Calls:</h3>
                 <div class="results-container" id="multiplexing-results">
-                    <div class="info-message">Click "Start Multiplexing Test" to begin</div>
+                    <div class="info-message">Click "Start Concurrent Request Check" to begin</div>
                 </div>
             </div>
 
             <div class="multiplexing-visualization">
-                <h3>Connection Visualization</h3>
+                <h3>Connection Visualization (conceptual)</h3>
                 <div class="connection-diagram">
                     <div class="client-box">Client</div>
                     <div class="connection-line">
@@ -196,7 +196,7 @@
 
         <section class="section" id="performance">
             <h2>📊 Performance Analysis</h2>
-            <p>Compare HTTP/2 performance characteristics with real-time metrics.</p>
+            <p>Observe 50 sequential requests. Run throughput includes the deliberate 50 ms pauses; response body bytes exclude network overhead.</p>
 
             <div class="demo-controls">
                 <button class="demo-btn" id="run-performance">Run Performance Test</button>
@@ -213,12 +213,12 @@
                     <div class="metric-value" id="throughput">-- req/s</div>
                 </div>
                 <div class="metric-card">
-                    <h3>Active Streams</h3>
+                    <h3>Requests in progress</h3>
                     <div class="metric-value" id="active-streams">--</div>
                 </div>
                 <div class="metric-card">
-                    <h3>Data Transferred</h3>
-                    <div class="metric-value" id="data-transferred">-- KB</div>
+                    <h3>Decoded response bodies (UTF-8)</h3>
+                    <div class="metric-value" id="data-transferred">-- B</div>
                 </div>
             </div>
 
@@ -248,4 +248,4 @@
 <script src="/static/http2-demo.js"></script>
 <!-- Initialization is handled in http2-demo.js -->
 </body>
-</html> 
+</html>

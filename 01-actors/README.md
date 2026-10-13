@@ -158,17 +158,17 @@ the file's code.
 
 ### `11-hot-path.cpp`
 
-* **Focus**: the performance knobs qb is sold on, measured rather than asserted.
+* **Focus**: enqueue-call tick snapshots and the limits of comparing them, alongside qb's hot-path controls.
 * **Actors**: a `Bench`, two `Sink`s (one per core) that opt OUT of the default event
   registrations, and a `Reporter`.
 * **QB Features**: `send<>` vs `push<>`, `getPipe` + `allocated_push` for a variable-length event,
   `build_event`, `to()` / `EventBuilder`, `qb::no_default_events`, `qb::EventQOS0`, `setLatency`,
   `setAffinity` + `qb::CPU::ThreadPinningSupported()`, and `qb::tsc_ticks()`.
 
-> Two of its printed findings are worth reading even if you never need the knobs: enqueue cost is
-> the SAME same-core and cross-core (the boundary is paid at the flush, not at your call site),
-> and an actor that opts out of the default events needs `registerEvent<qb::SignalEvent>` as well
-> as `registerEvent<qb::KillEvent>`, because `qb::Main::stop()` travels as a signal.
+> The three tick loops are a single run without a drain between them; their queue and pipe states
+> differ, so they do not establish a cost ranking or allocation count. The example also shows
+> why an actor that opts out of default events needs `registerEvent<qb::SignalEvent>` as well as
+> `registerEvent<qb::KillEvent>`: `qb::Main::stop()` travels as a signal.
 
 ### `12-lockfree-bridge.cpp`
 

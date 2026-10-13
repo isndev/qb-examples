@@ -1,11 +1,9 @@
 /**
  * @file examples/01-actors/11-hot-path.cpp
  * @tier 01-actors
- * @teaches The knobs qb is sold on and the corpus never showed: `send` versus `push`, a
- *          variable-length event written straight into the pipe with `getPipe` +
- *          `allocated_push`, an actor that opts out of the five default event registrations,
- *          the latency/affinity settings — each one measured with `tsc_ticks` rather than
- *          asserted.
+ * @teaches Compare raw enqueue tick deltas for `send` and `push` without treating one run as a
+ *          benchmark; use `getPipe` + `allocated_push` for a variable-length event, opt out of
+ *          default registrations, and configure latency and affinity.
  * @demonstrates send<Tick>, push<Tick>, getPipe, qb::Pipe, allocated_push<Blob>, build_event<Tick>,
  *               to, qb::Actor::EventBuilder, qb::no_default_events, qb::Actor, qb::EventQOS0,
  *               qb::tsc_ticks, qb::CPU, setLatency, setAffinity, qb::CoreIdSet, getIndex,
@@ -18,7 +16,7 @@
  * @expect "[builder] to(dest).push<>() chained "
  * @expect "[builder] build_event made a LOCAL event that was never queued: dest="
  * @expect "[opt-out] this actor registered NO default events and had to add KillEvent by hand"
- * @expect "=== hot path complete: 4 send/push shapes, 1 variable-length event, 0 allocations"
+ * @expect "=== hot path complete: 3 enqueue samples, 1 variable-length event ==="
  *
  * FOUR WAYS TO PUT AN EVENT SOMEWHERE, AND WHEN EACH IS RIGHT
  * -----------------------------------------------------------
@@ -27,8 +25,8 @@
  *   `send<E>(dest, ...)`         UNORDERED. May hand the event straight to the destination
  *                                core's mailbox and skip the outbound pipe entirely.
  *   `getPipe(dest)` +            one pipe, many events, and a place to write TRAILING bytes:
- *   `allocated_push<E>(n, ...)`  the way to move a variable-length message with no heap
- *                                allocation and no second copy.
+ *   `allocated_push<E>(n, ...)`  writes trailing bytes into the outbound pipe without a
+ *                                separate producer-side payload buffer in this example.
  *   `to(dest).push<E>(...)`      an `EventBuilder`: the same pipe, several events, one lookup.
  *
  * `build_event<E>(source, ...)` is the odd one out — it QUEUES NOTHING. It constructs an event
@@ -71,13 +69,11 @@
  * `qb::tsc_ticks()` is a raw cycle counter: uncalibrated, per-core, and meaningful only as a
  * DELTA taken on one thread. It is not a clock and it does not convert to nanoseconds here.
  *
- * What the three loops measure is **enqueue cost at the call site**, and the measurement is
- * worth having precisely because it refutes the obvious guess: same-core and cross-core `push`
- * cost about the SAME here. `push` writes into the destination's outbound pipe and returns; the
- * cross-core handoff happens later, in the core loop's flush. So "cross-core is expensive" is
- * true of end-to-end LATENCY (the framework's own benchmarks: tens of ns same-core against
- * roughly a microsecond across) and false of the call you just made. Do not use these numbers
- * to argue about placement — use them to know where the cost is not.
+ * The three loops record raw enqueue-call tick deltas. Warm-up events can still be queued when
+ * timing begins, and no drain separates the loops. Pipe capacity and backlog may therefore
+ * differ from one loop to the next. These values demonstrate instrumentation, not a stable
+ * ranking of primitives, an allocation count, or end-to-end delivery latency. Controlled
+ * comparisons need a drained fixture, repeated runs and a quiet host.
  *
  * Build:
  *   cmake --preset release
@@ -109,7 +105,7 @@ struct Tick : qb::EventQOS0 {
 };
 
 // A variable-length message. The object is fixed size; the bytes live immediately after it in
-// the pipe, written by the producer and read by the consumer with no allocation on either side.
+// the pipe, written by the producer and read by the consumer without a separate payload buffer.
 struct Blob : qb::Event {
     std::uint32_t len{0};
 
@@ -228,8 +224,8 @@ public:
 
     qb::io::async::task<bool>
     onInit() override {
-        // WARM-UP FIRST. A pipe grows on demand, so the first pass through any destination
-        // pays for reallocation and would be charged to whichever loop happened to run first.
+        // Warm up both destinations. This does not drain their queues or stabilize pipe capacity;
+        // the following single-pass tick deltas are illustrative, not controlled comparisons.
         for (std::uint64_t i = 0; i < N; ++i) {
             push<Tick>(_near, i);
             push<Tick>(_far, i);
@@ -258,13 +254,10 @@ public:
         qb::io::cout() << "[bench] same-core push  x" << N << ": " << push_same << " ticks (" << push_same / N << " per event)\n";
         qb::io::cout() << "[bench] same-core send  x" << N << ": " << send_same << " ticks (" << send_same / N
                        << " per event) — unordered, and it may skip the pipe\n";
-        qb::io::cout() << "[bench] cross-core push x" << N << ": " << push_cross << " ticks (" << push_cross / N
-                       << " per event) — and this is the surprise: about the SAME\n";
-        qb::io::cout() << "[bench] what that means: `push` only writes into the outbound pipe. The cost of "
-                          "CROSSING is paid later, by the core loop, at the flush — not by you at the call "
-                          "site. End-to-end latency is a different measurement (the framework's own "
-                          "benchmarks put same-core at tens of ns against microseconds cross-core); what "
-                          "these three numbers measure is enqueue cost, and it is flat.\n";
+        qb::io::cout() << "[bench] cross-core push x" << N << ": " << push_cross << " ticks (" << push_cross / N << " per event)\n";
+        qb::io::cout() << "[bench] scope: raw enqueue-call tick deltas from one run. Warm-up and "
+                          "timed loops can have different queue and pipe states; these numbers do not "
+                          "establish relative cost, allocation count, or end-to-end latency.\n";
 
         // --- one pipe, one lookup, several events -----------------------------------------
         // `getPipe` resolves the destination's outbound pipe once. `to(dest)` wraps the same
@@ -313,7 +306,7 @@ public:
             // the shutdown broadcast. This is the one place a duration is honest: it is
             // waiting for output ordering, not for correctness.
             co_await ctx.sleep(150ms);
-            qb::io::cout() << "\n=== hot path complete: 4 send/push shapes, 1 variable-length event, 0 allocations ===\n";
+            qb::io::cout() << "\n=== hot path complete: 3 enqueue samples, 1 variable-length event ===\n";
             qb::Main::stop();
         });
     }

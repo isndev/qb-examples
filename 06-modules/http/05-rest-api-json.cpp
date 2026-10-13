@@ -27,6 +27,7 @@
  */
 
 #include <iostream>
+#include <optional>
 #include <qb/main.h>
 #include <qb/system/parse.h>
 #include <qbm/http/http.h>
@@ -331,6 +332,21 @@ private:
         int offset = qb::to_number<int>(offset_str).value_or(0);
         limit      = std::max(1, std::min(limit, 100)); // Clamp between 1 and 100
 
+        std::optional<bool> available_filter_value;
+        if (!available_filter.empty()) {
+            if (available_filter == "true" || available_filter == "1") {
+                available_filter_value = true;
+            } else if (available_filter == "false" || available_filter == "0") {
+                available_filter_value = false;
+            } else {
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "application/json");
+                ctx->response().body() = qb::json{{"error", "Invalid Filter"}, {"message", "available must be one of: true, false, 1, 0"}};
+                ctx->complete();
+                return;
+            }
+        }
+
         qb::json books          = qb::json::array();
         int      current_offset = 0;
         int      added_count    = 0;
@@ -339,7 +355,7 @@ private:
             // Apply filters
             if (!author_filter.empty() && book.author.find(author_filter) == std::string::npos)
                 continue;
-            if (!available_filter.empty() && std::to_string(book.available) != available_filter)
+            if (available_filter_value && book.available != *available_filter_value)
                 continue;
             if (!category_filter.empty()) {
                 bool has_category = std::find(book.categories.begin(), book.categories.end(), category_filter) != book.categories.end();
@@ -722,7 +738,7 @@ private:
                   << "  GET    /api/v1/stats         - API statistics\n\n"
                   << "Query Parameters for /api/v1/books:\n"
                   << "  ?author=name    - Filter by author\n"
-                  << "  ?available=true - Filter by availability\n"
+                  << "  ?available=true - Filter by availability (true/false; 1/0 also accepted)\n"
                   << "  ?category=name  - Filter by category\n"
                   << "  ?limit=10       - Limit results (1-100)\n"
                   << "  ?offset=0       - Offset for pagination\n\n"

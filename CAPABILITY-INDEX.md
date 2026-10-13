@@ -1220,7 +1220,7 @@ can disagree.
 - **`01-actors/10-signals-and-shutdown.cpp`** — 15 capabilities
   - The first thing anyone needs in order to ship a server: SIGINT and SIGTERM arriving as ordinary events, an extra signal asked for by name and handled WITHOUT dying, draining in-flight work before the process leaves — and the exit-code contract, including the measured reason `hasError()` alone is not a health check.
 - **`01-actors/11-hot-path.cpp`** — 22 capabilities
-  - The knobs qb is sold on and the corpus never showed: `send` versus `push`, a variable-length event written straight into the pipe with `getPipe` + `allocated_push`, an actor that opts out of the five default event registrations, the latency/affinity settings — each one measured with `tsc_ticks` rather than asserted.
+  - Compare raw enqueue tick deltas for `send` and `push` without treating one run as a benchmark; use `getPipe` + `allocated_push` for a variable-length event, opt out of default registrations, and configure latency and affinity.
 - **`01-actors/12-lockfree-bridge.cpp`** — 21 capabilities
   - The other half of the foreign-thread boundary: 03-event-payloads bridged ONE outside thread with an spsc ring; this bridges MANY with qb::lockfree::mpsc::ringbuffer, shows why its three enqueue overloads are not interchangeable (one of them takes a lock and two do not), why the drain must be BOUNDED per loop turn, and what qb::lockfree::SpinLock is — the primitive underneath all of it, and the one you will most often be wrong to use.
 - **`01-actors/13-death-watch.cpp`** — 11 capabilities
