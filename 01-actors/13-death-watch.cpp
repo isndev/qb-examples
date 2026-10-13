@@ -60,6 +60,7 @@ using namespace std::chrono_literals;
 
 // How many workers have been destroyed: a watcher compares it before and after its DownEvent.
 std::atomic<int> g_destroyed{0};
+std::atomic_bool g_run_ok{true};
 
 // Does nothing but live; its destructor is what a DownEvent comes after.
 class Worker : public qb::Actor {
@@ -162,12 +163,14 @@ public:
 
 private:
     // The phase's verdict: its line, whole, when what it states was observed -- or what was seen instead.
-    static void
+    void
     verdict(bool const held, const char *const line, qb::DownEvent const &e) {
         if (held)
             qb::io::cout() << line << "\n";
-        else
-            qb::io::cout() << "[lab] UNEXPECTED " << e.watched << " " << qb::down_reason_name(e.reason) << ", wanted: " << line << "\n";
+        else {
+            g_run_ok.store(false);
+            qb::io::cout() << "[lab] UNEXPECTED " << e.watched << " " << qb::down_reason_name(e.reason) << " in phase " << _phase << "\n";
+        }
     }
 
     void
@@ -213,5 +216,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_run_ok.load() ? 1 : 0;
 }

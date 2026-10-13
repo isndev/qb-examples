@@ -63,13 +63,12 @@
  * -----------------------------------------------
  * `hasError()` reports ENGINE failures: a core that would not start, an actor whose SYNCHRONOUS
  * `onInit()` returned false at startup, an escaped exception. It is necessary and NOT sufficient,
- * and the gap is measurable in this very corpus: an actor whose **async** `onInit()` returns false
- * once the engine is running is simply REMOVED, silently, setting no engine flag — so both other
- * servers in this tier keep running with their acceptors gone, holding no port, serving nothing,
- * and exit 0. `dev/agent/example-run.manifest` records that as `known-bad-stays-up`. This program
- * does the other thing: a failed bind records an application startup failure AND asks the engine
- * to stop, and `main()` reads both channels plus the work accounting. `--fail-bind` takes that
- * path on purpose, so the exit code can be watched changing from 0 to 1.
+ * and the gap is measurable: an actor whose **async** `onInit()` returns false once the engine is
+ * running is simply REMOVED, silently, setting no engine flag. The chat and broker examples now
+ * close that gap after their startup barriers by checking the acceptor's `hasError()`. This program
+ * demonstrates the other shape: a failed bind records an application startup failure AND asks the
+ * engine to stop, and `main()` reads both channels plus the work accounting. `--fail-bind` reserves
+ * an ephemeral loopback port first, so its non-zero path is deterministic without privilege assumptions.
  *
  * Build and run:
  *   cmake --build --preset release --target qb-example-services-shutdown-and-drain
@@ -89,6 +88,7 @@
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/main.h>
+#include <qb/io/tcp/listener.h>
 #include "events.h"
 #include "load.h"
 #include "session.h"
@@ -101,9 +101,11 @@ namespace {
 /// The application's own failure channel, read by main() ALONGSIDE engine.hasError(). Atomic
 /// because it is written on a worker thread and read on the main one after join().
 std::atomic<int> g_startup_failures{0};
+std::atomic<int> g_inflight_at_signal{0};
 
 constexpr int kClientCount = 4;
 bool          g_fail_bind  = false;
+std::uint16_t g_fail_port  = 0;
 
 } // namespace
 
@@ -195,6 +197,7 @@ public:
         if ((e.signum != SIGINT && e.signum != SIGTERM) || _draining)
             return;
         _draining = true;
+        g_inflight_at_signal.store(static_cast<int>(active_coroutine_count()), std::memory_order_relaxed);
         qb::io::cout() << "[pool] draining: work already taken will finish; new requests are refused\n";
         qb::io::cout() << "[pool] in flight at the moment the signal arrived: " << active_coroutine_count() << " coroutine(s), "
                        << session_count() << " session(s)\n";
@@ -263,8 +266,9 @@ public:
     onInit() override {
         registerEvent<qb::SignalEvent>(*this);
 
-        // Port 1 is unbindable without privilege — the failure path, on demand.
-        const std::uint16_t port = g_fail_bind ? std::uint16_t{1} : std::uint16_t{0};
+        // In --fail-bind mode main keeps a listener alive on this exact port, making refusal
+        // deterministic on privileged and unprivileged hosts alike.
+        const std::uint16_t port = g_fail_bind ? g_fail_port : std::uint16_t{0};
         if (transport().listen_v4(port, "127.0.0.1") != 0) {
             // THE DEFECT THIS CLOSES. Returning false here removes the actor and sets NO engine
             // flag — `hasError()` stays false and the rest of the service keeps running, holding
@@ -349,7 +353,15 @@ main(int argc, char **argv) {
     qb::Main::ignoreSignal(SIGPIPE);
 #endif
 
-    qb::Main engine;
+    qb::Main              engine;
+    qb::io::tcp::listener occupied_port;
+    if (g_fail_bind) {
+        if (occupied_port.listen_v4(0, "127.0.0.1") != 0) {
+            qb::io::cerr() << "[main] could not reserve the fail-bind witness port\n";
+            return 1;
+        }
+        g_fail_port = occupied_port.local_endpoint().port();
+    }
 
     // One core per role, which is the tier's subject: the acceptor never competes with the work,
     // and the load never competes with either.
@@ -388,8 +400,10 @@ main(int argc, char **argv) {
 
     // Two independent failure channels, plus the work accounting. A drain that lost a unit is a
     // failed shutdown even though nothing crashed — which is the whole reason for counting.
-    const bool lost = !g_fail_bind && (sent != completed || answered != sent);
-    const int  code = (engine_bad || app_bad > 0 || lost) ? 1 : 0;
+    const bool lost =
+        !g_fail_bind
+        && (sent != kClientCount || sent != completed || answered != sent || g_inflight_at_signal.load(std::memory_order_relaxed) == 0);
+    const int code = (engine_bad || app_bad > 0 || lost) ? 1 : 0;
     if (lost)
         qb::io::cerr() << "[main] WORK WAS LOST: the drain did not finish what it accepted\n";
 

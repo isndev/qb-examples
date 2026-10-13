@@ -31,10 +31,13 @@
  *
  * THE ONE RULE
  * ------------
- * **A failed statement does not abort anything by itself.** `execute` and `query` return a
- * `Reply` and never throw, so a transaction whose second UPDATE failed will happily COMMIT the
- * first one unless you look. Every block below therefore checks `.ok()` after every statement.
- * Inside `with_transaction` the way to say "stop" is `throw qb::pg::transaction_abort{r.error()}`.
+ * **Check each Reply and decide whether to continue.** A server-side SQL error marks the
+ * PostgreSQL transaction block aborted: a later COMMIT ends it as a rollback, so an earlier
+ * UPDATE is not committed. A local validation failure that sent no SQL, or a successful UPDATE
+ * affecting zero rows, does not have that effect; blindly committing then can keep earlier
+ * writes. Every block below checks `.ok()` and the intended outcome. Inside
+ * `with_transaction`, use `throw qb::pg::transaction_abort{r.error()}` when the application
+ * must roll back.
  *
  * THE THREE SHAPES, IN THE ORDER YOU WILL MEET THEM
  * -------------------------------------------------
@@ -114,6 +117,7 @@ run_transactions(bool &running, bool &ok) {
         co_return;
     }
     qb::io::cout() << "Successfully connected to PostgreSQL.\n\n";
+    bool all_ok = true;
 
     if (!(co_await db.execute(SCHEMA_SQL)).ok()) {
         qb::io::cerr() << "Failed to create the accounts table\n";
@@ -129,8 +133,9 @@ run_transactions(bool &running, bool &ok) {
         bool ok = (co_await db.begin()).ok();
         if (ok) {
             auto debit = co_await db.query("UPDATE " + TABLE + " SET balance = balance - $1 WHERE name = $2", std::int64_t{50}, "Alice");
-            // The rule: a failed statement does NOT abort. Without this check the COMMIT below
-            // would happily commit a transfer that only debited or only credited.
+            // Application rule: do not proceed after failure. A server-side SQL error aborts
+            // PostgreSQL's block; local failures may not have sent any SQL. A successful
+            // UPDATE affecting zero rows needs its own business check before COMMIT.
             if (!debit.ok()) {
                 (void) co_await db.rollback();
                 ok = false;
@@ -146,12 +151,13 @@ run_transactions(bool &running, bool &ok) {
         if (ok)
             ok = (co_await db.commit()).ok();
 
-        const auto a = co_await balance_of(db, "Alice");
-        const auto b = co_await balance_of(db, "Bob");
-        qb::io::cout() << (ok && a == std::int64_t{50} && b == std::int64_t{70}
-                               ? "[manual] BEGIN / UPDATE / UPDATE / COMMIT — Alice 50, Bob 70, and the two\n"
-                                 "         rollback branches above are what this shape costs you to write\n"
-                               : "[manual] UNEXPECTED: the manual transfer did not land\n");
+        const auto a         = co_await balance_of(db, "Alice");
+        const auto b         = co_await balance_of(db, "Bob");
+        const bool manual_ok = ok && a == std::int64_t{50} && b == std::int64_t{70};
+        all_ok               = all_ok && manual_ok;
+        qb::io::cout() << (manual_ok ? "[manual] BEGIN / UPDATE / UPDATE / COMMIT — Alice 50, Bob 70, and the two\n"
+                                       "         rollback branches above are what this shape costs you to write\n"
+                                     : "[manual] UNEXPECTED: the manual transfer did not land\n");
     }
 
     // -----------------------------------------------------------------------------------
@@ -161,7 +167,7 @@ run_transactions(bool &running, bool &ok) {
         // The body is `f(Transaction&) -> task<T>`; T comes back inside a Reply<T>. Note the
         // body takes the transaction it is given and does NOT touch `db` — the two are the same
         // connection here, but writing against the parameter is what makes a body reusable.
-        auto res = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<std::int64_t> {
+        auto       res      = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<std::int64_t> {
             auto d = co_await tr.query("UPDATE " + TABLE + " SET balance = balance - $1 WHERE name = $2", std::int64_t{10}, "Alice");
             if (!d.ok())
                 throw qb::pg::transaction_abort{d.error()};
@@ -171,16 +177,17 @@ run_transactions(bool &running, bool &ok) {
             auto t = co_await tr.query("SELECT SUM(balance) FROM " + TABLE + "");
             co_return t.ok() && !t.result().empty() ? t.result().front()[0].as<std::int64_t>() : std::int64_t{-1};
         });
-        qb::io::cout() << (res.ok() && res.result() == std::int64_t{120}
-                               ? "[with_transaction] the happy path returned a value and committed: total 120\n"
-                               : "[with_transaction] UNEXPECTED: the happy path did not commit or did not return 120\n");
+        const bool happy_ok = res.ok() && res.result() == std::int64_t{120};
+        all_ok              = all_ok && happy_ok;
+        qb::io::cout() << (happy_ok ? "[with_transaction] the happy path returned a value and committed: total 120\n"
+                                    : "[with_transaction] UNEXPECTED: the happy path did not commit or did not return 120\n");
     }
 
     // ...and the abort path. A duplicate name violates the UNIQUE constraint, the body turns
     // that into `transaction_abort`, and the whole block is rolled back — including the write
     // that succeeded before it.
     {
-        auto       res     = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
+        auto       res      = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
             auto ins = co_await tr.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Mallory", std::int64_t{5});
             if (!ins.ok())
                 throw qb::pg::transaction_abort{ins.error()};
@@ -189,11 +196,12 @@ run_transactions(bool &running, bool &ok) {
                 throw qb::pg::transaction_abort{dup.error()}; // <- fires: name is UNIQUE
             co_return 1;
         });
-        const auto mallory = co_await balance_of(db, "Mallory");
-        qb::io::cout() << (!res.ok() && !mallory.has_value()
-                               ? "[with_transaction] transaction_abort rolled back and came back as a FAILED Reply —\n"
-                                 "                   the insert that SUCCEEDED before it was rolled back too\n"
-                               : "[with_transaction] UNEXPECTED: the abort did not roll everything back\n");
+        const auto mallory  = co_await balance_of(db, "Mallory");
+        const bool abort_ok = !res.ok() && !mallory.has_value();
+        all_ok              = all_ok && abort_ok;
+        qb::io::cout() << (abort_ok ? "[with_transaction] transaction_abort rolled back and came back as a FAILED Reply —\n"
+                                      "                   the insert that SUCCEEDED before it was rolled back too\n"
+                                    : "[with_transaction] UNEXPECTED: the abort did not roll everything back\n");
         if (!res.ok())
             qb::io::cout() << "                   (its error was: " << res.error().what() << ")\n";
     }
@@ -210,11 +218,12 @@ run_transactions(bool &running, bool &ok) {
         } catch (std::runtime_error const &) {
             rethrown = true;
         }
-        const auto trent = co_await balance_of(db, "Trent");
-        qb::io::cout() << (rethrown && !trent.has_value()
-                               ? "[with_transaction] a non-abort exception also rolls back, then RETHROWS: the row is\n"
-                                 "                   gone and the exception reached us\n"
-                               : "[with_transaction] UNEXPECTED: the plain exception was swallowed or the row survived\n");
+        const auto trent      = co_await balance_of(db, "Trent");
+        const bool rethrow_ok = rethrown && !trent.has_value();
+        all_ok                = all_ok && rethrow_ok;
+        qb::io::cout() << (rethrow_ok ? "[with_transaction] a non-abort exception also rolls back, then RETHROWS: the row is\n"
+                                        "                   gone and the exception reached us\n"
+                                      : "[with_transaction] UNEXPECTED: the plain exception was swallowed or the row survived\n");
     }
 
     // Nesting is refused BEFORE any BEGIN is sent, because PostgreSQL has one transaction per
@@ -224,8 +233,10 @@ run_transactions(bool &running, bool &ok) {
         (void) co_await db.begin();
         auto nested = co_await qb::pg::with_transaction(db, [](qb::pg::detail::Transaction &) -> qb::io::async::task<int> { co_return 1; });
         (void) co_await db.rollback();
-        qb::io::cout() << (!nested.ok() ? "[with_transaction] nesting is refused before any BEGIN is sent — use a SAVEPOINT\n"
-                                        : "[with_transaction] UNEXPECTED: a nested transaction was accepted\n");
+        const bool nesting_ok = !nested.ok();
+        all_ok                = all_ok && nesting_ok;
+        qb::io::cout() << (nesting_ok ? "[with_transaction] nesting is refused before any BEGIN is sent — use a SAVEPOINT\n"
+                                      : "[with_transaction] UNEXPECTED: a nested transaction was accepted\n");
     }
 
     // -----------------------------------------------------------------------------------
@@ -238,6 +249,8 @@ run_transactions(bool &running, bool &ok) {
         // A named point to come back to. Names are validated (non-empty, <= 63 bytes,
         // [A-Za-z0-9_]) and quoted, so they are case-sensitive and injection-safe.
         ok = ok && (co_await db.savepoint("after_carol")).ok();
+
+        ok = ok && (co_await db.query("INSERT INTO " + TABLE + " (name, balance) VALUES ($1, $2)", "Dave", std::int64_t{35})).ok();
 
         // This one fails: UNIQUE on `name`. Everything since the savepoint is undone, and the
         // transaction stays usable — without the savepoint the failed statement would have
@@ -252,13 +265,14 @@ run_transactions(bool &running, bool &ok) {
         ok = ok && (co_await db.release_savepoint("after_carol")).ok();
         ok = ok && (co_await db.commit()).ok();
 
-        const auto carol = co_await balance_of(db, "Carol");
-        const auto dave  = co_await balance_of(db, "Dave"); // never inserted; the check the old file got wrong
-        const auto erin  = co_await balance_of(db, "Erin");
-        qb::io::cout() << (ok && carol == std::int64_t{30} && !dave.has_value() && erin == std::int64_t{40}
-                               ? "[savepoint] Carol committed, Dave was rolled back to the savepoint, Erin committed —\n"
-                                 "            one transaction, a partial undo, and the block stayed usable\n"
-                               : "[savepoint] UNEXPECTED: the savepoint round trip did not land as described\n");
+        const auto carol        = co_await balance_of(db, "Carol");
+        const auto dave         = co_await balance_of(db, "Dave");
+        const auto erin         = co_await balance_of(db, "Erin");
+        const bool savepoint_ok = ok && carol == std::int64_t{30} && !dave.has_value() && erin == std::int64_t{40};
+        all_ok                  = all_ok && savepoint_ok;
+        qb::io::cout() << (savepoint_ok ? "[savepoint] Carol committed, Dave was rolled back to the savepoint, Erin committed —\n"
+                                          "            one transaction, a partial undo, and the block stayed usable\n"
+                                        : "[savepoint] UNEXPECTED: the savepoint round trip did not land as described\n");
     }
 
     // -----------------------------------------------------------------------------------
@@ -268,15 +282,17 @@ run_transactions(bool &running, bool &ok) {
         // A STRUCT, and its constructor is explicit: {isolation, read_only, deferrable}.
         const qb::pg::transaction_mode ro{qb::pg::isolation_level::serializable, /*read_only*/ true};
 
-        auto       res = co_await qb::pg::with_transaction(db, ro, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
+        auto       res     = co_await qb::pg::with_transaction(db, ro, [](qb::pg::detail::Transaction &tr) -> qb::io::async::task<int> {
             auto w = co_await tr.query("UPDATE " + TABLE + " SET balance = balance + $1 WHERE name = $2", std::int64_t{1}, "Alice");
             if (!w.ok())
                 throw qb::pg::transaction_abort{w.error()}; // 25006, read-only transaction
             co_return 1;
         });
-        const auto a   = co_await balance_of(db, "Alice");
-        qb::io::cout() << (!res.ok() && a == std::int64_t{40} ? "[mode] a READ ONLY serializable transaction refused the write, as asked\n"
-                                                              : "[mode] UNEXPECTED: the read-only transaction accepted a write\n");
+        const auto a       = co_await balance_of(db, "Alice");
+        const bool mode_ok = !res.ok() && a == std::int64_t{40};
+        all_ok             = all_ok && mode_ok;
+        qb::io::cout() << (mode_ok ? "[mode] a READ ONLY serializable transaction refused the write, as asked\n"
+                                   : "[mode] UNEXPECTED: the read-only transaction accepted a write\n");
     }
 
     // -----------------------------------------------------------------------------------
@@ -296,6 +312,7 @@ run_transactions(bool &running, bool &ok) {
         // `db_error` carries BOTH spellings: `code` is the five-character string PostgreSQL
         // sent, `sqlstate` is the structured enum. Compare against the enum.
         const bool cancelled = !res.ok() && res.error().sqlstate == qb::pg::sqlstate::query_canceled;
+        all_ok               = all_ok && cancelled;
         qb::io::cout() << (cancelled ? "[timeout] set_timeout made a slow statement fail with SQLSTATE 57014 —\n"
                                        "          statement_timeout, not a socket timeout\n"
                                      : "[timeout] UNEXPECTED: the 2 s statement was not cut off at 200 ms\n");
@@ -318,8 +335,11 @@ run_transactions(bool &running, bool &ok) {
         qb::io::cerr() << "Failed to drop owned table " << TABLE << ": " << dropped.error().what() << '\n';
         co_return;
     }
-    ok = true;
-    qb::io::cout() << "\n=== transactions complete: manual, with_transaction, savepoints, mode, timeout ===\n";
+    ok = all_ok;
+    if (ok)
+        qb::io::cout() << "\n=== transactions complete: manual, with_transaction, savepoints, mode, timeout ===\n";
+    else
+        qb::io::cerr() << "\n=== transactions failed: at least one scenario was inconclusive ===\n";
     co_return;
 }
 

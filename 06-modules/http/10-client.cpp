@@ -35,7 +35,7 @@
  * ------------------------------
  * `co_await qb::http::GET(uri)` is the right thing for one request: it connects, sends, reads,
  * and closes. For N requests to the same host it is also N connections, N TCP handshakes and N
- * slow starts. `qb::http1::Client` keeps the connection and pipelines your requests onto it.
+ * slow starts. `qb::http1::Client` keeps the connection and queues your requests on it.
  * The last two sections here run the same work both ways and print the server's connection
  * count for each; that difference is the whole argument.
  *
@@ -55,8 +55,8 @@
  *  * `connect()` has two forms: `co_await client->connect()` yields a `ConnectResult`
  *    (`operator bool` + `error_message`); the callback form takes `(bool, std::string const&)`.
  *    Calling it again on a live client succeeds immediately without reconnecting.
- *  * requests are sent STRICTLY ONE AT A TIME (`push_requests` is sequential pipelining onto one
- *    connection, not concurrency), and its result vector is indexed by the ORIGINAL request
+ *  * this `qb::http1::Client` sends STRICTLY ONE AT A TIME (`push_requests` queues requests on one
+ *    connection; it does not pipeline them), and its result vector is indexed by the ORIGINAL request
  *    position regardless of completion order.
  *  * `set_request_timeout` bounds queue-wait AND flight time; `qb::duration::zero()` disarms it.
  *  * past `set_max_pending_requests`, `push_request` returns `false` *and still calls your

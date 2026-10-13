@@ -53,6 +53,7 @@
  *   ./build/presets/release/examples/04-patterns/qb-example-patterns-resilience
  */
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -63,6 +64,8 @@
 #include <qb/patterns.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_resilience_ok{false};
 
 // One exchange type for the whole file: request field `arg`, response slot from Request<int>.
 struct Call : qb::Request<int> {
@@ -140,6 +143,7 @@ public:
 struct Peak {
     int in_flight = 0;
     int max       = 0;
+    int completed = 0;
 };
 
 static qb::io::async::task<void>
@@ -149,6 +153,7 @@ guarded_op(qb::ScopedCoroContext ctx, std::shared_ptr<qb::bulkhead> bh, std::sha
         peak->max = peak->in_flight;
     co_await ctx.sleep(30ms);
     --peak->in_flight;
+    ++peak->completed;
 }
 
 static const char *
@@ -233,10 +238,14 @@ public:
             for (int i = 0; i < 5; ++i)
                 ops.emplace_back(guarded_op(ctx, bh, peak));
             co_await qb::io::async::when_all(std::move(ops));
+            g_resilience_ok.store(peak->max <= 2 && peak->completed == 5 && peak->in_flight == 0 && bh->available() == 2);
             qb::io::cout() << "[bulkhead] 5 operations, cap 2: peak concurrency " << peak->max << ", every operation ran, none rejected ("
                            << bh->available() << " slots free again)\n";
 
-            qb::io::cout() << "=== resilience complete: four policies, none of them hand-rolled ===\n";
+            if (g_resilience_ok.load())
+                qb::io::cout() << "=== resilience complete: four policies, none of them hand-rolled ===\n";
+            else
+                qb::io::cerr() << "Bulkhead oracle failed\n";
             qb::Main::stop();
         });
         co_return true;
@@ -266,5 +275,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_resilience_ok.load() ? 1 : 0;
 }

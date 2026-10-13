@@ -170,7 +170,8 @@ run_streaming(bool &running, bool &ok) {
 
     qb::io::cout() << "[stream] query_stream() walked a server-side CURSOR instead: same 20000 rows, same\n"
                       "         answer, but the client never held more than one batch of 1000. The callback runs\n"
-                      "         AS THE BATCHES ARRIVE, so work overlaps the next FETCH rather than following it\n";
+                      "         after each FETCH completes, before the next FETCH is sent; the callback and\n"
+                      "         the next FETCH do not overlap on this connection\n";
     qb::io::cout() << "         (" << streamed_rows << " rows seen, summing to " << streamed_sum << " — identical to the buffered read)\n\n";
 
     // -----------------------------------------------------------------------------------

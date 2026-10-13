@@ -235,15 +235,18 @@ main() {
 
     // -------------------------------------------------------- proving the lines landed
     section("5. proving the log lines really left the process");
-    // The logger is asynchronous, so "I called QB_LOG_INFO" is not evidence a line is on disk. Each
-    // line IS flushed by the writer thread (it ends with std::endl), so a brief wait is enough for
-    // a demonstration; a service that must not lose its last lines replaces the logger at shutdown,
-    // which joins the thread and drains the queue.
-    std::this_thread::sleep_for(150ms);
+    // The logger is asynchronous, so "I called QB_LOG_INFO" is not evidence a line is on disk.
+    // Replacing it destroys the old NanoLogger, joins its writer thread and drains its queue before
+    // `init` returns. A distinct stem keeps this barrier's new, empty destination separate from the
+    // file being verified.
+    const auto drain_stem = std::filesystem::current_path() / "qb-example-logging-drain";
+    qb::io::log::init(drain_stem.string(), /*roll_MB=*/1);
 
     std::vector<std::string> lines;
+    bool                     log_open = false;
     {
         std::ifstream in(log_path);
+        log_open = in.is_open();
         for (std::string line; std::getline(in, line);)
             lines.push_back(line);
     }
@@ -257,10 +260,18 @@ main() {
 
     const bool debug_present =
         std::any_of(lines.begin(), lines.end(), [](const std::string &l) { return l.find("[DEBUG]") != std::string::npos; });
+    const auto has_level = [&lines](std::string_view level) {
+        return std::any_of(lines.begin(), lines.end(), [level](const std::string &line) { return line.find(level) != std::string::npos; });
+    };
+    const bool expected_levels = has_level("[INFO]") && has_level("[WARN]") && has_level("[CRIT]");
     qb::io::cout() << (debug_present ? "[log] a DEBUG line is present — the level was not applied\n"
                                      : "[log] the DEBUG line is absent: setLevel(INFO) dropped it at the call site\n");
     qb::io::cout() << "[log] the file is left in place on purpose: " << log_path.string() << "\n";
 
+    if (!log_open || !expected_levels || debug_present) {
+        qb::io::cerr() << "[log] verification failed: readable file and INFO/WARN/CRIT without DEBUG required\n";
+        return 1;
+    }
     qb::io::cout() << "\n=== done ===\n";
     return 0;
 }

@@ -57,10 +57,11 @@
  * ("cancel_all cannot wake a plain sleep()", `scheduler.h:945-946`). Section 6 runs the two side
  * by side and prints when each woke.
  *
- * Nothing is corrupted by it here, because that body only prints. `ctx.push(...)` or
- * `ctx.time()` there would dereference a destroyed actor: `ScopedCoroContext` carries an
- * `Actor const *`, and only `sleep` / `cancellation_point` / `until_cancelled` /
- * `cancellable` / `token` / `cancelled` avoid touching it.
+ * Nothing is corrupted by it here, because that body only prints. `ScopedCoroContext`
+ * captures `ActorId` by value, not an `Actor const *`: `ctx.time()` reads the current core,
+ * and `ctx.push(...)` addresses that saved ID. This does not make an unscoped sleeper safe:
+ * its event may be dropped after the actor dies, and a reused ID remains a separate hazard.
+ * Use cancellation-aware awaits for work that belongs to the actor's lifetime.
  *
  * Build:
  *   cmake --preset release

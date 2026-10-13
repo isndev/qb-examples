@@ -64,5 +64,8 @@ cmake --build --preset release --target qb-example-actors-hello-actor
 ./build/presets/release/examples/01-actors/qb-example-actors-hello-actor
 ```
 
-Examples that read assets (`resources/...`) have them staged next to the binary, so they run from
-any working directory. Each tier and module directory has its own README with the details.
+Examples that read assets (`resources/...`) have them staged next to the binary. Programs that
+resolve those paths through `qb::io::sys::resolve_resource` can run from another working directory;
+programs that intentionally pass a relative path to the API they demonstrate must be launched from
+the binary directory. `dev/agent/run-examples.py` does that for the corpus. Each tier and module
+directory has its own README with the details.

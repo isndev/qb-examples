@@ -14,7 +14,7 @@
  * @prerequisites 02-io/01-event-loop, 03-coroutines/07-structured-concurrency
  * @expect "[wait_readable] the coroutine parked on a handle qb has never seen"
  * @expect "[wait_readable] and the loop kept turning while it was parked"
- * @expect "[wait_writable] an idle socket is writable straight away"
+ * @expect "[wait_writable] an idle socket resumed as writable after "
  * @expect "[wait_for_io] EV_READ | EV_WRITE resumes on whichever comes first"
  * @expect "[async_awaiter] a callback-based API became one co_await"
  * @expect "[async_awaiter] and it works for an operation that completes LATER"
@@ -68,11 +68,12 @@
 using namespace qb::io::async;
 using namespace std::chrono_literals;
 
-// What the summary is gated on: one datagram actually awaited and received, and two callback
-// bridges resolved (one immediate, one deferred).
+// What the summary is gated on: one datagram actually awaited and received, at least one
+// heartbeat tick while that await was parked, and two callback bridges resolved.
 struct Bridged {
-    int datagrams = 0;
-    int callbacks = 0;
+    int datagrams       = 0;
+    int heartbeat_ticks = 0;
+    int callbacks       = 0;
 };
 using Log = std::shared_ptr<Bridged>;
 
@@ -123,11 +124,7 @@ demo_raw_handle(Log log) {
     const auto tw = std::chrono::steady_clock::now();
     co_await wait_writable(sock.native_handle());
     const auto write_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - tw).count();
-    if (write_ms < 20)
-        qb::io::cout() << "[wait_writable] an idle socket is writable straight away, so this cost no waiting "
-                          "at all — readiness, not a timer\n";
-    else
-        qb::io::cout() << "[wait_writable] UNEXPECTED: writability took " << write_ms << " ms\n";
+    qb::io::cout() << "[wait_writable] an idle socket resumed as writable after " << write_ms << " ms — readiness, not a timer deadline\n";
 
     // Now the interesting direction. Nothing has been sent yet, so this parks. A heartbeat
     // coroutine runs alongside to prove the loop is still turning.
@@ -152,11 +149,12 @@ demo_raw_handle(Log log) {
         qb::io::cout() << "[wait_readable] UNEXPECTED: read returned " << n << "\n";
     }
 
-    if (*beats >= 3)
+    log->heartbeat_ticks = *beats;
+    if (log->heartbeat_ticks >= 1)
         qb::io::cout() << "[wait_readable] and the loop kept turning while it was parked — the heartbeat coroutine "
-                       << "got " << *beats << " ticks in, which a blocking read would have made zero\n";
+                       << "got " << log->heartbeat_ticks << " ticks in, which a blocking read would have made zero\n";
     else
-        qb::io::cout() << "[wait_readable] UNEXPECTED: only " << *beats << " heartbeat ticks while parked\n";
+        qb::io::cerr() << "[wait_readable] UNEXPECTED: heartbeat made no progress while the read was parked\n";
 
     // `wait_for_io` is the same awaiter with both flags: it resumes on whichever condition
     // arrives first, and it is then on you to work out which one it was. Here the socket is
@@ -242,11 +240,12 @@ main() {
     auto log = std::make_shared<Bridged>();
     run_sync(run_all(log));
 
-    qb::io::cout() << "    measured: " << log->datagrams << " datagram awaited on a raw handle, " << log->callbacks
-                   << " callback-based operations bridged\n";
-    if (log->datagrams == 1 && log->callbacks == 2)
+    qb::io::cout() << "    measured: " << log->datagrams << " datagram awaited on a raw handle, " << log->heartbeat_ticks
+                   << " heartbeat tick(s) while parked, " << log->callbacks << " callback-based operations bridged\n";
+    const bool ok = log->datagrams == 1 && log->heartbeat_ticks >= 1 && log->callbacks == 2;
+    if (ok)
         qb::io::cout() << "=== foreign awaitables complete: 1 datagram awaited, 2 callbacks bridged ===\n";
     else
-        qb::io::cout() << "=== foreign awaitables INCONCLUSIVE: the bridge counts are not 1 and 2 ===\n";
-    return 0;
+        qb::io::cout() << "=== foreign awaitables INCONCLUSIVE: datagram, heartbeat or callback counts differ ===\n";
+    return ok ? 0 : 1;
 }

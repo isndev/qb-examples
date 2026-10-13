@@ -41,6 +41,8 @@
 #include <qb/uuid.h>        // qb::uuid, qb::generate_random_uuid
 
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <string>
@@ -202,7 +204,7 @@ display_row(const qb::pg::resultset &rs, int id) {
 // All PostgreSQL work happens inside a coroutine; `running` is flipped to false on ANY exit path
 // (scope guard) so the run_until() loop in main() stops once the coroutine is done.
 qb::io::async::task<void>
-run_data_types_demo(bool &running) {
+run_data_types_demo(bool &running, bool &ok) {
     struct StopOnExit {
         bool &r;
         ~StopOnExit() {
@@ -284,8 +286,31 @@ run_data_types_demo(bool &running) {
     if (!sel.ok()) {
         qb::io::cerr() << "Error selecting data types row ID " << new_id << ": " << sel.error().what() << std::endl;
         qb::io::cerr() << "SQLSTATE: " << sel.error().code << std::endl;
+        co_return;
     } else {
         display_row(sel.result(), new_id);
+        if (!sel.result().empty()) {
+            const auto &row = sel.result()[0];
+            const auto  timestamp_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(row["timestamp_col"].as<qb::wall_time>() - p_timestamp_col).count();
+            const auto timestamptz_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(row["timestamptz_col"].as<qb::wall_time>() - p_timestamptz_col).count();
+            ok = row["id"].as<int>() == new_id && row["integer_col"].as<int>() == p_integer_col
+                 && row["smallint_col"].as<short>() == p_smallint_col && row["bigint_col"].as<std::int64_t>() == p_bigint_col
+                 && row["text_col"].as<std::string>() == p_text_col && row["varchar_col"].as<std::string>() == p_varchar_col
+                 && row["char_col"].as<std::string>() == p_char_col && row["boolean_col"].as<bool>() == p_boolean_col
+                 && row["numeric_col"].as<qb::pg::detail::numeric>().str() == "12345.678"
+                 && std::abs(row["real_col"].as<float>() - p_real_col) < 0.001f
+                 && std::abs(row["double_col"].as<double>() - p_double_col) < 1e-9 && row["date_col"].as<qb::date>() == p_date_col
+                 && row["time_col"].as<qb::time_of_day>() == p_time_col && std::abs(timestamp_us) <= 1 && std::abs(timestamptz_us) <= 1
+                 && row["uuid_col"].as<qb::uuid>() == p_uuid_col && row["bytea_col"].as<std::vector<char>>() == p_bytea_col
+                 && row["json_col"].as<qb::json>() == p_json_col && row["jsonb_col"].as<qb::jsonb>() == p_jsonb_col
+                 && row["integer_array_col"].as<std::vector<int>>() == p_integer_array_col
+                 && row["text_array_col"].as<std::vector<std::string>>() == std::vector<std::string>{"apple", "banana", "cherry"}
+                 && row["nullable_text_col"].as<std::optional<std::string>>() == p_nullable_text_col;
+            if (!ok)
+                qb::io::cerr() << "Decoded values did not match the inserted row\n";
+        }
     }
 
     // Cleanup.
@@ -294,11 +319,14 @@ run_data_types_demo(bool &running) {
         [[maybe_unused]] auto r = co_await db.execute("DROP TABLE IF EXISTS data_types_test;");
         if (r.ok())
             qb::io::cout() << "data_types_test table dropped." << std::endl;
-        else
+        else {
             qb::io::cerr() << "Failed to drop data_types_test table: " << r.error().what() << std::endl;
+            ok = false;
+        }
     }
 
-    qb::io::cout() << "Data types example completed." << std::endl;
+    if (ok)
+        qb::io::cout() << "Data types example completed." << std::endl;
     co_return;
 }
 
@@ -313,10 +341,11 @@ main() {
 
     // Spawn the coroutine and drive the event loop until it completes.
     bool running = true;
-    auto task    = run_data_types_demo(running);
+    bool ok      = false;
+    auto task    = run_data_types_demo(running, ok);
     qb::io::async::coro_scheduler().spawn(std::move(task));
     qb::io::async::run_until(running);
 
     qb::io::cout() << "Application finished." << std::endl;
-    return 0;
+    return ok ? 0 : 1;
 }

@@ -101,8 +101,8 @@ add_subdirectory(07-applications)
 #     both tier-7 applications — 02-io/10 also declares `compression`, so it is the one entry whose
 #     `requires` column carries two tokens. This roll call said "nine" and omitted ws 03/04 for a
 #     whole wave, then "twelve" past pgsql 08 and io 13: the argument for counting, not remembering.
-#     13-http3 is deliberately NOT gated — it guards itself with #ifdef QBM_HTTP_HAS_HTTP3, and
-#     so does the HTTP/3 third of http 15.)
+#     13-http3 is gated on qbm-http's resolved HTTP/3 capability; the HTTP/3 third of http 15
+#     still guards itself because that program's HTTP/2 lesson remains useful without it.)
 #
 # `file(GENERATE)` and not `file(WRITE)`: only the former expands `$<TARGET_FILE:>`, and only
 # the former re-runs when the target moves. It writes at GENERATE time, which is also why this
@@ -138,7 +138,15 @@ foreach (_g IN LISTS _qb_ex_gated)
 endforeach ()
 list(LENGTH _qb_ex_gated _qb_ex_n_gated)
 
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/example-roster.txt"
-     CONTENT "${_qb_ex_roster}")
+if (CMAKE_CONFIGURATION_TYPES)
+    # `$<TARGET_FILE:...>` differs by configuration on a multi-config generator. CMake
+    # refuses to generate different bytes to one path, so keep one authoritative roster
+    # per configuration and require its consumer to name the configuration explicitly.
+    set(_qb_ex_roster_path "${CMAKE_CURRENT_BINARY_DIR}/example-roster-$<CONFIG>.txt")
+else ()
+    # Preserve the single-config contract used by every preset and existing consumer.
+    set(_qb_ex_roster_path "${CMAKE_CURRENT_BINARY_DIR}/example-roster.txt")
+endif ()
+file(GENERATE OUTPUT "${_qb_ex_roster_path}" CONTENT "${_qb_ex_roster}")
 
-qb_status_message("examples roster: ${_qb_ex_n} built, ${_qb_ex_n_gated} gated out -> ${CMAKE_CURRENT_BINARY_DIR}/example-roster.txt")
+qb_status_message("examples roster: ${_qb_ex_n} built, ${_qb_ex_n_gated} gated out -> ${_qb_ex_roster_path}")

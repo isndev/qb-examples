@@ -53,8 +53,11 @@
  */
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <vector>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/main.h>
@@ -62,6 +65,8 @@
 #include <qb/string.h>
 
 using namespace std::chrono_literals;
+
+std::atomic_bool g_streaming_ok{false};
 
 // The exchange. `StreamRequest<Chunk>` supplies the `chunk` slot, the `stream_done` end marker
 // and the stream id; the request fields are yours. Both string types are bounded because an
@@ -153,12 +158,14 @@ public:
             req.lines = 5;
             // The type is spelled out once, here, because `ask_stream` is NOT awaited: it hands
             // back a `qb::stream<E>` synchronously and the awaiting happens on `next()`.
-            qb::stream<Tail> s = qb::ask_stream(ctx, tailer, req, qb::duration{1s});
-            int              n = 0;
-            qb::string<48>   last;
+            qb::stream<Tail>         s = qb::ask_stream(ctx, tailer, req, qb::duration{1s});
+            int                      n = 0;
+            std::vector<std::string> chunks;
+            qb::string<48>           last;
             while (auto chunk = co_await s.next()) { // nullopt == the responder said end_stream
                 ++n;
                 last = chunk->chunk;
+                chunks.emplace_back(chunk->chunk.c_str());
             }
             qb::io::cout() << "[stream] scenario 1: drained " << n << " chunks in order, last was " << last.c_str() << ", then end-of-stream\n";
 
@@ -178,7 +185,6 @@ public:
                 qb::io::cout() << "[stream] scenario 2: one chunk, then timeout_error after " << ms_since(ctx, t0)
                                << " ms — the per-chunk timeout is what bounds "
                                   "a stream, not the total\n";
-                (void) n2;
             }
 
             // ---- 3. a responder that outruns its consumer ---------------------------------
@@ -196,7 +202,14 @@ public:
                                << " then stream_overflow_error — LOUD, not a silent gap\n";
             }
 
-            qb::io::cout() << "=== streaming complete: many replies per request, back-pressure included ===\n";
+            const std::vector<std::string> expected{
+                "app.log:0 ready", "app.log:1 ready", "app.log:2 ready", "app.log:3 ready", "app.log:4 ready"
+            };
+            g_streaming_ok.store(chunks == expected && n2 == 1);
+            if (g_streaming_ok.load())
+                qb::io::cout() << "=== streaming complete: many replies per request, back-pressure included ===\n";
+            else
+                qb::io::cerr() << "Streaming oracle failed: sequence or stalled-stream count differed\n";
             qb::Main::stop();
         });
         co_return true;
@@ -226,5 +239,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_streaming_ok.load() ? 1 : 0;
 }

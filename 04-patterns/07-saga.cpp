@@ -47,15 +47,20 @@
  *   ./build/presets/release/examples/04-patterns/qb-example-patterns-saga
  */
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <qb/actor.h>
 #include <qb/io.h>
 #include <qb/main.h>
 #include <qb/patterns.h>
 
 using namespace std::chrono_literals;
+
+std::string      g_compensation_order;
+std::atomic_bool g_saga_ok{false};
 
 // One exchange type per service. `undo` picks the direction: the compensation is the SAME
 // conversation with the same responder, which is what keeps a saga readable.
@@ -89,9 +94,10 @@ public:
 
     void
     on(SeatOp &e) {
-        if (e.undo)
+        if (e.undo) {
+            g_compensation_order += 'I';
             qb::io::cout() << "    [inventory] RELEASE seat " << e.seat << "\n";
-        else if (++_reserves == 3) // the third booking finds no seat
+        } else if (++_reserves == 3) // the third booking finds no seat
             qb::io::cout() << "    [inventory] no seat available for booking 3\n";
         else
             qb::io::cout() << "    [inventory] reserve seat " << e.seat << "\n";
@@ -110,9 +116,10 @@ public:
 
     void
     on(MoneyOp &e) {
-        if (e.undo)
+        if (e.undo) {
+            g_compensation_order += 'P';
             qb::io::cout() << "    [payments] REFUND " << e.cents << "\n";
-        else
+        } else
             qb::io::cout() << "    [payments] charge " << e.cents << "\n";
         qb::answer(*this, e, [](MoneyOp const &r) { return r.cents; });
     }
@@ -204,7 +211,11 @@ public:
                                        << ". Nothing to undo. Re-thrown: " << e.what() << "\n";
                 }
             }
-            qb::io::cout() << "=== saga complete: undo runs backwards, over the steps that happened ===\n";
+            g_saga_ok.store(g_compensation_order == "PI");
+            if (g_saga_ok.load())
+                qb::io::cout() << "=== saga complete: undo runs backwards, over the steps that happened ===\n";
+            else
+                qb::io::cerr() << "Saga oracle failed: compensation order was " << g_compensation_order << "\n";
             qb::Main::stop();
         });
         co_return true;
@@ -238,5 +249,5 @@ main() {
 
     engine.start();
     engine.join();
-    return engine.hasError() ? 1 : 0;
+    return engine.hasError() || !g_saga_ok.load() ? 1 : 0;
 }

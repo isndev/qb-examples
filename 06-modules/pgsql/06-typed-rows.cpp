@@ -40,9 +40,10 @@
  *                                 This is the shape of every "SELECT ... WHERE id = $1".
  *   res.all<Ts...>()              std::vector<std::tuple<Ts...>>, eager. You own it; it outlives
  *                                 the result set.
- *   res.rows<Ts...>()             the same sequence as a LAZY VIEW. Nothing is copied and nothing
- *                                 is allocated — and it BORROWS the result set, so it must not
- *                                 outlive it. That is the whole difference.
+ *   res.rows<Ts...>()             a LAZY VIEW over the result set, without an intermediate
+ *                                 vector. Each dereference decodes a new tuple; owned members
+ *                                 such as std::string can allocate. The view BORROWS the result
+ *                                 set and must not outlive it.
  *
  * ...and `field::text()` is the same trade one level down: a `std::string_view` into the result
  * set's own row storage rather than the `std::string` copy `as<std::string>()` makes. Free to
@@ -186,9 +187,9 @@ run_typed_rows(bool &running, bool &ok) {
     // -----------------------------------------------------------------------------------
     std::vector<std::tuple<int, std::string>> owned = rs.all<int, std::string>();
 
-    // The lazy one. Nothing is decoded until the loop asks for it, and nothing is allocated at
-    // all. It holds iterators INTO `rs`, so `rs` has to outlive it — which is why `owned` is the
-    // right answer when the data must leave this scope.
+    // The lazy one. Nothing is decoded until the loop asks for it; each dereference materialises
+    // a tuple, including owned strings that can allocate. It holds iterators INTO `rs`, so `rs`
+    // has to outlive it. `owned` is the answer when data must leave this scope.
     //
     // The tuple is POSITIONAL over the SELECT list, and the first N columns are the ones it
     // takes — there is no name matching. `rows<int, double>()` here would decode column 1

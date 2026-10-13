@@ -95,8 +95,10 @@ struct Gauge {
 // than a reference into a caller frame, because a worker's frame can outlive the statement
 // that spawned it.
 struct Peaks {
-    int wide   = -1;
-    int narrow = -1;
+    int wide              = -1;
+    int narrow            = -1;
+    int repeats           = -1;
+    int cancelled_repeats = -1;
 };
 using Report = std::shared_ptr<Peaks>;
 
@@ -202,7 +204,7 @@ demo_parallel_map(Report report) {
 // 3. repeat_while — concurrency of ONE, on purpose.
 // ---------------------------------------------------------------------------------------
 task<void>
-demo_repeat_while() {
+demo_repeat_while(Report report) {
     qb::io::cout() << "-- 3. repeat_while: the sequential end of the same axis\n";
 
     // The factory is called again only after the previous task has finished, so this is a loop
@@ -228,6 +230,9 @@ demo_repeat_while() {
     cancellation_token token;
     token.cancel();
     co_await repeat_while(never_body, [&never]() { return never < 10; }, token);
+
+    report->repeats           = iterations;
+    report->cancelled_repeats = never;
 
     qb::io::cout() << "[repeat_while] a pre-cancelled token means ZERO iterations, measured " << never
                    << " — the token is tested before the factory is even called\n\n";
@@ -262,7 +267,7 @@ task<void>
 run_all(Report report) {
     co_await demo_parallel();
     co_await demo_parallel_map(report);
-    co_await demo_repeat_while();
+    co_await demo_repeat_while(report);
     co_await demo_capture_result();
 }
 
@@ -278,9 +283,9 @@ main() {
     // Gated on the two MEASURED peaks, not on the program having reached its last line: a
     // ceiling that silently stopped working would still print every other line above.
     qb::io::cout() << "    measured peaks: " << report->wide << " with no limit, " << report->narrow << " with max_concurrency=3\n";
-    if (report->wide == 12 && report->narrow == 3)
+    if (report->wide == 12 && report->narrow == 3 && report->repeats == 5 && report->cancelled_repeats == 0)
         qb::io::cout() << "=== bounded fan-out complete: peak 12 then peak 3, from the same 12 items ===\n";
     else
         qb::io::cout() << "=== bounded fan-out INCONCLUSIVE: the peaks are not 12 and 3 ===\n";
-    return 0;
+    return report->wide == 12 && report->narrow == 3 && report->repeats == 5 && report->cancelled_repeats == 0 ? 0 : 1;
 }

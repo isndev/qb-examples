@@ -36,6 +36,10 @@ plumbing do not qualify.
   The reply owns the request UUID and serializes the object once; database reconciliation,
   cache invalidation and notification order are unchanged.
 
+- **The launch guide states which resource paths depend on the working directory (Huly QB-857).**
+  Build staging places `resources/` beside each binary, while the corpus runner also launches from
+  that directory. Examples that deliberately pass relative paths therefore need that working
+  directory; examples using qb's resource resolver remain relocatable.
 - **`04-patterns/02-supervisor` shows `qb::supervision::watch` and reads exact totals (Huly QB-51).** A fifth phase
   runs the watch mode: slot 1 first `stop()`s, a `ChildDown` and a `DownEvent` for one death and one restart, then
   its replacement is `kill()`ed, which only the watch sees. Every phase that ends on a count now reads it after 20
@@ -44,6 +48,25 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Actor, I/O and coroutine lessons match current contracts (Huly QB-860, QB-784, QB-778, QB-770).**
+  The hot-path lesson separates event destruction from byte relocation; the crypto lesson
+  reports Argon2id or its PBKDF2 fallback, checks both password verdicts and exits nonzero
+  if either fails. The I/O guide records `eos` before graceful disconnection. The coroutine guide
+  describes pass-zero time, event-driven `ready_async`, value-owned context IDs and current generator names.
+- **HTTP lesson text matches its client, routes and bundled certificate (Huly QB-843).** The
+  HTTP/1.1 batch timing is described as this client's serial queue policy, not a protocol ban
+  on pipelining. The HTTP/2 startup guide, cookie scope and attributes, certificate metadata,
+  and `/` versus `/static` routes now match the shipped source and files.
+- **PostgreSQL lessons distinguish wire and application contracts (Huly QB-848).** The callback
+  chain remains supported and may start work before `await()`; queued SQL still waits for
+  ReadyForQuery between statements. Stream row callbacks run after each FETCH completes.
+  Transaction notes distinguish server-side abort from local errors and zero-row updates, and
+  `rows<T>()` is described as a lazy view that materialises tuples on dereference.
+- **The HTTP static demo no longer serves stale framework metadata (Huly QB-847).** Its pages and
+  sample data identify the C++20 language level and Apache-2.0 license, and label the sample version
+  as illustrative instead of presenting a hand-written framework release.
+- **The HTTP/2 demo's navigation and feature grid receive their intended styles (Huly QB-846).**
+  Desktop and mobile selectors now use the same class names as the served HTML.
 - **PostgreSQL lessons own the objects they remove (Huly QB-824).** Lessons 02, 04–07, 09 and 10
   use connection-local temporary tables; the trigger function in 07 is temporary too, and its
   notification channel is unique to the publisher session. The transactions lesson keeps a

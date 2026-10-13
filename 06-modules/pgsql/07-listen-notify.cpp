@@ -227,6 +227,16 @@ run_listen_notify(bool &running, bool &ok) {
                               "       ROW; the notification only says 'go and look'\n"
                             : "[rule] UNEXPECTED: a notification arrived after UNLISTEN\n");
 
+    const bool relistened_before_drop = (co_await sub.listen(CHANNEL)).ok();
+    const int  before_active_notify   = seen_via_callback;
+    (void) co_await pub.notify(CHANNEL, "active-before-reconnect");
+    co_await qb::io::async::sleep(150ms);
+    const bool                          active_callback_before_drop = relistened_before_drop && seen_via_callback > before_active_notify;
+    std::optional<qb::pg::notification> active_message;
+    if (active_callback_before_drop)
+        active_message = co_await sub.receive();
+    const bool active_before_drop = active_message.has_value() && active_message->payload == "active-before-reconnect";
+
     // ...and the reconnect rule, measured rather than asserted. The connection is dropped from
     // the SERVER side — `pg_terminate_backend` on the consumer's own backend — because that is
     // what a failover or an admin actually does, and the one drop a client cannot prevent.
@@ -250,7 +260,7 @@ run_listen_notify(bool &running, bool &ok) {
     co_await qb::io::async::sleep(150ms);
     const bool callback_recovered = seen_via_callback > before_relistened_notify;
 
-    const bool rule_ok = lost && reconnected && still_deaf && callback_recovered;
+    const bool rule_ok = lost && active_before_drop && reconnected && still_deaf && callback_recovered;
     qb::io::cout() << (rule_ok ? "[rule] the subscription belongs to the CONNECTION: after a reconnect you must LISTEN\n"
                                  "       again, and the gap between the drop and the re-LISTEN is a hole you have to\n"
                                  "       reconcile against the table rather than hope about\n"

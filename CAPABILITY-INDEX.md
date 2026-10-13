@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**103 programs, 7 tiers, 833 distinct capabilities, 1663 claims.**
+**103 programs, 7 tiers, 834 distinct capabilities, 1665 claims.**
 
 ## 1. By capability
 
@@ -219,7 +219,7 @@ can disagree.
 | `info` | `06-modules/redis/09-reliability.cpp` |
 | `is<Worker>` | `04-patterns/09-discovery.cpp` |
 | `is_active` | `03-coroutines/03-awaiting-oninit.cpp` |
-| `is_actor_alive` | `01-actors/08-child-actors.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `04-patterns/09-discovery.cpp` |
+| `is_actor_alive` | `01-actors/08-child-actors.cpp`, `04-patterns/09-discovery.cpp` |
 | `is_alive` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `is_closed` | `03-coroutines/09-channels.cpp` |
 | `is_connected` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
@@ -419,7 +419,7 @@ can disagree.
 | `verify` | `02-io/07-tls.cpp` |
 | `view` | `06-modules/pgsql/06-typed-rows.cpp` |
 | `waiters_count` | `03-coroutines/12-sync-primitives.cpp` |
-| `watch` | `01-actors/13-death-watch.cpp`, `06-modules/redis/05-transactions.cpp` |
+| `watch` | `01-actors/13-death-watch.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `06-modules/redis/05-transactions.cpp` |
 | `with_connect_timeout` | `06-modules/redis/09-reliability.cpp` |
 | `with_initial_delay` | `06-modules/redis/09-reliability.cpp` |
 | `with_jitter` | `06-modules/redis/09-reliability.cpp` |
@@ -472,7 +472,7 @@ can disagree.
 | `qb::CircuitBreaker` | `04-patterns/05-resilience.cpp` |
 | `qb::CoreIdSet` | `01-actors/11-hot-path.cpp` |
 | `qb::CoreStats` | `01-actors/04-cores-and-placement.cpp` |
-| `qb::DownEvent` | `01-actors/13-death-watch.cpp` |
+| `qb::DownEvent` | `01-actors/13-death-watch.cpp`, `03-coroutines/03-awaiting-oninit.cpp` |
 | `qb::DownReason` | `01-actors/13-death-watch.cpp` |
 | `qb::Event` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `qb::EventQOS0` | `01-actors/11-hot-path.cpp` |
@@ -552,6 +552,12 @@ can disagree.
 | `qb::CPU::LogicalCores` | `02-io/11-logging-and-metrics.cpp` |
 | `qb::CPU::PhysicalCores` | `02-io/11-logging-and-metrics.cpp` |
 | `qb::CPU::ThreadPinningSupported` | `02-io/11-logging-and-metrics.cpp` |
+
+### `qb::DownReason`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::DownReason::init_failed` | `03-coroutines/03-awaiting-oninit.cpp` |
 
 ### `qb::Main`
 
@@ -1226,7 +1232,7 @@ can disagree.
 - **`02-io/09-graceful-drain.cpp`** — 23 capabilities
   - The shutdown and backpressure vocabulary, which had ZERO coverage in the pre-3.0 corpus: `pending_read` / `input_drained` on the way in, `pending_write` / `eos` on the way out, `close_after_deliver()` for "answer, THEN hang up", `disconnected` and `dispose` in the order they really run, `extracted` for handing a live socket to another owner — and `async::defer`, the one primitive that lets a handler replace the object it is running on.
 - **`02-io/10-crypto-and-compression.cpp`** — 30 capabilities
-  - The security and payload primitives qb-io already ships, on their own terms: digests and HMAC, an AEAD that REFUSES a tampered ciphertext, Argon2 password hashing, a constant-time comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND — because a decompression bomb is an attack, not a corner case.
+  - The security and payload primitives qb-io already ships, on their own terms: digests and HMAC, an AEAD that REFUSES a tampered ciphertext, build-selected password hashing, a constant-time comparison, a signed token, and a compressor whose uncompress takes an OUTPUT BOUND — because a decompression bomb is an attack, not a corner case.
 - **`02-io/11-logging-and-metrics.cpp`** — 26 capabilities
   - The two production surfaces a qb-io service needs and that nothing in the corpus used: the asynchronous logger behind QB_LOG_* — which every qb binary has ALREADY started before main() runs — and a fixed-capacity rolling window of measurements taken with the raw CPU counter, so a hot loop can report its own latency without allocating.
 - **`02-io/12-quic.cpp`** — 19 capabilities
@@ -1240,7 +1246,7 @@ can disagree.
   - A coroutine with no actor and no engine underneath it: what task<T> is, what drives it, how several of them run at once — and the by-value parameter rule, which is the one mistake here that produces live undefined behaviour rather than a compile error.
 - **`03-coroutines/02-actor-coroutines.cpp`** — 12 capabilities
   - A coroutine spawned from inside an actor: capture by value before the first suspend, talk back only through the context, and let the framework cancel the frame when the actor dies — the actor may be destroyed while the coroutine is parked.
-- **`03-coroutines/03-awaiting-oninit.cpp`** — 17 capabilities
+- **`03-coroutines/03-awaiting-oninit.cpp`** — 19 capabilities
   - 3.0's headline behavioural change — `onInit()` is a coroutine, so setup that WAITS is written straight down the page. What the engine does with an actor whose init is still in flight (it stashes its mail instead of dropping it), how to wait for one without guessing a sleep, and the deadline that fails a stalled init rather than wedging a core forever.
 - **`03-coroutines/04-ask-request-response.cpp`** — 16 capabilities
   - The one-to-one exchange: `co_await qb::ask(...)` replaces a correlation map, a reply handler and a timeout timer with one line — what the correlation id is, the single line you cannot leave out, and the two ways to get it wrong that produce a timeout and no other symptom whatsoever.

@@ -54,7 +54,7 @@ struct User {
 
 // ─── Helper: insert a user then immediately select them back ───────────────────
 
-qb::io::async::task<void>
+qb::io::async::task<bool>
 insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::optional<std::string> email) {
     qb::io::cout() << "Attempting to insert user: " << name << ", Email: " << (email ? *email : "NULL") << std::endl;
 
@@ -65,12 +65,12 @@ insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::
         qb::io::cerr() << "Failed to insert user '" << name << "': " << err.what() << std::endl;
         if (std::string(err.code) == "23505")
             qb::io::cerr() << "Detail: This might be due to a duplicate email." << std::endl;
-        co_return;
+        co_return false;
     }
     const auto &ins_rs = ins.result();
     if (ins_rs.empty()) {
         qb::io::cerr() << "Insert user '" << name << "' did not return an ID." << std::endl;
-        co_return;
+        co_return false;
     }
     int new_id = ins_rs[0]["id"].as<int>();
     qb::io::cout() << "Successfully inserted user '" << name << "' with ID: " << new_id << std::endl;
@@ -79,12 +79,12 @@ insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::
     auto sel = co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{new_id});
     if (!sel.ok()) {
         qb::io::cerr() << "Failed to select user ID " << new_id << ": " << sel.error().what() << std::endl;
-        co_return;
+        co_return false;
     }
     const auto &sel_rs = sel.result();
     if (sel_rs.empty()) {
         qb::io::cout() << "User with ID " << new_id << " not found." << std::endl;
-        co_return;
+        co_return false;
     }
     const auto &row = sel_rs[0];
     User        user;
@@ -93,7 +93,7 @@ insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::
     user.email = row["email"].as<std::optional<std::string>>();
     qb::io::cout() << "Selected User ---- ID: " << user.id << ", Name: " << user.name << ", Email: " << (user.email ? *user.email : "N/A")
                    << " ----" << std::endl;
-    co_return;
+    co_return user.name == name &&user.email == email;
 }
 
 // ─── Main coroutine ───────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ insert_and_select_user(qb::pg::tcp::database &db, const std::string &name, std::
 // All PostgreSQL work happens inside a coroutine; `running` is flipped to false on ANY exit path
 // (scope guard) so the run_until() loop in main() stops once the coroutine is done.
 qb::io::async::task<void>
-run_prepared_statements(bool &running) {
+run_prepared_statements(bool &running, bool &ok) {
     struct StopOnExit {
         bool &r;
         ~StopOnExit() {
@@ -152,13 +152,11 @@ run_prepared_statements(bool &running) {
             co_return;
         }
     }
-    qb::io::cout() << "Database initialized and statements prepared successfully." << std::endl;
-
     // 5. Application logic: insert several users and select them back.
     qb::io::cout() << "\nRunning application logic..." << std::endl;
-    co_await insert_and_select_user(db, "Alice Wonderland", "alice@example.com");
-    co_await insert_and_select_user(db, "Bob The Builder", std::nullopt);
-    co_await insert_and_select_user(db, "Charlie Chaplin", "charlie@example.com");
+    ok = co_await insert_and_select_user(db, "Alice Wonderland", "alice@example.com");
+    ok = (co_await insert_and_select_user(db, "Bob The Builder", std::nullopt)) && ok;
+    ok = (co_await insert_and_select_user(db, "Charlie Chaplin", "charlie@example.com")) && ok;
 
     // Try selecting a non-existent user.
     {
@@ -166,8 +164,11 @@ run_prepared_statements(bool &running) {
         auto sel = co_await db.execute(PREPARE_SELECT_USER_BY_ID, qb::pg::params{999});
         if (!sel.ok()) {
             qb::io::cerr() << "Failed to select user with ID 999: " << sel.error().what() << std::endl;
+            ok = false;
         } else if (sel.result().empty()) {
             qb::io::cout() << "User with ID 999 not found." << std::endl;
+        } else {
+            ok = false;
         }
     }
 
@@ -177,11 +178,16 @@ run_prepared_statements(bool &running) {
         [[maybe_unused]] auto r = co_await db.execute("DROP TABLE IF EXISTS users;");
         if (r.ok())
             qb::io::cout() << "Users table dropped successfully." << std::endl;
-        else
+        else {
             qb::io::cerr() << "Failed to drop users table: " << r.error().what() << std::endl;
+            ok = false;
+        }
     }
 
-    qb::io::cout() << "Example operations complete." << std::endl;
+    if (ok) {
+        qb::io::cout() << "Database initialized and statements prepared successfully." << std::endl;
+        qb::io::cout() << "Example operations complete." << std::endl;
+    }
     co_return;
 }
 
@@ -197,10 +203,11 @@ main() {
 
     // Spawn the coroutine and drive the event loop until it completes.
     bool running = true;
-    auto task    = run_prepared_statements(running);
+    bool ok      = false;
+    auto task    = run_prepared_statements(running, ok);
     qb::io::async::coro_scheduler().spawn(std::move(task));
     qb::io::async::run_until(running);
 
     qb::io::cout() << "Application finished." << std::endl;
-    return 0;
+    return ok ? 0 : 1;
 }

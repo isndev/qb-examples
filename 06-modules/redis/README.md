@@ -75,17 +75,17 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
 * **@example qbm-redis: Coroutine API on pure qb-io — NO ACTORS**
 * **Purpose**: The smallest complete picture of the coroutine API. Commands are issued directly on
   `qb::redis::tcp::client` and `co_await`ed; there is no wrapper class, no callback, and no actor system — the driver
-  is `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(running)` — the three calls at `:207`, `:212` and `:213` (`03-coroutines-and-pipelining.cpp:205-217`).
-* **Key Components**: four free coroutines called in sequence from `run_all_examples()` (`:184-202`):
+  is `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(running)` — the three calls at `:233`, `:239` and `:240` (`03-coroutines-and-pipelining.cpp:229-244`).
+* **Key Components**: four free coroutines called in sequence from `run_all_examples()` (`:208-227`):
     1. `example_simple_get_set()` — `co_await redis.connect()`, `set`, `get`; `get()` yields
-       `Reply<std::optional<std::string>>` (`:37-63`).
-    2. `example_sequential_operations()` — a hash written field by field, then read back (`:69-97`).
+       `Reply<std::optional<std::string>>` (`:37-71`).
+    2. `example_sequential_operations()` — a hash written field by field, then read back (`:77-117`).
     3. `example_multiple_keys()` — three `GET`s issued **in parallel** with
-       `co_await qb::io::async::when_all(...)` (`:133`). `when_all` takes real `task<T>` objects, not raw command
+       `co_await qb::io::async::when_all(...)` (`:154`). `when_all` takes real `task<T>` objects, not raw command
        awaiters, so each `GET` is wrapped in a one-line local coroutine; because they share one client they are
-       pipelined into a single round-trip group rather than three (`:103-148`).
+       pipelined into a single round-trip group rather than three (`:122-169`).
     4. `example_error_handling()` — the miss case: `ok()` true, `result()` empty, for a key that does not exist
-       (`:154-175`).
+       (`:176-199`).
 * **QB/QBM Redis Features**: `qb::redis::tcp::client`, `co_await client.<command>()`, `Reply<T>::ok()` / `result()`,
   `qb::io::async::when_all`, and the standalone `run_until` scaffolding.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-coroutines-and-pipelining`

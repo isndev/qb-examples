@@ -416,16 +416,20 @@ class Http2Demo {
 
         try {
             // Test each feature sequentially
-            await this.startMultiplexingTest();
+            const multiplexingOk = await this.startMultiplexingTest();
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            await this.requestPushDemo();
+            const pushOk = await this.requestPushDemo();
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            await this.testStreamPriority('high');
+            const priorityOk = await this.testStreamPriority('high');
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            await this.runPerformanceTest();
+            const performanceOk = await this.runPerformanceTest();
+
+            if (![multiplexingOk, pushOk, priorityOk, performanceOk].every(Boolean)) {
+                throw new Error('one or more feature checks failed');
+            }
 
             this.showToast('All HTTP/2 features tested successfully!', 'success');
         } catch (error) {
@@ -436,7 +440,7 @@ class Http2Demo {
     }
 
     async startMultiplexingTest() {
-        if (this.isRequestInProgress['multiplexing']) return;
+        if (this.isRequestInProgress['multiplexing']) return false;
         this.isRequestInProgress['multiplexing'] = true;
 
         try {
@@ -495,8 +499,10 @@ class Http2Demo {
             resultsContainer.appendChild(summaryDiv);
 
             this.showToast(`Multiplexing test completed! ${results.length} requests in ${Math.round(totalTime)}ms`, 'success');
+            return results.every(result => result.success);
         } catch (error) {
             this.showToast('Multiplexing test failed: ' + error.message, 'error');
+            return false;
         } finally {
             this.isRequestInProgress['multiplexing'] = false;
         }
@@ -510,7 +516,7 @@ class Http2Demo {
     }
 
     async requestPushDemo() {
-        if (this.isRequestInProgress['push']) return;
+        if (this.isRequestInProgress['push']) return false;
         this.isRequestInProgress['push'] = true;
 
         try {
@@ -551,8 +557,10 @@ class Http2Demo {
                 addTimelineItem('❌ Server push demo failed', 'error');
                 this.showToast('Server push demo failed', 'error');
             }
+            return result.success;
         } catch (error) {
             this.showToast('Server push demo failed: ' + error.message, 'error');
+            return false;
         } finally {
             this.isRequestInProgress['push'] = false;
         }
@@ -617,7 +625,7 @@ class Http2Demo {
     }
 
     async testStreamPriority(priority = 'medium') {
-        if (this.isRequestInProgress[`priority-${priority}`]) return;
+        if (this.isRequestInProgress[`priority-${priority}`]) return false;
         this.isRequestInProgress[`priority-${priority}`] = true;
 
         try {
@@ -650,8 +658,10 @@ class Http2Demo {
                 addTimelineItem(`❌ Priority test failed`, priority);
                 this.showToast(`${priority} priority test failed`, 'error');
             }
+            return result.success;
         } catch (error) {
             this.showToast(`Priority test failed: ${error.message}`, 'error');
+            return false;
         } finally {
             this.isRequestInProgress[`priority-${priority}`] = false;
         }
@@ -665,7 +675,7 @@ class Http2Demo {
     }
 
     async runPerformanceTest() {
-        if (this.isRequestInProgress['performance']) return;
+        if (this.isRequestInProgress['performance']) return false;
         this.isRequestInProgress['performance'] = true;
 
         try {
@@ -774,8 +784,10 @@ class Http2Demo {
 
             this.drawPerformanceChart();
             this.showToast(`Performance test completed! ${successfulRequests}/${iterations} successful requests`, 'success');
+            return successfulRequests === iterations;
         } catch (error) {
             this.showToast('Performance test failed: ' + error.message, 'error');
+            return false;
         } finally {
             this.isRequestInProgress['performance'] = false;
         }
@@ -815,4 +827,4 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.warn('Http2Demo already initialized, skipping duplicate initialization');
     }
-}); 
+});

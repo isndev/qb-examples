@@ -204,7 +204,8 @@ endfunction()
 #     SOURCE     <file.cpp> [<more.cpp> ...]   # first one names the target when single-file
 #     [ROLE      <role>]                       # multi-file projects only
 #     [DEPENDS   qb-core qb-io ...]
-#     [REQUIRES  ssl|quic|compression]         # capability gate; unmet -> target NOT created
+#     [AVAILABLE <bool>]                        # module-local capability gate
+#     [REQUIRES  ssl|quic|compression|...]     # capability name recorded when gated
 #     [DEFINES   ...] [INCLUDES ...]
 #     [TARGET_VAR <var>])                      # derived target name, back to the caller
 #
@@ -217,7 +218,7 @@ endfunction()
 # `qb_add_executable` — a gated-out example does not exist, it does not fail.
 # -----------------------------------------------------------------------------
 function(qb_example)
-    set(oneValueArgs ROLE TARGET_VAR)
+    set(oneValueArgs ROLE TARGET_VAR AVAILABLE)
     set(multiValueArgs SOURCE DEPENDS REQUIRES DEFINES INCLUDES)
     cmake_parse_arguments(QE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -266,14 +267,21 @@ function(qb_example)
         endif ()
     endforeach ()
 
-    qb_add_executable(
-            NAME ${_target}
-            SOURCES ${QE_SOURCE}
-            DEPENDS ${QE_DEPENDS}
-            REQUIRES ${QE_REQUIRES}
-            DEFINES ${QE_DEFINES}
-            INCLUDES ${QE_INCLUDES}
-    )
+    # Some capabilities belong to a module rather than qb itself. `qb_add_executable`
+    # deliberately owns only qb's feature vocabulary, so callers may pass the already
+    # resolved module capability here. Detect the KEYWORD, not the value: AVAILABLE OFF
+    # is a real gate, while an omitted AVAILABLE keeps the historical unconditional path.
+    list(FIND ARGN "AVAILABLE" _available_arg)
+    if (_available_arg EQUAL -1 OR QE_AVAILABLE)
+        qb_add_executable(
+                NAME ${_target}
+                SOURCES ${QE_SOURCE}
+                DEPENDS ${QE_DEPENDS}
+                REQUIRES ${QE_REQUIRES}
+                DEFINES ${QE_DEFINES}
+                INCLUDES ${QE_INCLUDES}
+        )
+    endif ()
 
     # A REQUIRES gate that was not met returns from qb_add_executable BEFORE
     # add_executable(), so the target genuinely does not exist. Register and hand back

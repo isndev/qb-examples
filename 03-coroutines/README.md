@@ -116,8 +116,8 @@ cmake --build --preset release --target qb-example-coroutines-combinators
   init inside its own run.
 * Prints two measurements that are **not** what the phase table suggests: `is_active()` is still
   `true` before the first `co_await` (an actor becomes Activating at its first suspension, it is
-  not born there), and `Actor::time()` reads **0** during `onInit` at engine start, because the
-  core's cached loop clock has not been set yet.
+  not born there), and the first `Actor::time()` during pre-loop `onInit` samples the current
+  wall clock for pass zero; use a monotonic clock for elapsed startup time.
 
 ### `04-ask-request-response.cpp`
 
@@ -191,10 +191,12 @@ cmake --build --preset release --target qb-example-coroutines-combinators
 * **Focus**: producing a sequence one value at a time instead of returning a container.
 * **QB Features**: `generator<T>` (`co_await` inside one is a compile error — `await_transform` is
   deleted, which is exactly why `async_generator<T>` exists), `range`/`iota`/`take`/`skip`/
-  `concat`/`repeat_n`/`from_range`/`collect_to_vector`, `has_next`/`next`, and the `ag_*` family.
-* One measurement worth keeping: `take(gen, 3)` and `take(gen, 3)` each pull exactly **3**, and
-  the program is gated on the two counts AGREEING. They did not always: `take` used to pull and
-  then decide it was past the limit, fetching a fourth value and discarding it — free for `iota`,
+  `concat`/`repeat_n`/`from_range`/`collect_to_vector`, `has_next`/`next`. For
+  `async_generator<T>`, the same `take`/`skip` names resolve by argument type;
+  `map_to_vector`/`filter_to_vector` eagerly consume it, unlike lazy `map`/`filter`.
+* One measurement worth keeping: synchronous and asynchronous `take(gen, 3)` each pull exactly
+  **3**, and the program is gated on the two counts AGREEING. They did not always: `take` used to
+  pull and then decide it was past the limit, fetching a fourth value and discarding it — free for `iota`,
   not free for a source whose body consumes a row or a byte. Writing this example is what found it.
 
 ### `11-async-streams.cpp`

@@ -455,7 +455,10 @@ public:
     finish() {
         auto       pending_workers = co_await _redis.xpending(STREAM, GROUP_WORKERS);
         auto       pending_audit   = co_await _redis.xpending(STREAM, GROUP_AUDIT);
-        const auto still_pending   = pending_count(pending_workers) + pending_count(pending_audit);
+        const auto workers_pending = pending_count(pending_workers);
+        const auto audit_pending   = pending_count(pending_audit);
+        const bool pending_ok      = workers_pending.has_value() && audit_pending.has_value();
+        const auto still_pending   = workers_pending.value_or(0) + audit_pending.value_or(0);
         qb::io::cout() << "[ack] every delivered entry was acknowledged, so XPENDING reports " << still_pending
                        << " entries still pending in the two groups" << std::endl;
 
@@ -470,16 +473,20 @@ public:
         qb::io::cout() << "[xread] a plain XREAD needs no group and carries its own cursor: " << tailed.size()
                        << " entries read back from id 0, first id " << (tailed.empty() ? std::string("-") : tailed.front().id) << std::endl;
 
-        auto len_before = co_await _redis.xlen(STREAM);
-        (void) co_await _redis.xtrim(STREAM, TRIM_MAXLEN);
-        auto len_after = co_await _redis.xlen(STREAM);
-        qb::io::cout() << "[trim] XTRIM MAXLEN bounded the stream: " << len_before.result() << " -> " << len_after.result()
+        auto       len_before   = co_await _redis.xlen(STREAM);
+        auto       trimmed      = co_await _redis.xtrim(STREAM, TRIM_MAXLEN);
+        auto       len_after    = co_await _redis.xlen(STREAM);
+        const auto before_count = len_before.ok() ? len_before.result() : -1;
+        const auto after_count  = len_after.ok() ? len_after.result() : -1;
+        qb::io::cout() << "[trim] XTRIM MAXLEN bounded the stream: " << before_count << " -> " << after_count
                        << " entries (a stream grows forever until something trims it)" << std::endl;
 
-        (void) co_await _redis.del(STREAM);
+        auto removed = co_await _redis.del(STREAM);
 
-        const bool ok = _written == TOTAL_ENTRIES && _workers_acked == TOTAL_ENTRIES && _audit_acked == TOTAL_ENTRIES && still_pending == 0
-                        && len_after.result() == TRIM_MAXLEN;
+        const bool ok = _written == TOTAL_ENTRIES && _workers_acked == TOTAL_ENTRIES && _audit_acked == TOTAL_ENTRIES && pending_ok
+                        && still_pending == 0 && tail.ok() && tailed.size() == 5 && len_before.ok() && len_before.result() == TOTAL_ENTRIES
+                        && trimmed.ok() && trimmed.result() == TOTAL_ENTRIES - TRIM_MAXLEN && len_after.ok()
+                        && len_after.result() == TRIM_MAXLEN && removed.ok() && removed.result() == 1;
         if (!ok)
             qb::io::cerr() << "FAILED: expected " << TOTAL_ENTRIES << " written and acked by each group, 0 pending, " << TRIM_MAXLEN
                            << " left after the trim" << std::endl;
@@ -497,11 +504,13 @@ public:
 private:
     /// The extended XPENDING form answers with one element per pending entry, so the count is the
     /// array's size. A healthy run acked everything and gets an empty reply.
-    static std::size_t
+    static std::optional<std::size_t>
     pending_count(const qb::redis::Reply<qb::json> &reply) {
         if (!reply.ok() || reply.result().is_null())
-            return 0;
-        return reply.result().is_array() ? reply.result().size() : 0;
+            return std::nullopt;
+        if (!reply.result().is_array())
+            return std::nullopt;
+        return reply.result().size();
     }
 };
 

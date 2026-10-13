@@ -212,7 +212,8 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   buffer on a perfectly healthy connection — `disconnected` is the closure event.
   `close_after_deliver()` does not close: it marks the protocol invalid and disposal waits until
   `pendingWrite()` reaches zero, so a farewell queued just before it is delivered in full first
-  (and, measured, `eos` does *not* fire on that path — the disposal wins). `dispose()` runs
+  and emits `eos` after the last buffered write, before the disconnection. An abort via
+  `disconnect()` does not emit that delivery signal. `dispose()` runs
   `on(disconnected)` first and `on(dispose)` last, which is why a self-owned object may only free
   itself in the latter. The client's reconnect destroys and recreates the very object whose handler
   noticed, from `async::defer` — `async::callback(f)` with no delay runs **inline** and would not
@@ -228,8 +229,9 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   OpenSSL or zlib header.
 * **Details**: digests and HMAC (a digest says the bytes did not change; only an HMAC says who sent
   them), base64, AES-256-GCM that **refuses** a tampered ciphertext, `hash_password()`/
-  `verify_password()` (Argon2id, deliberately slow, salt and parameters embedded in the one string
-  you store), `constant_time_compare`, `secure_random_fill`, `qb::jwt` used directly rather than
+  `verify_password()` (Argon2id when built with Argon2 support, otherwise PBKDF2-HMAC-SHA256;
+  the chosen variant, salt and cost are embedded in the stored string),
+  `constant_time_compare`, `secure_random_fill`, `qb::jwt` used directly rather than
   through HTTP middleware, and `gzip`/`deflate` whose `uncompress` takes an **output bound** — a
   megabyte of zeros is a kilobyte on the wire, and exceeding the bound throws rather than
   truncating.

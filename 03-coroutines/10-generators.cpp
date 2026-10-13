@@ -196,7 +196,7 @@ demo_async_generator(std::shared_ptr<int> async_pulled) {
     else
         qb::io::cout() << "[async_generator] UNEXPECTED: take pulled " << *strict << " for 3 values\n";
 
-    // The ag_* family are terminals: each drains a generator and hands back a value. They take
+    // The eager helpers drain a generator and hand back a value. They take
     // the generator BY VALUE, so a generator can feed exactly one of them.
     auto bounded = [](std::shared_ptr<int> t) {
         return take(async_counting_source(std::move(t)), 4);
