@@ -47,10 +47,11 @@
  *
  * COOKIES ARE ATTRIBUTES, AND THE ATTRIBUTES ARE THE POINT
  * --------------------------------------------------------
- * `Set-Cookie: sid=abc` is a session that JavaScript can read, that is sent to every subdomain and
- * that survives no restart. `HttpOnly` + `Secure` + `SameSite=Strict` + a `Max-Age` are what turn
- * it into a session. This program sets them, serialises them (`to_header()`), parses them back
- * (`parse_set_cookie`), keeps them in a `CookieJar` and sends them again — the whole round trip,
+ * `Set-Cookie: sid=abc` is readable by JavaScript and is host-only without a Domain attribute;
+ * it does not persist beyond the browser session by default. This program sets Path, HttpOnly,
+ * SameSite=Strict and Max-Age, but not Secure (it uses plain HTTP on loopback). It serialises
+ * the cookie (`to_header()`), parses it back (`parse_set_cookie`), keeps it in a `CookieJar`
+ * and sends it again — the whole round trip,
  * because the parse half is the half everybody writes by hand and gets wrong.
  *
  * The server is hosted by this program on an ephemeral loopback port and shares the client's event

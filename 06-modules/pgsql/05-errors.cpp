@@ -16,8 +16,9 @@
  * @details
  * Every SQL statement returns a `qb::pg::Reply<qb::pg::results>` that you `co_await`. The reply
  * exposes `ok()` (statement succeeded), `result()` (the typed `qb::pg::results` resultset), and
- * `error()` (a `qb::pg::error::db_error` describing the failure). The old `.then()/.success()/
- * .error()` continuation chain is gone — error handling is now linear:
+ * `error()` (a `qb::pg::error::db_error` describing the failure). This example uses
+ * the coroutine form for linear error handling; the callback `.then()/.success()/.error()`
+ * chain remains available and is demonstrated in `09-callbacks-and-await.cpp`:
  *
  *     auto reply = co_await db.execute(...);
  *     if (reply.ok()) { use reply.result(); }

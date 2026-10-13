@@ -28,15 +28,17 @@
  * WHY THIS PROGRAM IS A MEASUREMENT AND NOT A TOUR
  * -----------------------------------------------
  * `06-modules/http/10-client.cpp` already teaches the persistent-client API, and it states a fact
- * about HTTP/1.1 that this file is the other half of: *`push_requests` is sequential pipelining
- * onto one connection, not concurrency*. HTTP/2 and HTTP/3 change exactly that and nothing else in
+ * about this HTTP/1.1 client that this file is the other half of: *`push_requests` queues requests
+ * onto one connection and this implementation sends them one at a time*. HTTP/1.1 permits request
+ * pipelining; this client chooses not to use it. HTTP/2 and HTTP/3 change that and nothing else in
  * the API — so the honest way to demonstrate them is to run the SAME batch both ways against
  * servers hosted in this process and print the two elapsed times.
  *
  * The route the batch hits sleeps 150 ms server-side. Four requests: HTTP/1.1 pays 4 x 150 ms
- * because the second request cannot leave until the first response is fully read; HTTP/2 pays
+ * because this client sends the next request only after the previous response is read; HTTP/2 pays
  * roughly 150 ms once because the four live on four STREAMS of one connection and the server
- * interleaves them. That is head-of-line blocking, and it is the whole reason HTTP/2 exists.
+ * interleaves them. The measurement compares these client implementations, not every possible
+ * HTTP/1.1 client; HTTP/1.1 pipelining can send multiple requests before their responses.
  *
  * WHAT IS THE SAME, WHICH IS ALMOST EVERYTHING
  * --------------------------------------------
@@ -277,7 +279,7 @@ run_clients(bool &running, bool &ok) {
     for (auto const &r : h2_responses)
         all_ok = all_ok && r.status() == qb::http::status::OK;
 
-    // HTTP/1.1 must pay for every request in turn; HTTP/2 must not. Both bounds are generous —
+    // This HTTP/1.1 client pays for every request in turn; HTTP/2 does not. Both bounds are generous —
     // the point is the SHAPE of the difference, and a machine under load must not fail the run.
     const bool multiplex_ok = all_ok && h1_ms >= serial_floor && h2_ms < serial_floor;
 
@@ -286,8 +288,8 @@ run_clients(bool &running, bool &ok) {
                       "            servers in this very process. Same code, same batch, same loop\n";
     qb::io::cout() << "[multiplex] HTTP/1.1 took " << h1_ms
                    << " ms — at least 4 x 150 ms, because request N+1\n"
-                      "            cannot leave until response N has been read off the socket. That is head-of-line\n"
-                      "            blocking, and it is a property of the FRAMING, not of the server\n";
+                      "            cannot leave until response N has been read off the socket. This is this\n"
+                      "            client's queue policy; HTTP/1.1 itself permits request pipelining\n";
     qb::io::cout() << "[multiplex] HTTP/2 took " << h2_ms
                    << " ms — the four requests are four STREAMS of one\n"
                       "            connection, interleaved on the wire, so the delays overlap instead of adding up.\n"

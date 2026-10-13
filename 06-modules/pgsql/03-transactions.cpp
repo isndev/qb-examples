@@ -31,10 +31,13 @@
  *
  * THE ONE RULE
  * ------------
- * **A failed statement does not abort anything by itself.** `execute` and `query` return a
- * `Reply` and never throw, so a transaction whose second UPDATE failed will happily COMMIT the
- * first one unless you look. Every block below therefore checks `.ok()` after every statement.
- * Inside `with_transaction` the way to say "stop" is `throw qb::pg::transaction_abort{r.error()}`.
+ * **Check each Reply and decide whether to continue.** A server-side SQL error marks the
+ * PostgreSQL transaction block aborted: a later COMMIT ends it as a rollback, so an earlier
+ * UPDATE is not committed. A local validation failure that sent no SQL, or a successful UPDATE
+ * affecting zero rows, does not have that effect; blindly committing then can keep earlier
+ * writes. Every block below checks `.ok()` and the intended outcome. Inside
+ * `with_transaction`, use `throw qb::pg::transaction_abort{r.error()}` when the application
+ * must roll back.
  *
  * THE THREE SHAPES, IN THE ORDER YOU WILL MEET THEM
  * -------------------------------------------------
@@ -130,8 +133,9 @@ run_transactions(bool &running, bool &ok) {
         bool ok = (co_await db.begin()).ok();
         if (ok) {
             auto debit = co_await db.query("UPDATE " + TABLE + " SET balance = balance - $1 WHERE name = $2", std::int64_t{50}, "Alice");
-            // The rule: a failed statement does NOT abort. Without this check the COMMIT below
-            // would happily commit a transfer that only debited or only credited.
+            // Application rule: do not proceed after failure. A server-side SQL error aborts
+            // PostgreSQL's block; local failures may not have sent any SQL. A successful
+            // UPDATE affecting zero rows needs its own business check before COMMIT.
             if (!debit.ok()) {
                 (void) co_await db.rollback();
                 ok = false;

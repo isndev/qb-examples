@@ -14,7 +14,7 @@
  * @prerequisites 06-modules/pgsql/02-parameters, 06-modules/pgsql/05-errors
  * @expect "[connect] connect() is the ONE call with no callback form, so run_sync() is the bridge:"
  * @expect "[chain] execute(sql, on_success, on_error) returns the Transaction, so the calls CHAIN."
- * @expect "[chain] and nothing above had run when the chain was built — await() is what executed"
+ * @expect "[chain] await() drained the queue; callbacks may have started before that call"
  * @expect "[discard] discard_query / discard_error / discard_prepare are not decoration: the"
  * @expect "[error] a failing statement runs the .error() node and SKIPS the .then() node, and the"
  * @expect "[file] prepare_file() reads the statement from resources/sql/top-scores.sql, so the SQL"
@@ -35,14 +35,15 @@
  * a thread that is not running an event loop, or any function that cannot be made a coroutine.
  * There is not one `co_await` below.
  *
- * THE CHAIN IS A QUEUE, NOT A SEQUENCE OF CALLS
+ * THE CHAIN IS A QUEUE, AND ENQUEUE CAN START WORK
  * ---------------------------------------------
  * `execute(...)` returns `Transaction&`, so `.then()`, `.success()` and `.error()` chain off it.
- * None of them runs anything. Each one appends a node to a work queue: `then`/`success` append a
+ * Each one appends a node to a work queue: `then`/`success` append a
  * node whose callback fires **if the previous step succeeded**, `error` one that fires **if it
- * failed**. `await()` then turns the event loop until that queue is empty, running each node's
- * callback as it drains. So the whole chain is built synchronously, costs nothing, and executes at
- * exactly one point — which is what makes the batch a PIPELINE rather than N round trips.
+ * failed**. On a ready connection, enqueueing can start a command immediately;
+ * `await()` turns the event loop until the queue is empty. PostgreSQL waits for
+ * ReadyForQuery before it sends the next SQL statement, so this chain is ordered work,
+ * not one network round trip or wire-level pipelining.
  *
  * WHY `discard_query` EXISTS AT ALL
  * ---------------------------------
@@ -139,7 +140,7 @@ main() {
         // `.error()` fires only if it did NOT. Nothing here should reach it.
         .error([&chain_error](qb::pg::error::db_error const &) { chain_error = true; });
 
-    const bool nothing_ran = !created_fired && !seeded_fired;
+    const bool handlers_idle_before_await = !created_fired && !seeded_fired;
 
     // THE DRAIN.
     auto setup = db.await();
@@ -151,16 +152,16 @@ main() {
     qb::io::cout() << "[chain] execute(sql, on_success, on_error) returns the Transaction, so the calls CHAIN.\n"
                       "        .then() / .success() append a node that fires only if the step before it\n"
                       "        SUCCEEDED; .error() appends one that fires only if it failed\n";
-    qb::io::cout() << "[chain] and nothing above had run when the chain was built — await() is what executed\n"
-                      "        it, all of it, in one pass. That is why a batch of statements costs one round\n"
-                      "        trip's worth of waiting instead of one per statement\n";
-    qb::io::cout() << "        (handlers that had fired before await(): " << (nothing_ran ? "none" : "some — UNEXPECTED")
+    qb::io::cout() << "[chain] await() drained the queue; callbacks may have started before that call\n"
+                      "        on a ready connection. SQL statements still take ordered request/ReadyForQuery\n"
+                      "        turns, rather than one network round trip for the whole chain\n";
+    qb::io::cout() << "        (handlers that had fired before await(): " << (handlers_idle_before_await ? "none" : "some")
                    << "; after it: CREATE=" << (created_fired ? "ran" : "did not run") << ", the INSERT's own result set held " << seeded_rows
                    << " row(s) because it has no RETURNING clause"
                    << ", .then()=" << (seeded_fired ? "ran" : "did not run")
                    << ", .error()=" << (chain_error ? "ran — UNEXPECTED" : "did not run") << ")\n\n";
 
-    const bool chain_ok = nothing_ran && created_fired && seeded_fired && !chain_error && static_cast<bool>(setup);
+    const bool chain_ok = created_fired && seeded_fired && !chain_error && static_cast<bool>(setup);
 
     qb::io::cout() << "[discard] discard_query / discard_error / discard_prepare are not decoration: the\n"
                       "          callback overloads take the handler by value and call it unconditionally, with\n"

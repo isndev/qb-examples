@@ -130,16 +130,18 @@ various HTTP/2 capabilities. The server is configured to serve this directory as
 The `12-http2.cpp` example is configured to:
 
 1. Act as an HTTP/2 server (typically on `https://localhost:8443`).
-2. Use `qb::http::StaticFilesMiddleware` to serve files from the `examples/06-modules/http/resources/http2/` directory as its
-   root. For example, accessing `/index.html` on the server will serve `resources/http2/index.html`.
+2. Use a dedicated `/` route to serve `resources/http2/index.html`; `StaticFilesMiddleware`
+   serves the same directory under `/static`, so `/static/index.html` is another valid path.
 3. Provide specific API endpoints (e.g., `/api/multiplexing-demo`, `/api/server-push-demo`, etc.) that the
    `http2-demo.js` script interacts with to demonstrate features.
-4. Requires SSL/TLS with ALPN for HTTP/2, and includes logic to generate self-signed certificates for ease of testing.
+4. Requires SSL/TLS with ALPN for HTTP/2 and loads the bundled
+   `resources/ssl/cert.pem` and `resources/ssl/key.pem`. It checks that both files exist;
+   it does not generate certificates.
 
 ### Testing the HTTP/2 Demo (`12-http2.cpp`)
 
 1. Build and run the `qb-example-modules-http-http2` executable.
-2. Open your browser and navigate to `https://localhost:8443/` (or `https://localhost:8443/index.html`). You may need to
+2. Open your browser and navigate to `https://localhost:8443/` (or `https://localhost:8443/static/index.html`). You may need to
    accept a security warning due to the self-signed certificate.
 3. Interact with the different sections of the demo page to test HTTP/2 features.
 4. Use your browser's developer tools (Network tab) to observe:

@@ -210,7 +210,9 @@ fails with SQLSTATE 57014. Note the spellings: `rollback_savepoint` and `release
     * **Manual** control — `co_await db.begin()`, the statements, then `commit()` or `rollback()`
       yourself, on the branch you decide. Ordinary control flow: check `reply.ok()` after each
       `co_await`. The example prints the trap that makes this shape dangerous — a `BEGIN` whose
-      `UPDATE` failed will happily `COMMIT`, because nothing checked.
+      `UPDATE` failed may leave a PostgreSQL block aborted, in which case a later `COMMIT`
+      rolls back the whole block. Local failures that sent no SQL and successful updates
+      affecting zero rows need an explicit application decision; check every `Reply`.
     * **`qb::pg::with_transaction`** and its exact exception contract: `transaction_abort` → rollback
       plus a failed `Reply`; any other exception → rollback then **rethrow**; a nested call is refused
       before a `BEGIN` is even sent.
@@ -288,7 +290,8 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   `T` is a `std::optional`). Both move into ONE place — the tuple you declare.
 * **API**: `row::as<std::tuple<...>>()`, `resultset::one<Ts...>()` (the single-row query, as an
   `optional<tuple>`), `all<Ts...>()` (an eager vector you own) versus `rows<Ts...>()` (a lazy view
-  that BORROWS the result set), `field::text()` / `field::view()` for a read with no copy, and
+  that BORROWS the result set and creates a tuple on each dereference; string fields can allocate),
+  `field::text()` / `field::view()` for a read with no copy, and
   `resultset::json()` for the whole set at once.
 * **Names**: the architecture document called these `first_as` and `views<Ts...>`. Neither exists;
   the shipped names are `one` / `all` / `rows` (`qbm/pgsql/src/qbm/pgsql/resultset.h:214/230/248`).
@@ -355,11 +358,11 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   `execute(name, qb::pg::params{...}, ...)`, `Transaction::await()` and its free-function form
   `qb::pg::await(db)`, plus the one bridge synchronous code needs — `qb::io::async::run_sync(db.connect(...))`,
   because `connect` is the single operation with no callback overload.
-* **The chain is a QUEUE, not a sequence of calls**: `.then()` appends a node that fires only if the
-  step before it SUCCEEDED, `.error()` one that fires only if it failed, and neither runs anything.
-  `await()` turns the loop until that queue is empty. So the whole chain is built for free and
-  executes at exactly one point — which is what makes a batch of statements cost one round trip's
-  waiting instead of one per statement. The program prints that nothing had run before the drain.
+* **The chain is a QUEUE**: `.then()` appends a node that fires only if the prior step
+  succeeded, `.error()` one for failure. A callback command can start sending as soon as
+  it is enqueued on a ready connection; `await()` drives the loop until the queue drains.
+  Statements still take ordered request/ReadyForQuery turns. The program reports whether
+  any handler had fired before its `await()` call; that observation is not a start contract.
 * **Why there are THREE discards and not one**: the callback overloads take the handler by value and
   call it unconditionally, with no per-reply branch, so a handler is never absent — and `prepare()`
   wants `(Transaction&, PreparedQuery const&)` where `execute()` wants `(Transaction&, results)`.

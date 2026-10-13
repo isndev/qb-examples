@@ -15,7 +15,7 @@
  * - HTTP/2 server with ALPN support
  * - Static file serving with proper MIME types
  * - HTTP/2 specific features demonstration
- * - SSL/TLS with certificate generation
+ * - SSL/TLS with the bundled development certificate
  * - Multiplexing, stream prioritization demos
  */
 

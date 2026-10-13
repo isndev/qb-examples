@@ -353,11 +353,12 @@ The `resources` directory contains static assets used by some examples.
   `set_verify_peer()`, `set_connect_timeout()`, `set_request_timeout()`, `get_base_uri()`,
   `disconnect()` — the same vocabulary in all three namespaces, plus `qb::http2::make_server` and
   `qb::http3::make_server` for the upstreams it hosts.
-* **It is a MEASUREMENT, not a tour.** `10-client` states that HTTP/1.1's `push_requests` is
-  sequential pipelining and not concurrency; this file is the other half. Four requests to a route
-  that sleeps 150 ms, issued as one `push_requests()` on each client against servers in this very
-  process. Measured on this tree: **HTTP/1.1 601 ms, HTTP/2 150 ms, HTTP/3 150 ms** — head-of-line
-  blocking is a property of the FRAMING, and nothing about the client code changed to remove it.
+* **It is a MEASUREMENT, not a tour.** `10-client` states that this HTTP/1.1 client's
+  `push_requests` queues requests and sends one at a time; this file is the other half.
+  HTTP/1.1 permits request pipelining, so the comparison is specific to these client implementations.
+  Four requests to a route that sleeps 150 ms are issued as one `push_requests()` on each client against servers in this very
+  process. One recorded run gave **HTTP/1.1 601 ms, HTTP/2 150 ms, HTTP/3 150 ms**;
+  these numbers describe that run, not a performance guarantee.
 * **The rules http1 does not have**: both new clients throw `std::invalid_argument` from
   `make_client` on a non-https base URI (there is no h2c path and no plaintext QUIC) and answer a
   non-https request URI with a 400; `connect(nullptr)` is the spelling for fire-and-forget, because
@@ -367,9 +368,9 @@ The `resources` directory contains static assets used by some examples.
 * **The return-shape trap**: `Client::push_request` yields a bare `qb::http::Response`, while the
   one-shot verbs (`qb::http::GET` and friends, HTTP/1.1 only) yield an `async::Reply` carrying BOTH
   the request and the response — `reply.response.body()`, not `reply.body()`.
-* **One asymmetry worth knowing, found by writing this file**: `qb::http2::Server::listen()` BINDS
-  and you must also call `start()`; `qb::http3::Server::listen()` does both. Forgetting it does not
-  fail — every client `connect()` times out at the 30 s default with nothing naming the cause.
+* **Server startup**: `qb::http2::Server::listen()` binds and starts accepting, as
+  `qb::http3::Server::listen()` does. The example's extra `start()` call is redundant and safe;
+  `listen_no_start()` is the API for binding without starting.
 * **Gated**: `REQUIRES ssl`, for the same reason `12-http2` is. The HTTP/3 third guards itself with
   `#ifdef QBM_HTTP_HAS_HTTP3` and states which branch it took.
 * **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-http2-and-http3-clients`

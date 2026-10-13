@@ -62,7 +62,7 @@ public:
 
         std::cout << "Initializing HTTPS Server..." << std::endl;
 
-        // Generate certificates if needed
+        // Resolve and check the bundled certificate and key.
         if (!ensure_certificates_exist()) {
             std::cerr << "Failed to ensure SSL certificates exist" << std::endl;
             co_return false;
@@ -336,11 +336,11 @@ private:
         qb::json cert_info = {
             {"certificate_status", "self-signed"},
             {"subject", "/C=US/ST=CA/L=San Francisco/O=QB Framework/CN=localhost"},
-            {"validity", "365 days from generation"},
+            {"validity", "inspect the bundled certificate; this example does not parse its dates"},
             {"key_size", "2048 bits"},
             {"algorithm", "RSA"},
-            {"files", {{"certificate", "server.crt"}, {"private_key", "server.key"}}},
-            {"note", "This is a self-signed certificate for development only"},
+            {"files", {{"certificate", "resources/ssl/cert.pem"}, {"private_key", "resources/ssl/key.pem"}}},
+            {"note", "Static demo metadata for a bundled self-signed certificate; inspect the PEM for its actual validity"},
             {"timestamp", std::time(nullptr)}
         };
 
@@ -465,7 +465,10 @@ private:
     handle_admin_config(std::shared_ptr<qb::http::Context<qb::http::ssl::DefaultSecureSession>> ctx) {
         qb::json admin_config = {
             {"server_config",
-             {{"https_port", 8443}, {"http_redirect_port", 8080}, {"ssl_certificate", "server.crt"}, {"ssl_private_key", "server.key"}}},
+             {{"https_port", 8443},
+              {"http_redirect_port", 8080},
+              {"ssl_certificate", "resources/ssl/cert.pem"},
+              {"ssl_private_key", "resources/ssl/key.pem"}}},
             {"security_config",
              {{"hsts_max_age", 31536000}, {"api_key_required", true}, {"admin_token_required", true}, {"secure_headers_enabled", true}}},
             {"performance_metrics",
