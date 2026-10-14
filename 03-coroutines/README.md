@@ -144,6 +144,8 @@ cmake --build --preset release --target qb-example-coroutines-combinators
 * **QB Features**: the per-actor scope, `ctx.sleep`, `ctx.cancellation_point()`,
   `ctx.until_cancelled()`, `ctx.cancellable(task)`, `ctx.token()`, `ctx.cancelled()`, and
   `child_token()` for cancelling a subtree without touching the actor.
+* The compute loop uses a `std::uint64_t` index and sum (`06-cancellation.cpp:157-161`):
+  cancellation latency cannot make signed `long` overflow on Windows, and unsigned wrap is defined.
 * An RAII ledger counts handles opened and unwound, so "cancellation is not a kill -9" is a
   printed number. It also runs the A/B that matters: the same 400 ms wait with and without the
   scope token — one wakes on the kill, the bare `qb::io::async::sleep` sleeps its full duration

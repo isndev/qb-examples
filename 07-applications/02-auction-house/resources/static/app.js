@@ -51,6 +51,10 @@ let ws = null;
 let wsReconnects = 0;
 let heartbeatTimer = null;
 let reconnectTimer = null;
+let displayedBidIds = new Set();
+let bidHistoryRequestVersion = 0;
+const liveBidsByLot = new Map();
+const seenBidIdsByLot = new Map();
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -160,10 +164,15 @@ async function loadLots() {
     showCacheBadge(cacheHeader);
 
     // Update state
-    lots.clear();
     for (const lot of data.lots) {
-        lots.set(lot.id, lot);
+        const current = lots.get(lot.id);
+        if (current) {
+            lot.current_price = Math.max(Number(lot.current_price), Number(current.current_price));
+            lot.bid_count = Math.max(Number(lot.bid_count || 0), Number(current.bid_count || 0));
+        }
     }
+    lots.clear();
+    for (const lot of data.lots) lots.set(lot.id, lot);
 
     renderGrid();
 }
@@ -369,27 +378,46 @@ function pad(n) {
 // ─── Bid History ─────────────────────────────────────────────────────────────
 
 async function loadBidHistory(lotId) {
+    const requestVersion = ++bidHistoryRequestVersion;
     els.bidList.innerHTML = '<div class="bid-empty">Loading…</div>';
 
     const {ok, data} = await apiFetch(`/api/lots/${lotId}/bids`);
-    if (!ok || selectedLotId !== lotId) return;
+    if (!ok || selectedLotId !== lotId || requestVersion !== bidHistoryRequestVersion) return;
 
     const bids = data?.bids || [];
-    els.bidHistoryTotal.textContent = `${data?.total_bids || bids.length} total`;
+    let seen = seenBidIdsByLot.get(lotId);
+    if (!seen) {
+        seen = new Set();
+        seenBidIdsByLot.set(lotId, seen);
+    }
+    for (const bid of bids) {
+        const id = Number(bid.id);
+        if (Number.isInteger(id) && id > 0) seen.add(id);
+    }
+    const live = liveBidsByLot.get(lotId);
+    if (live) {
+        for (const bid of bids) live.delete(Number(bid.id));
+        if (live.size === 0) liveBidsByLot.delete(lotId);
+    }
+    const pendingLive = live ? [...live.values()].reverse() : [];
+    const mergedBids = [...pendingLive, ...bids];
+    els.bidHistoryTotal.textContent = `${Math.max(data?.total_bids || bids.length, mergedBids.length)} total`;
 
     // Update lot bid count in state
     const lot = lots.get(lotId);
-    if (lot) lot.bid_count = data?.total_bids || bids.length;
+    if (lot) lot.bid_count = Math.max(lot.bid_count || 0, data?.total_bids || bids.length, mergedBids.length);
 
-    renderBidList(bids);
+    renderBidList(mergedBids);
 
-    // Also update current price from authoritative source
-    if (data?.current_price !== undefined) {
+    // Bid prices are monotonic. A GET snapshot taken before a WebSocket bid must not
+    // roll the card/drawer back when its older response arrives.
+    if (data?.current_price !== undefined && (!lot || Number(data.current_price) >= Number(lot.current_price))) {
         updateLotPrice(lotId, data.current_price, false);
     }
 }
 
 function renderBidList(bids) {
+    displayedBidIds = new Set(bids.map(b => Number(b.id)).filter(id => Number.isInteger(id) && id > 0));
     if (!bids.length) {
         els.bidList.innerHTML = '<div class="bid-empty">No bids yet — be the first!</div>';
         return;
@@ -397,7 +425,20 @@ function renderBidList(bids) {
     els.bidList.innerHTML = bids.map(b => bidRowHTML(b, false)).join('');
 }
 
-function prependBid(bid) {
+function prependBid(bid, lotId = selectedLotId) {
+    const bidId = Number(bid.id ?? bid.bid_id);
+    if (Number.isInteger(bidId) && bidId > 0) {
+        if (displayedBidIds.has(bidId)) return;
+        displayedBidIds.add(bidId);
+        if (lotId) {
+            let live = liveBidsByLot.get(lotId);
+            if (!live) {
+                live = new Map();
+                liveBidsByLot.set(lotId, live);
+            }
+            live.set(bidId, {...bid, id: bidId});
+        }
+    }
     // Remove empty state
     const empty = els.bidList.querySelector('.bid-empty');
     if (empty) empty.remove();
@@ -409,6 +450,33 @@ function prependBid(bid) {
 
     // Remove .new-bid highlight after animation
     setTimeout(() => el.classList.remove('new-bid'), 2500);
+}
+
+function registerBidOnce(lotId, bid, authoritativeCount) {
+    const bidId = Number(bid.id ?? bid.bid_id);
+    if (!Number.isInteger(bidId) || bidId <= 0) return false;
+    let seen = seenBidIdsByLot.get(lotId);
+    if (!seen) {
+        seen = new Set();
+        seenBidIdsByLot.set(lotId, seen);
+    }
+    if (seen.has(bidId)) return false;
+    seen.add(bidId);
+
+    const lot = lots.get(lotId);
+    if (lot) {
+        lot.bid_count = Math.max((lot.bid_count || 0) + 1,
+            typeof authoritativeCount === 'number' ? authoritativeCount : 0);
+        const card = els.lotsGrid.querySelector(`[data-id="${lotId}"]`);
+        const bidsEl = card?.querySelector('.lot-bids');
+        if (bidsEl) bidsEl.textContent = `${lot.bid_count} bid${lot.bid_count !== 1 ? 's' : ''}`;
+        if (selectedLotId === lotId) {
+            els.drawerBidsCount.textContent = `${lot.bid_count} bids`;
+            els.bidHistoryTotal.textContent = `${lot.bid_count} total`;
+        }
+    }
+    if (selectedLotId === lotId) prependBid({...bid, id: bidId}, lotId);
+    return true;
 }
 
 function bidRowHTML(bid, isNew) {
@@ -464,31 +532,40 @@ async function placeBid() {
     }
 
     if (!pendingBid) {
-        pendingBid = {lotId: selectedLotId, bidderId: currentUser.id, amount, requestId: crypto.randomUUID()};
+        pendingBid = {lotId: selectedLotId, bidderId: currentUser.id, bidderName: currentUser.username,
+            amount, requestId: crypto.randomUUID()};
         savePendingBid();
     }
+
+    // Everything below the await belongs to this request, even if the operator changes
+    // drawer or user while the server is deciding it.
+    const submittedBid = {...pendingBid};
 
     els.placeBidBtn.disabled = true;
     els.placeBidBtn.textContent = 'Placing…';
 
     let reply;
     try {
-        reply = await apiFetch(`/api/lots/${pendingBid.lotId}/bids`, {
+        reply = await apiFetch(`/api/lots/${submittedBid.lotId}/bids`, {
             method: 'POST',
-            body: JSON.stringify({amount: pendingBid.amount, bidder_id: pendingBid.bidderId,
-                request_id: pendingBid.requestId}),
+            body: JSON.stringify({amount: submittedBid.amount, bidder_id: submittedBid.bidderId,
+                request_id: submittedBid.requestId}),
         });
     } catch (_) {
-        els.placeBidBtn.disabled = false;
-        els.placeBidBtn.textContent = 'Retry Bid';
-        showBidResult('Bid outcome unknown. Retry this bid to confirm it.', 'error');
+        if (selectedLotId === submittedBid.lotId) {
+            els.placeBidBtn.disabled = false;
+            els.placeBidBtn.textContent = 'Retry Bid';
+            showBidResult('Bid outcome unknown. Retry this bid to confirm it.', 'error');
+        }
         return;
     }
     const {ok, status, data} = reply;
 
-    els.placeBidBtn.disabled = false;
     const definitive = (status === 201 && data?.success) || (status >= 400 && status < 500);
-    els.placeBidBtn.textContent = definitive ? 'Place Bid' : 'Retry Bid';
+    if (selectedLotId === submittedBid.lotId) {
+        els.placeBidBtn.disabled = false;
+        els.placeBidBtn.textContent = definitive ? 'Place Bid' : 'Retry Bid';
+    }
 
     if (definitive) {
         pendingBid = null;
@@ -497,27 +574,36 @@ async function placeBid() {
 
     if (ok && data?.success) {
         // 201 Created
-        showBidResult(`✓ Bid of $${amount.toLocaleString()} placed!`, 'success');
-        toast(`Bid placed: $${amount.toLocaleString()}`, 'success');
+        if (selectedLotId === submittedBid.lotId)
+            showBidResult(`✓ Bid of $${submittedBid.amount.toLocaleString()} placed!`, 'success');
+        toast(`Bid placed: $${submittedBid.amount.toLocaleString()}`, 'success');
 
         // Update local state immediately
-        updateLotPrice(selectedLotId, data.new_price, true);
+        updateLotPrice(submittedBid.lotId, data.new_price, true);
 
-        // Add to bid history immediately
-        prependBid({
-            bidder_username: currentUser.username,
+        // One bid id admits both the history row and every counter exactly once,
+        // regardless of whether HTTP or WebSocket arrives first.
+        registerBidOnce(submittedBid.lotId, {
+            id: data.bid_id,
+            bidder_username: submittedBid.bidderName
+                || users.find(user => user.id === submittedBid.bidderId)?.username
+                || String(submittedBid.bidderId),
             amount: data.new_price,
             bid_time: new Date().toISOString(),
         });
 
         // Auto-suggest next minimum bid
-        const nextMin = Math.ceil(data.new_price * 1.05 / 100) * 100;
-        els.bidAmount.value = nextMin;
+        if (selectedLotId === submittedBid.lotId) {
+            const currentPrice = lots.get(submittedBid.lotId)?.current_price ?? data.new_price;
+            const nextMin = Math.ceil(currentPrice * 1.05 / 100) * 100;
+            els.bidAmount.value = nextMin;
+        }
 
     } else {
         // 409 Conflict or other error
         const errMsg = data?.error || `Error ${status}`;
-        showBidResult(errMsg, 'error');
+        if (selectedLotId === submittedBid.lotId)
+            showBidResult(errMsg, 'error');
         if (status === 409) {
             toast('Auction may have ended — try refreshing.', 'warn');
             loadLots(); // Refresh lots
@@ -528,14 +614,16 @@ async function placeBid() {
 function updateLotPrice(lotId, newPrice, broadcast) {
     const lot = lots.get(lotId);
     if (!lot) return;
-    lot.current_price = newPrice;
+    const nextPrice = Number(newPrice);
+    if (!Number.isFinite(nextPrice) || nextPrice < Number(lot.current_price)) return;
+    lot.current_price = nextPrice;
 
     // Update card on grid
     const card = els.lotsGrid.querySelector(`[data-id="${lotId}"]`);
     if (card) {
         const priceEl = card.querySelector('.lot-price');
         if (priceEl) {
-            priceEl.textContent = `$${Number(newPrice).toLocaleString()}`;
+            priceEl.textContent = `$${nextPrice.toLocaleString()}`;
             // Flash highlight
             priceEl.style.color = '#34d399';
             setTimeout(() => {
@@ -546,7 +634,7 @@ function updateLotPrice(lotId, newPrice, broadcast) {
 
     // Update drawer if open
     if (selectedLotId === lotId) {
-        els.drawerPrice.textContent = `$${Number(newPrice).toLocaleString()}`;
+        els.drawerPrice.textContent = `$${nextPrice.toLocaleString()}`;
         // Flash
         els.drawerPrice.style.animation = 'none';
         els.drawerPrice.offsetHeight;
@@ -619,15 +707,10 @@ function onLotUpdate(data) {
     const lot = lots.get(data.lot_id);
     if (!lot) return;
 
-    const oldPrice = lot.current_price;
     const newPrice = data.new_price;
 
     // Update state
-    lot.current_price = newPrice;
     if (data.time_left !== undefined) lot.time_left = data.time_left;
-
-    // Sync bid count from WS if provided
-    if (typeof data.bid_count === 'number') lot.bid_count = data.bid_count;
 
     // Update grid card
     updateLotPrice(data.lot_id, newPrice, false);
@@ -646,21 +729,18 @@ function onLotUpdate(data) {
     addEvent('💰', `New bid on "${truncate(lot.title, 28)}"`,
         `${bidder} → $${Number(newPrice).toLocaleString()}`);
 
+    // Admit the bid globally so cards and counts advance even when another drawer is open.
+    // registerBidOnce adds a history row only for the currently selected lot.
+    registerBidOnce(data.lot_id, {
+        id: data.bid_id,
+        bidder_username: bidder,
+        amount: newPrice,
+        bid_time: new Date().toISOString(),
+    }, data.bid_count);
+
     // Notification for open drawer
     if (selectedLotId === data.lot_id) {
         toast(`${bidder} bid $${Number(newPrice).toLocaleString()}`, 'info');
-
-        // Add to bid history
-        prependBid({
-            bidder_username: bidder,
-            amount: newPrice,
-            bid_time: new Date().toISOString(),
-        });
-
-        // Update bid count in drawer
-        lot.bid_count = (lot.bid_count || 0) + 1;
-        els.drawerBidsCount.textContent = `${lot.bid_count} bids`;
-        els.bidHistoryTotal.textContent = `${lot.bid_count} total`;
     }
 
     // Mark lot as ending-soon if < 5 min

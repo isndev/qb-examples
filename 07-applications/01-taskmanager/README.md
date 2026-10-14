@@ -118,7 +118,7 @@ the HTTP context cannot send another response over it.
 ```
 POST /tasks
   └─ DB INSERT → RETURNING id
-      └─ redis.del("tasks:list")              ← cache invalidation
+      └─ redis.incr("tasks:list:generation")  ← old cache keys become unreachable
           └─ redis.publish("tasks:events", …) ← pub/sub
               └─ co_await consumer.receive()   ← WebSocketHandler::consume_loop()
                   └─ broadcast_to_all(json)
@@ -213,24 +213,35 @@ void TaskManager::disconnected(qb::uuid session_id) {
 ### 4 – Coroutine DB + cache pattern
 
 No callbacks: the handler `co_await`s Redis, then the DB on a miss, then writes
-the response. Linear, exception-safe, readable.
+the response. A generation-keyed entry plus an atomic Lua compare-and-set prevents
+an older DB snapshot from refilling the cache after a newer mutation. The following is
+non-executable pseudocode: the source also handles a failed generation read by bypassing Redis,
+and deletes malformed cached JSON before its PostgreSQL fallback.
 
 ```cpp
 qb::io::async::task<void> TaskManager::handle_list_tasks(ctx_t ctx) {
-    // 1. Redis cache
-    auto cached = co_await _redis.get("tasks:list");
+    // 1. Read generation G, then Redis cache tasks:list:G
+    auto generation_reply = co_await _redis.get(std::string(TASK_LIST_GENERATION));
+    // The full handler bypasses Redis on error; abbreviated success path here.
+    auto generation = generation_reply.result().value_or("0");
+    auto cache_key = std::string(TASK_LIST_PREFIX) + generation;
+    auto cached = co_await _redis.get(cache_key);
     if (cached.ok() && cached.result().has_value() && !cached.result()->empty()) {
         ctx->response().add_header("X-Cache", "HIT");
-        ctx->json(qb::json::parse(*cached.result()));
+        auto json = qb::json::parse(*cached.result());
+        json["cached"] = true;
+        ctx->json(json);
         co_return;
     }
 
-    // 2. Cache miss → DB, then cache for 60 s
+    // 2. Cache miss → DB, then cache only if generation is still G
     auto res = co_await _db->execute("select_all_tasks", qb::pg::params{});
     if (!res.ok()) { ctx->internal_server_error(res.error().what()); co_return; }
 
     auto json = models::TaskList(res.result(), false).to_json();
-    co_await _redis.setex("tasks:list", 60LL, json.dump());
+    co_await _redis.eval<long long>(std::string(CACHE_IF_CURRENT),
+                                    {std::string(TASK_LIST_GENERATION), cache_key},
+                                    {generation, "60", json.dump()});
     ctx->response().add_header("X-Cache", "MISS");
     ctx->json(json);
     co_return;
@@ -240,8 +251,8 @@ qb::io::async::task<void> TaskManager::handle_list_tasks(ctx_t ctx) {
 ### 5 – Event-driven cache invalidation (coroutine)
 
 ```cpp
-// After any mutation:
-co_await _redis.del("tasks:list");                          // invalidate cache
+// After any committed mutation:
+co_await _redis.incr("tasks:list:generation");             // old keys become unreachable
 co_await _redis.publish("tasks:events", event_json.dump()); // notify WS clients
 ```
 

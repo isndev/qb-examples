@@ -301,23 +301,6 @@ struct PublishEvent : public qb::Event {
     PublishEvent() = default;
 
     /**
-     * @brief Creates publish event from pre-parsed message
-     *
-     * Used when message was already parsed into topic and content parts,
-     * but still maintains shared ownership for safety.
-     *
-     * @param id Session identifier
-     * @param msg Original message
-     * @param t Topic string view
-     * @param c Content string view
-     */
-    PublishEvent(qb::uuid id, broker::Message &&msg, std::string_view t, std::string_view c)
-        : session_id(id)
-        , message_data(std::move(msg))
-        , topic(t)
-        , content(c) {}
-
-    /**
      * @brief Creates publish event from a MessageContainer
      *
      * This constructor is designed to work with pre-created MessageContainer,

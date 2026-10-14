@@ -71,6 +71,7 @@
  */
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -153,8 +154,10 @@ public:
         // scope went away meanwhile.
         spawn([open, unwound](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             Handle h{"compute", open, unwound};
-            long   acc = 0;
-            for (int i = 0;; ++i) {
+            // Cancellation has no iteration budget. Keep both the index and sum unsigned so
+            // even a delayed kill has defined modulo-2^64 arithmetic on LLP64 (MSVC).
+            std::uint64_t acc = 0;
+            for (std::uint64_t i = 0;; ++i) {
                 acc += i;
                 try {
                     co_await ctx.cancellation_point();

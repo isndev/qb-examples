@@ -64,7 +64,10 @@
 #include <chrono>
 #include <atomic>
 #include <filesystem>
+#include <stdexcept>
+#include <system_error>
 #include <unordered_map>
+#include <utility>
 using namespace std::chrono_literals;
 
 #include "file_manager.h"
@@ -76,6 +79,57 @@ namespace fs = std::filesystem;
 using namespace file_processor;
 
 std::atomic_bool g_file_pipeline_ok{false};
+
+// Own only a directory this run created. create_directory is atomic: concurrent runs
+// that pick the same clock tick retry instead of sharing paths and truncating files.
+class TestDirectory {
+    fs::path _path;
+
+public:
+    TestDirectory() {
+        const auto parent = fs::temp_directory_path();
+        const auto tick   = std::chrono::steady_clock::now().time_since_epoch().count();
+        for (unsigned attempt = 0; attempt < 128; ++attempt) {
+            auto candidate = parent / ("qb-file-pipeline-" + std::to_string(tick) + "-" + std::to_string(attempt));
+            // File request events carry qb::string<256> paths, including the file name.
+            if ((candidate / "test_file_5.txt").string().size() > 256)
+                throw std::runtime_error("Temporary file path exceeds the example's 256-byte event field");
+
+            std::error_code ec;
+            if (fs::create_directory(candidate, ec)) {
+                _path = std::move(candidate);
+                return;
+            }
+            if (ec && ec != std::errc::file_exists)
+                throw fs::filesystem_error("Cannot create isolated test directory", candidate, ec);
+        }
+        throw std::runtime_error("Cannot reserve a unique test directory");
+    }
+
+    TestDirectory(const TestDirectory &)            = delete;
+    TestDirectory &operator=(const TestDirectory &) = delete;
+
+    ~TestDirectory() noexcept {
+        cleanup();
+    }
+
+    const fs::path &
+    path() const noexcept {
+        return _path;
+    }
+
+    bool
+    cleanup() noexcept {
+        if (_path.empty())
+            return true;
+        std::error_code ec;
+        fs::remove_all(_path, ec);
+        if (ec)
+            return false;
+        _path.clear();
+        return true;
+    }
+};
 
 /**
  * @brief Self-addressed wake-ups for `ClientActor`'s two delays.
@@ -287,10 +341,9 @@ int
 main(int argc, char **argv) {
     qb::io::cout() << "=== QB Core/IO Example: Distributed File Processing ===\n" << std::endl;
 
-    // Define the test file directory
-    std::filesystem::path test_dir = "./test_files";
-
     try {
+        TestDirectory test_dir;
+
         // Initialize the qb actor system
         qb::Main engine;
 
@@ -312,7 +365,7 @@ main(int argc, char **argv) {
         }
 
         // Create the client on core 0
-        engine.addActor<ClientActor>(0, manager_id, test_dir);
+        engine.addActor<ClientActor>(0, manager_id, test_dir.path());
 
         // Start the system
         engine.start();
@@ -320,6 +373,10 @@ main(int argc, char **argv) {
         // Wait for all actors to terminate - qb::Main automatically handles signals
         engine.join();
         qb::io::cout() << "System shut down correctly" << std::endl;
+        if (!test_dir.cleanup()) {
+            qb::io::cerr() << "Could not remove this run's test directory: " << test_dir.path() << std::endl;
+            return 1;
+        }
 
     } catch (const std::exception &e) {
         qb::io::cerr() << "Error: " << e.what() << std::endl;

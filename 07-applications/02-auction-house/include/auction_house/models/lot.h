@@ -144,6 +144,7 @@ struct LotList {
 struct LotEvent {
     std::string action; // bid | ended | started
     int32_t     lot_id{0};
+    int32_t     bid_id{0};
     double      new_price{0.0};
     std::string bidder;
     int32_t     time_left{0};
@@ -151,8 +152,8 @@ struct LotEvent {
 
     [[nodiscard]] qb::json
     to_json() const {
-        return qb::json{{"type", "lot_update"}, {"action", action},       {"lot_id", lot_id},      {"new_price", new_price},
-                        {"bidder", bidder},     {"time_left", time_left}, {"timestamp", timestamp}};
+        return qb::json{{"type", "lot_update"},   {"action", action}, {"lot_id", lot_id},       {"bid_id", bid_id},
+                        {"new_price", new_price}, {"bidder", bidder}, {"time_left", time_left}, {"timestamp", timestamp}};
     }
 };
 

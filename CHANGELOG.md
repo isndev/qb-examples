@@ -59,6 +59,23 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Redis Pub/Sub waits for every confirmed subscription (Huly QB-825).** The lesson
+  publishes only after both subscribers have acknowledged both channels, and ignores
+  duplicate or mismatched acknowledgements.
+- **Broker publication keeps owned message storage (Huly QB-782).** The unused constructor
+  that could leave topic and content views pointing into a moved message is removed.
+- **Cancellation's long-running example has defined arithmetic on Windows (Huly QB-767).**
+  Its deliberately unbounded counter uses unsigned 64-bit wraparound instead of signed overflow.
+- **File pipeline handles partial reads and isolates each run (Huly QB-754, QB-755).**
+  A short file read continues until the expected byte count or reports EOF; each run reserves
+  and removes its own temporary directory, including after an error.
+- **TaskManager keeps recent changes through overlapping reloads and cache refills
+  (Huly QB-795, QB-794).** Notifications during a pending GET trigger a follow-up GET;
+  generation-checked Redis refill cannot restore a stale task after invalidation.
+- **Auction House keeps bids and prices consistent across late replies (Huly QB-810,
+  QB-812, QB-813).** Zero-bid lots show their starting price; a pending bid retains its
+  original lot and bidder when the drawer changes; HTTP, WebSocket and late history replies
+  share bid IDs, deduplicate counts, and cannot lower the displayed price.
 - **TaskManager starts all workers on a fresh database and preserves partial update intent (Huly QB-1030, QB-796, QB-797).**
   Schema creation is serialized and checked before each worker becomes ready. An omitted
   description keeps its old value, while an explicit empty string clears it. The route smoke

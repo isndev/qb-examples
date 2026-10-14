@@ -174,6 +174,9 @@ Open browser: http://localhost:8080
 - `GET /api/lots/:id/bids` - Get bid history
 - `POST /api/lots/:id/bids` - Place a bid. JSON must include `bidder_id`, `amount`, and a
   client-generated UUID `request_id` (for example, `{"bidder_id":2,"amount":5500,"request_id":"550e8400-e29b-41d4-a716-446655440000"}`).
+  The 201 response and WebSocket event carry the same `bid_id`; the drawer uses it to keep one
+  history row regardless of which channel arrives first. A response updates only the lot/user
+  snapshot submitted with that request, even if the operator changes the open drawer meanwhile.
   Generate the UUID once per intended bid and reuse it after a timeout or 503. A missing or
   malformed key returns 400. Repeating the same key and bid returns the original 201 body,
   even after the lot price changes or closes. Reusing it for a different lot, bidder, or

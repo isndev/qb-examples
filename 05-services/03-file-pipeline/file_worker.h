@@ -118,24 +118,32 @@ public:
             if (file.open(request.filepath.c_str(), O_RDONLY) >= 0) {
                 // Get the file size using stat
                 struct stat st;
-                if (stat(request.filepath.c_str(), &st) == 0) {
-                    size_t file_size = static_cast<size_t>(st.st_size);
-
-                    // Resize the buffer to accommodate the content
+                const int   stat_result = stat(request.filepath.c_str(), &st);
+                if (stat_result == 0 && st.st_size >= 0) {
+                    const size_t file_size = static_cast<size_t>(st.st_size);
                     file_content->resize(file_size);
 
-                    // Read the file content
-                    ssize_t bytes_read = file.read(file_content->data(), file_size);
-                    if (bytes_read >= 0) {
-                        // Adjust the size based on bytes actually read
-                        if (static_cast<size_t>(bytes_read) < file_size) {
-                            file_content->resize(bytes_read);
+                    // sys::file::read is one read(2), capped at INT_MAX. Continue after short
+                    // reads, and never report a file truncated after stat as a complete read.
+                    size_t total_read = 0;
+                    while (total_read < file_size) {
+                        const int n = file.read(file_content->data() + total_read, file_size - total_read);
+                        if (n > 0) {
+                            total_read += static_cast<size_t>(n);
+                        } else if (n == 0) {
+                            error_msg = "Unexpected EOF while reading file";
+                            break;
+                        } else {
+                            error_msg = "Read error: ";
+                            error_msg += strerror(errno);
+                            break;
                         }
-                        success = true;
-                    } else {
-                        error_msg = "Read error: ";
-                        error_msg += strerror(errno);
                     }
+                    success = total_read == file_size;
+                    if (!success)
+                        file_content->clear();
+                } else if (stat_result == 0) {
+                    error_msg = "Invalid file size";
                 } else {
                     error_msg = "Unable to get file size: ";
                     error_msg += strerror(errno);

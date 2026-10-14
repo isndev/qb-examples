@@ -80,6 +80,8 @@ to be broadcast to multiple subscribers.
 3. These views, along with the moved `MessageContainer`, are passed to `ServerActor::handlePublish`.
 4. `ServerActor` constructs a `PublishEvent` that also takes ownership of the `MessageContainer` and includes these
    `string_view`s. This event is sent to `TopicManagerActor`.
+   `PublishEvent` deliberately has no constructor taking a raw `Message&&` plus pre-existing views:
+   moving a short `std::string` into the container can invalidate views into the moved-from payload.
 5. `TopicManagerActor`, upon receiving the `PublishEvent`, formats the message for delivery. It then creates *one*
    `broker::MessageContainer` for the final broadcast message.
 6. For each subscriber, it creates a `SendMessageEvent` that holds a *shared reference* (via `std::shared_ptr` internal

@@ -20,6 +20,26 @@
 
 namespace taskmanager {
 namespace actors {
+namespace {
+
+constexpr std::string_view TASK_LIST_GENERATION = "tasks:list:generation";
+constexpr std::string_view TASK_LIST_PREFIX     = "tasks:list:";
+constexpr std::string_view CACHE_IF_CURRENT     = R"lua(
+local current = redis.call('GET', KEYS[1]) or '0'
+if current ~= ARGV[1] then return 0 end
+redis.call('SETEX', KEYS[2], ARGV[2], ARGV[3])
+return 1
+)lua";
+
+qb::io::async::task<void>
+advance_task_list_generation(qb::redis::tcp::client &redis) {
+    auto advanced = co_await redis.incr(std::string(TASK_LIST_GENERATION));
+    if (!advanced.ok())
+        qb::io::cerr() << "[TaskManager] cache generation advance failed: " << advanced.error() << '\n';
+    co_return;
+}
+
+} // namespace
 
 // ─── Constructor ──────────────────────────────────────────────────────────────
 
@@ -332,12 +352,30 @@ TaskManager::handle_ws_upgrade(ctx_t ctx) {
 
 qb::io::async::task<void>
 TaskManager::handle_list_tasks(ctx_t ctx) {
-    // 1. Redis cache.
-    auto cached = co_await _redis.get("tasks:list");
-    if (cached.ok() && cached.result().has_value() && !cached.result()->empty()) {
-        ctx->response().add_header("X-Cache", "HIT");
-        ctx->json(qb::json::parse(*cached.result()));
-        co_return;
+    // A mutation advances the generation before publishing its notification. Cache entries
+    // are generation-keyed, so an old refill can never become the current value. The Lua
+    // compare-and-set closes the final GET-generation / SETEX race atomically.
+    std::optional<std::string> cache_generation;
+    std::string                cache_key;
+    auto                       generation = co_await _redis.get(std::string(TASK_LIST_GENERATION));
+    if (generation.ok()) {
+        cache_generation = generation.result().value_or("0");
+        cache_key        = std::string(TASK_LIST_PREFIX) + *cache_generation;
+        auto cached      = co_await _redis.get(cache_key);
+        if (cached.ok() && cached.result().has_value() && !cached.result()->empty()) {
+            bool malformed_cache = false;
+            try {
+                auto json      = qb::json::parse(*cached.result());
+                json["cached"] = true;
+                ctx->response().add_header("X-Cache", "HIT");
+                ctx->json(json);
+                co_return;
+            } catch (const std::exception &) {
+                malformed_cache = true;
+            }
+            if (malformed_cache)
+                (void) co_await _redis.del(cache_key); // fall through to DB
+        }
     }
 
     // 2. Cache miss → DB, then cache for 60 s.
@@ -347,7 +385,10 @@ TaskManager::handle_list_tasks(ctx_t ctx) {
         co_return;
     }
     auto json = models::TaskList(res.result(), false).to_json();
-    (void) co_await _redis.setex("tasks:list", 60LL, json.dump()); // best-effort cache
+    if (cache_generation) {
+        (void) co_await _redis.eval<long long>(std::string(CACHE_IF_CURRENT), {std::string(TASK_LIST_GENERATION), cache_key},
+                                               {*cache_generation, "60", json.dump()});
+    }
 
     ctx->response().add_header("X-Cache", "MISS");
     ctx->json(json);
@@ -395,7 +436,7 @@ TaskManager::handle_create_task(ctx_t ctx) {
     }
     const int32_t new_id = res.result()[0][0].as<int32_t>();
 
-    (void) co_await _redis.del("tasks:list"); // best-effort cache invalidation
+    co_await advance_task_list_generation(_redis);
     (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"created", new_id, task.title}).dump()); // best-effort notify
 
     ctx->json({{"id", new_id}, {"status", "created"}}, qb::http::status::CREATED);
@@ -434,7 +475,7 @@ TaskManager::handle_update_task(ctx_t ctx) {
         co_return;
     }
 
-    (void) co_await _redis.del("tasks:list");                                                               // best-effort cache invalidation
+    co_await advance_task_list_generation(_redis);
     (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"updated", task_id}).dump()); // best-effort notify
 
     ctx->json({{"id", task_id}, {"status", "updated"}});
@@ -460,7 +501,7 @@ TaskManager::handle_delete_task(ctx_t ctx) {
         co_return;
     }
 
-    (void) co_await _redis.del("tasks:list");                                                               // best-effort cache invalidation
+    co_await advance_task_list_generation(_redis);
     (void) co_await _redis.publish("tasks:events", qb::json(models::TaskEvent{"deleted", task_id}).dump()); // best-effort notify
 
     ctx->json({{"id", task_id}, {"status", "deleted"}});

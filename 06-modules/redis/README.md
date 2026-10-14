@@ -99,10 +99,13 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   actors.
 * **Key Components**: `PublisherActor`, `SubscriberActor` (using `qb::redis::tcp::co_consumer`), `CoordinatorActor`.
 * **QB/QBM Redis Features**: `qb::Actor`, `qb::Main`, `co_await client.publish(channel, message)`
-  (`04-pubsub.cpp:172`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
-  (`:207`) — with `co_await consumer->subscribe(channel)` → `Reply<qb::redis::subscription>` (`:283`) and a
-  `while (auto msg = co_await consumer->receive()) { ... }` loop (`:257`) instead of a message callback. The
+  (`04-pubsub.cpp:178`), and **`qb::redis::tcp::co_consumer`** — the *coroutine* Pub/Sub consumer
+  (`:213`) — with `co_await consumer->subscribe(channel)` → `Reply<qb::redis::subscription>` (`:289`) and a
+  `while (auto msg = co_await consumer->receive()) { ... }` loop (`:263`) instead of a message callback. The
   loop retains the consumer in its coroutine frame and copies `name` and `coordinator` before suspension.
+  The subscriber accepts only a Redis confirmation whose returned channel matches the request
+  (`04-pubsub.cpp:289-304`). The coordinator waits for all four distinct subscriber/channel confirmations
+  before publishing (`04-pubsub.cpp:454-483`); duplicate confirmations do not count twice.
   Disconnect closes the channel and schedules a parked receiver, but a message already committed to
   its awaiter can still be returned after actor reap. The loop checks actor-scope cancellation before
   forwarding that message; the retained consumer makes the next `receive()` safe.

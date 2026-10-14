@@ -56,6 +56,7 @@
  *   meant to outlive every actor.
  */
 
+#include <array>
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -116,7 +117,12 @@ struct ShutdownEvent : qb::Event {
 
 // Event to notify that a subscription is confirmed
 struct SubscriptionCompleteEvent : qb::Event {
-    explicit SubscriptionCompleteEvent() {}
+    qb::ActorId    subscriber;
+    qb::string<64> channel;
+
+    SubscriptionCompleteEvent(qb::ActorId subscriber_id, std::string_view subscribed_channel)
+        : subscriber(subscriber_id)
+        , channel(subscribed_channel) {}
 };
 
 /**
@@ -275,7 +281,7 @@ public:
 
         // The receive loop retains the consumer after actor reap. A pending subscribe can thus
         // complete too; check cancellation before writing the actor's channel list.
-        spawn([this, consumer = _consumer, channel, name = _name,
+        spawn([this, consumer = _consumer, channel, name = _name, subscriber = id(),
                coordinator = _coordinator_id](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             auto cout = qb::io::cout();
             cout << name << " subscribing to channel: " << channel << std::endl;
@@ -284,11 +290,17 @@ public:
             if (ctx.cancelled())
                 co_return;
             if (r.ok()) {
-                cout << name << " subscribed to channel: " << channel << std::endl;
-                _subscribed_channels.push_back(channel);
+                const auto &confirmed = r.result().channel;
+                if (!confirmed || *confirmed != channel) {
+                    qb::io::cerr() << name << " received mismatched subscribe confirmation for '" << channel << "': '"
+                                   << (confirmed ? *confirmed : std::string{"<missing>"}) << "' (count " << r.result().num << ')' << std::endl;
+                    co_return;
+                }
+                cout << name << " subscribed to channel: " << *confirmed << std::endl;
+                _subscribed_channels.push_back(*confirmed);
 
-                // Notify coordinator that subscription is confirmed
-                ctx.template push_to<SubscriptionCompleteEvent>(coordinator);
+                // Count only the channel Redis actually confirmed, never the requested name.
+                ctx.template push_to<SubscriptionCompleteEvent>(coordinator, subscriber, *confirmed);
             } else {
                 qb::io::cerr() << name << " failed to subscribe to channel: " << channel << std::endl;
             }
@@ -318,11 +330,12 @@ private:
     qb::ActorId _subscriber1_id;
     qb::ActorId _subscriber2_id;
 
-    int  _message_count          = 0;
-    int  _max_messages           = 10;
-    bool _shutdown_requested     = false;
-    int  _subscriptions_complete = 0;
-    int  _expected_subscriptions = 2; // one per subscriber
+    int                                       _message_count          = 0;
+    int                                       _max_messages           = 10;
+    bool                                      _shutdown_requested     = false;
+    static constexpr std::size_t              _expected_subscriptions = 4; // two channels per subscriber
+    std::array<bool, _expected_subscriptions> _subscriptions_ready{};
+    std::size_t                               _subscriptions_complete = 0;
 
     std::vector<std::string> _channels         = {"news", "sports", "technology"};
     std::vector<std::string> _example_messages = {
@@ -437,8 +450,28 @@ public:
     }
 
     void
-    on(const SubscriptionCompleteEvent &) {
-        auto cout = qb::io::cout();
+    on(const SubscriptionCompleteEvent &event) {
+        auto                   cout    = qb::io::cout();
+        const std::string_view channel = event.channel.c_str();
+        std::size_t            slot    = _expected_subscriptions;
+        if (event.subscriber == _subscriber1_id) {
+            if (channel == _channels[0])
+                slot = 0;
+            else if (channel == _channels[1])
+                slot = 1;
+        } else if (event.subscriber == _subscriber2_id) {
+            if (channel == _channels[1])
+                slot = 2;
+            else if (channel == _channels[2])
+                slot = 3;
+        }
+        if (slot == _expected_subscriptions || _subscriptions_ready[slot]) {
+            qb::io::cerr() << "Unexpected or duplicate subscription confirmation from " << event.subscriber << " for '" << channel << "'"
+                           << std::endl;
+            return;
+        }
+
+        _subscriptions_ready[slot] = true;
         _subscriptions_complete++;
         cout << "Subscription complete notification received. " << _subscriptions_complete << " of " << _expected_subscriptions << " complete."
              << std::endl;

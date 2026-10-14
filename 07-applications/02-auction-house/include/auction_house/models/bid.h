@@ -63,11 +63,14 @@ struct BidHistory {
 
     explicit BidHistory(int32_t lot, const qb::pg::resultset &res)
         : lot_id(lot) {
-        for (const auto &row : res)
-            bids.emplace_back(row);
+        if (!res.empty())
+            current_price = res[0]["lot_current_price"].as<double>();
+        for (const auto &row : res) {
+            // LEFT JOIN keeps one lot row when there are no bids.
+            if (!row["id"].is_null())
+                bids.emplace_back(row);
+        }
         total_bids = static_cast<int32_t>(bids.size());
-        if (!bids.empty())
-            current_price = bids.front().amount; // Ordered DESC — first = highest
     }
 
     [[nodiscard]] qb::json

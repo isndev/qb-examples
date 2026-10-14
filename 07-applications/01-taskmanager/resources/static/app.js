@@ -19,6 +19,7 @@ let tasks = [];
 let selectedStatus = 'pending';
 let draggingId = null;
 let loadPending = false;
+let reloadRequested = false;
 let ws = null;
 let wsDelay = 1000;
 let wsTimer = null;
@@ -107,20 +108,26 @@ function closeDrawer() {
 
 // ── REST helpers ───────────────────────────────────────────────────────────────
 async function loadTasks() {
-    if (loadPending) return;
-    loadPending = true;
-    try {
-        const res = await fetch(`${API}/tasks`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        updateCacheBadge(res.headers.get('X-Cache'));
-        tasks = data.tasks || [];
-        renderBoard();
-    } catch (err) {
-        logEvent('Failed to load tasks', 'error', '⚠️');
-    } finally {
-        loadPending = false;
+    if (loadPending) {
+        reloadRequested = true;
+        return;
     }
+    do {
+        reloadRequested = false;
+        loadPending = true;
+        try {
+            const res = await fetch(`${API}/tasks`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            updateCacheBadge(res.headers.get('X-Cache'));
+            tasks = data.tasks || [];
+            renderBoard();
+        } catch (err) {
+            logEvent('Failed to load tasks', 'error', '⚠️');
+        } finally {
+            loadPending = false;
+        }
+    } while (reloadRequested);
 }
 
 async function handleCreate(e) {

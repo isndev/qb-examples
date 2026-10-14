@@ -173,9 +173,12 @@ AuctionManager::prepare_statements() {
     if (!co_await prep("select_lot_bids",
                        "SELECT b.id, b.lot_id, b.bidder_id, b.amount::float8 AS amount,"
                        "       b.bid_time::text AS bid_time, b.is_winning,"
-                       "       u.username AS bidder_username"
-                       " FROM bids b JOIN users u ON b.bidder_id = u.id"
-                       " WHERE b.lot_id = $1 ORDER BY b.bid_time DESC;",
+                       "       u.username AS bidder_username,"
+                       "       l.current_price::float8 AS lot_current_price"
+                       " FROM lots l"
+                       " LEFT JOIN bids b ON b.lot_id = l.id"
+                       " LEFT JOIN users u ON b.bidder_id = u.id"
+                       " WHERE l.id = $1 ORDER BY b.bid_time DESC;",
                        qb::pg::type_oid_sequence{oid::int4}))
         co_return false;
 
@@ -428,6 +431,10 @@ AuctionManager::handle_get_lot_bids(ctx_t ctx) {
         ctx->internal_server_error(res.error().what());
         co_return;
     }
+    if (res.result().empty()) {
+        ctx->not_found("Lot not found");
+        co_return;
+    }
     ctx->json(models::BidHistory(lot_id, res.result()).to_json());
     co_return;
 }
@@ -565,6 +572,7 @@ AuctionManager::handle_place_bid(ctx_t ctx) {
     models::LotEvent event;
     event.action    = "bid";
     event.lot_id    = lot_id;
+    event.bid_id    = bid_id;
     event.new_price = lot.current_price;
     event.bidder    = (user.ok() && !user.result().empty()) ? user.result()[0]["username"].as<std::string>() : std::to_string(bidder_id);
     event.time_left = lot.time_left;
