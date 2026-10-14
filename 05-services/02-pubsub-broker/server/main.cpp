@@ -5,7 +5,7 @@
  *          N events carrying views into it — the corpus's payload model, in the same
  *          acceptor / session-pool / logic-actor layout as 01-tcp-chat.
  * @demonstrates qb::Main, addActor<T>, engine.core, builder(), idList(), qb::io::uri,
- *               engine.start, engine.hasError, engine.stop, engine.join, qb::io::cout, qb::io::cerr
+ *               engine.start, engine.hasError, qb::Main::stop, engine.join, qb::io::cout, qb::io::cerr
  * @prerequisites 05-services/01-tcp-chat
  * @expect "Message broker server started on port 12345"
  * @expect "Engine is running"
@@ -23,8 +23,9 @@
  * 4.  Creates an `AcceptActor` on a third core (core 0). This actor listens for
  *     incoming client connections on a specific port (12345) and distributes them
  *     to the `ServerActor` pool.
- * 5.  Starts the QB engine asynchronously and waits for user input (Enter key) to initiate
- *     a graceful shutdown (`engine.stop()`, `engine.join()`).
+ * 5.  Starts the QB engine asynchronously, then watches cancellable console input while
+ *     another thread joins the engine. Enter requests `qb::Main::stop()`; EOF leaves the
+ *     service running, and external shutdown releases `main` with partial stdin.
  *
  * This architecture separates concerns: connection acceptance, session/IO handling,
  * and core application logic are handled by different sets of actors on different cores.
@@ -42,14 +43,22 @@
 #include "AcceptActor.h"
 #include "ServerActor.h"
 #include "TopicManagerActor.h"
+#include "../../../common/CancelableLineSource.h"
+#include <atomic>
+#include <chrono>
 #include <iostream>
+#include <thread>
 
 int
 main(int argc, char *argv[]) {
-    // Create the QB engine instance
-    qb::Main engine;
+    if (auto helper = qb_example::input::maybe_run_helper(argc, argv)) {
+        return *helper;
+    }
 
     try {
+        // Input remains alive until the engine and its observer have stopped.
+        qb_example::input::LineSource input;
+        qb::Main                      engine;
         // Step 1: Create TopicManagerActor (Core 2)
         // - Central component for state management
         // - Placed on separate core to handle broadcasts
@@ -89,22 +98,42 @@ main(int argc, char *argv[]) {
         if (engine.hasError()) {
             qb::io::cerr() << "Engine failed to start: an actor failed its init (see log above)" << std::endl;
             engine.join();
+            input.stop();
             return 1;
         }
         qb::io::cout() << "Engine is running" << std::endl;
         qb::io::cout() << "Press Enter to stop the engine" << std::endl;
-        std::cin.get();
+        std::atomic<bool> engine_finished{false};
+        std::thread       observer([&] {
+            engine.join();
+            engine_finished.store(true, std::memory_order_release);
+        });
 
-        // Step 6: Clean shutdown
-        // - Stop engine gracefully
-        // - Wait for all actors to finish
-        // - Ensure proper cleanup
-        engine.stop();
-        engine.join();
+        try {
+            while (!engine_finished.load(std::memory_order_acquire)) {
+                qb_example::input::Event event;
+                if (!input.wait_pop(event, std::chrono::milliseconds{50})) {
+                    continue;
+                }
+                if (event.kind == qb_example::input::Event::Kind::line) {
+                    qb::Main::stop();
+                } else if (event.kind == qb_example::input::Event::Kind::error) {
+                    qb::io::cerr() << "Console input failed; stopping server" << std::endl;
+                    qb::Main::stop();
+                }
+                // EOF merely disables console control; SIGTERM/SIGINT still stop the engine.
+            }
+        } catch (...) {
+            qb::Main::stop();
+            observer.join();
+            input.stop();
+            throw;
+        }
+        observer.join();
+        input.stop();
+        return engine.hasError() ? 1 : 0;
     } catch (const std::exception &e) {
         qb::io::cerr() << "Error: " << e.what() << std::endl;
         return 1;
     }
-
-    return 0;
 }

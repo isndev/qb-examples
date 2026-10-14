@@ -17,8 +17,8 @@
  * 3.  Creates actors with core assignments:
  *     -   `InputActor` (core 0): Handles console input.
  *     -   `ClientActor` (core 1): Manages network communication with the broker server.
- * 4.  Starts the QB engine (`engine.start()`) and waits for termination (`engine.join()`).
- * This structure separates UI input from network logic for better responsiveness.
+ * 4.  Starts the QB engine, joins its cores and stops the cancellable console reader.
+ * Console I/O stays outside both actor cores, including during partial-line input.
  *
  * QB Features Demonstrated:
  * - `qb::Main`: Actor system engine.
@@ -30,7 +30,10 @@
 
 #include <qb/main.h>
 #include <qb/io/uri.h>
+#include <chrono>
+#include <functional>
 #include <iostream>
+#include "../../../common/CancelableLineSource.h"
 #include "ClientActor.h"
 #include "InputActor.h"
 #include "../shared/Events.h"
@@ -57,6 +60,10 @@
  */
 int
 main(int argc, char *argv[]) {
+    if (auto helper = qb_example::input::maybe_run_helper(argc, argv)) {
+        return *helper;
+    }
+
     // Validate command-line arguments
     if (argc != 3) {
         qb::io::cerr() << "Usage: " << argv[0] << " <host> <port>" << std::endl;
@@ -64,8 +71,9 @@ main(int argc, char *argv[]) {
     }
 
     try {
-        // Initialize QB engine
-        qb::Main engine;
+        // The source outlives the engine and every actor holding its reference.
+        qb_example::input::LineSource input;
+        qb::Main                      engine;
 
         // Prepare server connection URI
         qb::io::uri server_uri("tcp://" + std::string(argv[1]) + ":" + std::string(argv[2]));
@@ -74,8 +82,9 @@ main(int argc, char *argv[]) {
         auto client_id = qb::ActorId(); // Placeholder for client ID
 
         // Create InputActor on core 0 for UI handling
-        auto input_id = engine.addActor<InputActor>(0,                  // Core 0: User interface
-                                                    std::ref(client_id) // Reference for message routing
+        auto input_id = engine.addActor<InputActor>(0,                   // Core 0: User interface
+                                                    std::ref(client_id), // Reference for message routing
+                                                    std::ref(input)      // Cancellable console source
         );
 
         // Create ClientActor on core 1 for network handling
@@ -84,10 +93,14 @@ main(int argc, char *argv[]) {
                                                  server_uri // Server address
         );
 
+        // The input core has no socket wakeup; a short park avoids idle polling at 100% CPU.
+        engine.core(0).setLatency(std::chrono::milliseconds{5});
+
         // Start the engine and wait for completion
         qb::io::cout() << "Connecting to message broker at " << server_uri.source() << std::endl;
         engine.start();
         engine.join();
+        input.stop();
 
         // Return status based on engine state
         return engine.hasError() ? 1 : 0;

@@ -72,9 +72,16 @@
  * - Thread-Safe Output: `qb::io::cout()` and `qb::io::cerr()`.
  */
 
+#include "../common/CancelableLineSource.h"
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <csignal>
 #include <condition_variable>
 #include <deque>
+#include <exception>
+#include <stdexcept>
+#include <thread>
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/system/allocator/pipe.h>
@@ -124,9 +131,60 @@ struct MessageHeader {
 } // namespace qb_protocol
 
 // Shared state for synchronization
-std::atomic<bool> server_ready{false};
-std::atomic<bool> client_connected{false};
-std::atomic<bool> server_running{true};
+std::atomic<bool>          server_ready{false};
+std::atomic<bool>          client_connected{false};
+std::atomic<bool>          server_running{true};
+volatile std::sig_atomic_t server_signal_stop = 0;
+
+void
+stop_server_on_signal(int) noexcept {
+    server_signal_stop = 1;
+}
+
+#ifdef _WIN32
+BOOL WINAPI
+stop_server_on_console_event(DWORD event) noexcept {
+    // CTRL_CLOSE_EVENT has an OS shutdown deadline; returning TRUE here would
+    // falsely promise that the main-loop cleanup had finished.
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT) {
+        server_running.store(false, std::memory_order_relaxed);
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
+struct ServerSignalScope {
+    using Handler    = void (*)(int);
+    Handler old_int  = SIG_ERR;
+    Handler old_term = SIG_ERR;
+
+    ServerSignalScope() {
+        old_int = std::signal(SIGINT, stop_server_on_signal);
+        if (old_int == SIG_ERR)
+            throw std::runtime_error("could not install SIGINT handler");
+        old_term = std::signal(SIGTERM, stop_server_on_signal);
+        if (old_term == SIG_ERR) {
+            std::signal(SIGINT, old_int);
+            throw std::runtime_error("could not install SIGTERM handler");
+        }
+#ifdef _WIN32
+        if (!SetConsoleCtrlHandler(stop_server_on_console_event, TRUE)) {
+            std::signal(SIGTERM, old_term);
+            std::signal(SIGINT, old_int);
+            throw std::runtime_error("could not install console stop handler");
+        }
+#endif
+    }
+
+    ~ServerSignalScope() {
+#ifdef _WIN32
+        SetConsoleCtrlHandler(stop_server_on_console_event, FALSE);
+#endif
+        std::signal(SIGTERM, old_term);
+        std::signal(SIGINT, old_int);
+    }
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // Custom Protocol Implementation
@@ -417,6 +475,7 @@ private:
     std::map<uint32_t, ResponseCallback>  _callbacks;
     std::atomic<bool>                     _connected{false};
     std::atomic<bool>                     _running{true};
+    qb_example::input::LineSource         _input_source;
     std::thread                           _input_thread;
     std::thread::id                       _owner_thread{std::this_thread::get_id()};
     qb::io::async::listener              &_owner_loop{qb::io::async::listener::current};
@@ -434,14 +493,15 @@ public:
         qb::io::cout() << "EchoClient initialized" << std::endl;
     }
 
-    // Wake a worker waiting for queue space before joining it. A worker already
-    // blocked in getline on an open stdin still cannot be cancelled (QB-721).
+    // Stop the reader before joining the command worker. stop() wakes a pending
+    // stdin wait even when a pipe stays open without a complete line.
     ~EchoClient() {
         {
             std::lock_guard<std::mutex> lock(_input_mutex);
             _running = false;
         }
         _input_space.notify_all();
+        _input_source.stop();
         if (_input_thread.joinable()) {
             _input_thread.join();
         }
@@ -658,8 +718,8 @@ public:
     }
 
 private:
-    // Queue a complete command or EOF without touching the I/O component. The
-    // bounded wait is cancellable on disconnect; it does not cancel getline.
+    // Queue a complete command or EOF without touching the I/O component. Both
+    // the queue wait and the LineSource wait are cancelled before destruction.
     bool
     enqueueInteractiveInput(InputItem item) {
         std::unique_lock<std::mutex> lock(_input_mutex);
@@ -682,14 +742,17 @@ public:
         _owner_loop.arm_wake();
         _input_thread = std::thread([this]() {
             // Main client loop for user input
-            std::string line;
             qb::io::cout() << "Connected to server. Type message to echo (or 'quit' to exit)" << std::endl;
+            qb::io::cout() << "> ";
 
             while (_running && _connected) {
-                qb::io::cout() << "> ";
-                if (!std::getline(std::cin, line)) {
-                    // EOF/error is observable immediately. An open stdin with no
-                    // complete line still blocks here until QB-721 is addressed.
+                qb_example::input::Event event;
+                if (!_input_source.wait_pop(event, std::chrono::seconds(30)))
+                    continue;
+
+                if (event.kind != qb_example::input::Event::Kind::line) {
+                    if (event.kind == qb_example::input::Event::Kind::error)
+                        qb::io::cerr() << "Interactive input failed" << std::endl;
                     enqueueInteractiveInput({InputKind::end_of_input, {}});
                     break;
                 }
@@ -697,13 +760,14 @@ public:
                 if (!_running || !_connected)
                     break;
 
-                if (!line.empty()) {
-                    const bool quitting = line == "quit";
-                    if (!enqueueInteractiveInput({quitting ? InputKind::quit : InputKind::line, std::move(line)}))
+                if (!event.text.empty()) {
+                    const bool quitting = event.text == "quit";
+                    if (!enqueueInteractiveInput({quitting ? InputKind::quit : InputKind::line, std::move(event.text)}))
                         break;
                     if (quitting)
                         break;
                 }
+                qb::io::cout() << "> ";
             }
 
             qb::io::cout() << "Input thread exiting" << std::endl;
@@ -744,26 +808,39 @@ runServer(uint16_t port) {
 
     qb::io::cout() << "Server bound to port " << port << " successfully" << std::endl;
 
-    // Start the server
+    // The input reader never owns the I/O loop. EOF disables interactive
+    // shutdown, but a service without a console keeps serving until a signal.
+    // Install signal handling before the server starts accepting connections.
+    server_running     = true;
+    server_signal_stop = 0;
+    qb_example::input::LineSource input;
+    ServerSignalScope             signals;
+
     server.start();
     server_ready = true;
     qb::io::cout() << "Server running. Press Enter to stop." << std::endl;
 
-    // Process events until Enter is pressed
-    std::thread input_thread([]() {
-        std::cin.get();
-        server_running = false;
-    });
-
-    // Run event loop until server is stopped
-    while (server_running) {
+    // A signal stops the loop without requiring a byte on an open stdin pipe.
+    while (server_running && !server_signal_stop) {
         qb::io::async::run(EVRUN_NOWAIT);
+        qb_example::input::Event event;
+        while (input.try_pop(event)) {
+            if (event.kind == qb_example::input::Event::Kind::line) {
+                server_running = false; // Enter, including an empty line.
+                break;
+            }
+            if (event.kind == qb_example::input::Event::Kind::error) {
+                qb::io::cerr() << "Server console input failed; stopping service" << std::endl;
+                server_running = false;
+                break;
+            }
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // Cleanup
+    input.stop();
     qb::io::cout() << "Stopping server..." << std::endl;
-    input_thread.join();
     return 0;
 }
 
@@ -829,44 +906,52 @@ runClient(const std::string &host, uint16_t port) {
 
 int
 main(int argc, char *argv[]) {
-    // Default port
-    constexpr uint16_t DEFAULT_PORT = 9876;
+    try {
+        if (auto helper_result = qb_example::input::maybe_run_helper(argc, argv))
+            return *helper_result;
 
-    if (argc < 2) {
-        displayHelp();
-        return 1;
-    }
+        // Default port
+        constexpr uint16_t DEFAULT_PORT = 9876;
 
-    std::string mode = argv[1];
-
-    if (mode == "server") {
-        // Run as server
-        uint16_t port = DEFAULT_PORT;
-        if (argc > 2) {
-            // argv is untrusted: fall back to the default port on bad input.
-            port = qb::to_number<uint16_t>(argv[2]).value_or(DEFAULT_PORT);
-        }
-        return runServer(port);
-    } else if (mode == "client") {
-        // Run as client
-        if (argc < 4) {
-            qb::io::cerr() << "Missing host and/or port for client mode" << std::endl;
+        if (argc < 2) {
             displayHelp();
             return 1;
         }
 
-        std::string host = argv[2];
-        // argv is untrusted: reject a malformed/out-of-range port instead of crashing.
-        auto port = qb::to_number<uint16_t>(argv[3]);
-        if (!port) {
-            qb::io::cerr() << "Invalid port: " << argv[3] << std::endl;
+        std::string mode = argv[1];
+
+        if (mode == "server") {
+            // Run as server
+            uint16_t port = DEFAULT_PORT;
+            if (argc > 2) {
+                // argv is untrusted: fall back to the default port on bad input.
+                port = qb::to_number<uint16_t>(argv[2]).value_or(DEFAULT_PORT);
+            }
+            return runServer(port);
+        } else if (mode == "client") {
+            // Run as client
+            if (argc < 4) {
+                qb::io::cerr() << "Missing host and/or port for client mode" << std::endl;
+                displayHelp();
+                return 1;
+            }
+
+            std::string host = argv[2];
+            // argv is untrusted: reject a malformed/out-of-range port instead of crashing.
+            auto port = qb::to_number<uint16_t>(argv[3]);
+            if (!port) {
+                qb::io::cerr() << "Invalid port: " << argv[3] << std::endl;
+                displayHelp();
+                return 1;
+            }
+            return runClient(host, *port);
+        } else {
+            qb::io::cerr() << "Invalid mode: " << mode << std::endl;
             displayHelp();
             return 1;
         }
-        return runClient(host, *port);
-    } else {
-        qb::io::cerr() << "Invalid mode: " << mode << std::endl;
-        displayHelp();
+    } catch (std::exception const &error) {
+        qb::io::cerr() << "Interactive input setup failed: " << error.what() << std::endl;
         return 1;
     }
 }

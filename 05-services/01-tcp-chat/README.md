@@ -12,7 +12,7 @@ in a common chat room.
 
 * **`AcceptActor`**: Runs on a dedicated core (Core 0). Each instance holds **one** `qb::io::uri` and therefore listens
   on exactly one port (`server/AcceptActor.h:65`); the example creates **two** of them, on `tcp://0.0.0.0:3001` and
-  `tcp://0.0.0.0:3002` (`server/main.cpp:77-78`). Upon accepting a new connection, an `AcceptActor` distributes it to
+  `tcp://0.0.0.0:3002` (`server/main.cpp:86-87`). Upon accepting a new connection, an `AcceptActor` distributes it to
   one of the `ServerActor`s in a round-robin fashion.
 * **`ServerActor`** (Pool): Runs on one or more dedicated cores (e.g., Core 1). Each `ServerActor` instance manages
   multiple client sessions (`ChatSession`). It handles I/O for its clients, relays messages between the clients and the
@@ -31,9 +31,10 @@ in a common chat room.
 * **`ClientActor`**: Runs on a dedicated core (e.g., Core 1 on the client machine). It manages the TCP connection to the
   server, handles sending user messages (received from `InputActor`), and processes incoming messages from the server (
   authentication responses, chat messages from others, error messages). It also implements reconnection logic.
-* **`InputActor`**: Runs on a dedicated core (e.g., Core 0 on the client machine). It uses `qb::ICallback` to forward
-  console lines as `ChatInputEvent`s to `ClientActor`, but `std::getline` blocks that core until a whole line arrives
-  (`client/InputActor.cpp:43-47`). An open input without newline cannot be cancelled by this example yet.
+* **`InputActor`**: Runs on core 0. A `LineSource` owned by `main` reads stdin outside the engine; the callback drains
+  at most 16 ready lines per pass (`client/InputActor.cpp:39-45`) and sends `ChatInputEvent`s to `ClientActor`.
+  An open partial line cannot block the actor core or shutdown. `quit`, EOF and input errors end both client actors;
+  messages over the event's 256-byte capacity are rejected instead of truncated.
 
 **Shared Components (`shared/` directory):**
 
@@ -63,8 +64,8 @@ This example showcases a wide range of QB framework features:
     * `broadcast<qb::KillEvent>()` for system-wide signals (though targeted `KillEvent`s or custom shutdown events are
       also used).
 * **Actor Lifecycle**: `onInit()`, `kill()`, handling `qb::KillEvent`.
-* **Periodic Callbacks**: `qb::ICallback` — `registerCallback(*this)` (`client/InputActor.cpp:33`) plus the
-  `on(qb::LoopEvent const&)` override (`client/InputActor.cpp:43`, `client/InputActor.h:95`). The hook is
+* **Periodic Callbacks**: `qb::ICallback` — `registerCallback(*this)` (`client/InputActor.cpp:29`) plus the
+  `on(qb::LoopEvent const&)` override (`client/InputActor.cpp:39`, `client/InputActor.h:92`). The hook is
   `on(qb::LoopEvent const&)`, declared pure virtual at `qb/src/qb/core/icallback.h:169`; there is no `onCallback()`
   method.
 * **State Management**: Actors like `ChatRoomActor` encapsulate and manage application state.
@@ -135,4 +136,5 @@ This example showcases a wide range of QB framework features:
    to disconnect a client.
 
 4. **Shutdown**:
-   To stop the server, press Enter in the terminal where the server is running.
+   To stop the server, press Enter in its terminal. EOF only disables console control; SIGINT/SIGTERM still stop the
+   engine. The separate join observer releases `main` even if stdin remains open with a partial line.

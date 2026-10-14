@@ -5,15 +5,15 @@
  *
  * @details
  * This actor captures user commands from the console for interacting with the message broker.
- * It uses `qb::ICallback` to call `std::getline` on a dedicated core; that read
- * blocks until a complete line or EOF.
+ * It uses `qb::ICallback` to drain a cancellable reader outside the engine;
+ * the callback never waits for a complete line.
  * Entered commands are packaged into `BrokerInputEvent`s and sent to the `ClientActor`
  * for parsing and network transmission.
- * Special commands like "quit" and "help" are handled locally.
+ * "quit" and "help" are handled locally; EOF and input errors end both actors.
  *
  * QB Features Demonstrated:
  * - `qb::Actor`: Base class.
- * - `qb::ICallback`: For a per-loop callback, not asynchronous stdin.
+ * - `qb::ICallback`: For a short, nonblocking per-loop callback.
  *   - `registerCallback(*this)` and `on(qb::LoopEvent const&)`.
  * - `qb::Event`: Base for `BrokerInputEvent`.
  * - Inter-Actor Communication: `push<BrokerInputEvent>(...)` to `ClientActor`.
@@ -24,7 +24,7 @@
 
 #include <qb/actor.h>
 #include <qb/icallback.h>
-#include <string>
+#include "../../../common/CancelableLineSource.h"
 #include "ClientActor.h"
 #include "../shared/Events.h"
 
@@ -32,13 +32,13 @@
  * @brief Actor managing user input and command processing
  *
  * Architecture:
- * - Uses QB's callback system, but the console read itself blocks this core
+ * - Uses QB's callback system to drain a bounded number of ready lines per pass
  * - Maintains clean separation from network logic
  * - Implements command parsing and routing
  * - Handles graceful shutdown sequences
  *
  * Input Processing:
- * - Reads complete lines from standard input, blocking until line or EOF
+ * - Reads complete lines from the cancellable source without blocking the core
  * - Parses special commands (e.g., 'quit')
  * - Routes broker commands to ClientActor
  * - Manages application lifecycle
@@ -47,16 +47,18 @@ class InputActor
     : public qb::Actor
     , public qb::ICallback {
 private:
-    qb::ActorId _client_id;     ///< Reference to network handler
-    bool        _running{true}; ///< Actor lifecycle control
+    qb::ActorId                    _client_id;     ///< Reference to network handler
+    qb_example::input::LineSource &_input;         ///< Owned by main, outlives the engine
+    bool                           _running{true}; ///< Actor lifecycle control
 
 public:
     /**
      * @brief Constructs input handling actor
      *
      * @param client_id Reference to the client actor for message routing
+     * @param input Cancellable source owned by main
      */
-    explicit InputActor(qb::ActorId client_id);
+    InputActor(qb::ActorId client_id, qb_example::input::LineSource &input);
 
     /**
      * @brief Initializes input handling system
@@ -70,15 +72,15 @@ public:
      */
     qb::io::async::task<bool> onInit() override;
 
-    /// Default destructor; a blocked input callback must return before the actor can stop.
+    /// Default destructor; callback never waits for console input.
     ~InputActor() = default;
 
 private:
     /**
-     * @brief Processes a complete console line; the read can block this core
+     * @brief Drains at most sixteen ready console lines without blocking this core
      *
      * Input handling:
-     * 1. Reads console input
+     * 1. Tries to pop ready console input
      * 2. Processes commands:
      *    - 'quit': Initiates shutdown
      *    - 'help': Displays usage help
@@ -87,10 +89,12 @@ private:
      *
      * Command flow:
      * - Empty lines are ignored
-     * - 'quit' triggers clean shutdown
+     * - 'quit', EOF and input errors trigger clean shutdown
      * - Other input creates BrokerInputEvent
      */
     void on(qb::LoopEvent const &loop) override;
+
+    void shutdown();
 
     /**
      * @brief Displays help information

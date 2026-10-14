@@ -38,10 +38,6 @@ plumbing do not qualify.
 
 ### Changed
 
-- **Chat and broker client guides state their console input limit (Huly QB-750).**
-  `std::getline` still blocks the dedicated input core until a whole line arrives, and EOF
-  does not yet stop those two input actors. Their comments and guides no longer present
-  the callback as non-blocking; the runtime fix remains open.
 - **Auction House builds accepted-bid replies with fewer temporary allocations (Huly QB-916).**
   Success and replay retain the same six JSON fields, numeric types, status and content type.
   The reply owns the request UUID and serializes the object once; database reconciliation,
@@ -81,8 +77,18 @@ plumbing do not qualify.
   rejected before either name index changes, so disconnect releases the original name.
 - **The interactive custom-protocol client publishes only on its I/O owner (Huly QB-720).**
   A bounded queue transfers stdin lines to that thread; `quit` waits for earlier output and
-  replies, or a six-second deadline, before exit. EOF is handled, while an open partial stdin read can still block shutdown
-  and remains tracked separately under QB-721.
+  replies, or a six-second deadline, before exit. EOF remains an ordered terminal input.
+- **Interactive examples can stop with stdin open (Huly QB-721, QB-750, QB-1029, QB-1031).**
+  A bounded reader outside actor cores transfers complete lines and EOF; shutdown wakes
+  an unfinished read before joining its worker. Chat, broker, WebSocket and custom-protocol
+  clients no longer hold an actor core in `getline`. Chat, broker and custom-protocol servers
+  respond to Enter or external stop while a redirected stdin pipe stays open; server EOF
+  leaves them serving, while an input error stops them explicitly.
+- **The WebSocket client honors its startup URL and serializes console output (Huly QB-1032, QB-1033).**
+  After the network actor publishes its ID, the command actor sends one connect event through
+  the same path as typed `/connect`; the URL must fit its 256-byte event field. The focused
+  stdin regression waits for a real WebSocket handshake before judging shutdown. Both actor
+  cores publish through the synchronized output wrapper, including during signal handling.
 - **Application bootstrap and TaskManager status display match their actual contracts (Huly QB-799, QB-800).**
   TaskManager's psql script connects to the new database on one meta-command and grants its
   application role neither CREATEDB nor SUPERUSER. Auction House creates its application role

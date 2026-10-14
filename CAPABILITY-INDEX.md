@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 844 distinct capabilities, 1690 claims.**
+**105 programs, 7 tiers, 843 distinct capabilities, 1691 claims.**
 
 ## 1. By capability
 
@@ -144,7 +144,6 @@ can disagree.
 | `engine.hasError` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.join` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.start` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
-| `engine.stop` | `05-services/02-pubsub-broker/server/main.cpp` |
 | `enqueue` | `07-applications/03-market-data-hub/src/main.cpp` |
 | `error` | `02-io/13-tls-certificate-renewal.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `eval<bool>` | `06-modules/redis/07-scripting.cpp` |
@@ -573,7 +572,7 @@ can disagree.
 | --- | --- |
 | `qb::Main::ignoreSignal` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
 | `qb::Main::registerSignal` | `01-actors/10-signals-and-shutdown.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
-| `qb::Main::stop` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `qb::Main::stop` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
 | `qb::Main::unregisterSignal` | `01-actors/10-signals-and-shutdown.cpp` |
 
 ### `qb::VirtualCore`
@@ -1312,8 +1311,8 @@ can disagree.
 ### `05-services`
 
 - **`05-services/01-tcp-chat/client/main.cpp`** — 9 capabilities
-  - The other half of a two-binary project: console input on one core, the socket on another, so a blocking read never holds up the network — and an exit code that reports what the engine actually did.
-- **`05-services/01-tcp-chat/server/main.cpp`** — 11 capabilities
+  - The other half of a two-binary project: a cancellable console reader outside the engine, input delivery on one core and the socket on another, with an exit code that reports what the engine actually did.
+- **`05-services/01-tcp-chat/server/main.cpp`** — 12 capabilities
   - How a real server is laid out across cores: the acceptor on one, a pool of session actors on another, the room's state on a third — and one builder() chain that names the pool so the acceptor can round-robin over it.
 - **`05-services/02-pubsub-broker/client/main.cpp`** — 9 capabilities
   - A publish/subscribe client: the same input-actor / network-actor split as the chat client, driving subscribe, unsubscribe and publish over one connection.

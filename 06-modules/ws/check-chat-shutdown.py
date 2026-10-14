@@ -151,13 +151,15 @@ class ClientPeer:
     def stop(self):
         if self.proc.poll() is None:
             self.command("/quit")
-        self.proc.stdin.close()
+        # Keep the writer open while waiting: closing stdin would unblock an
+        # actor-owned getline and hide the shutdown deadlock this test covers.
         try:
             code = self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=3)
-            raise AssertionError("chat client did not stop within five seconds")
+            raise AssertionError("chat client did not stop with stdin still open")
+        self.proc.stdin.close()
         self.reader.join(timeout=1)
         if self.reader.is_alive():
             raise AssertionError("client output was not fully read after exit")

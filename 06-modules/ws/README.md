@@ -90,8 +90,8 @@ public:
 };
 ```
 
-> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:192-193` and
-> `:541-542` — all four are `qb::io::async::task<bool> onInit() override`.
+> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:138-139` and
+> `:486-487` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
 
@@ -169,7 +169,13 @@ The client uses a similar dual-actor architecture to separate network logic from
 - **`CommandLineActor`**: Manages user input from `stdin` and displays messages received from the
   `WebSocketClientActor`.
 
-This separation ensures that blocking `stdin` reads do not interfere with the non-blocking network I/O.
+`main` owns the cancellable `LineSource` and stops it after the engine joins. The command actor
+only polls ready lines and terminal events every 50 ms; it never waits for `stdin` or joins the
+reader on an actor core. `/quit`, EOF and input errors disconnect first, then stop the actors.
+Signals can also stop the actors while a partial input line remains open.
+An optional URL argument triggers one connection after the WebSocket actor announces its ID.
+It uses the same `/connect` path as typed input; URLs over 256 bytes are rejected before the
+bounded connection event is created.
 
 When the server sends Close, the manual client echoes its validated payload in a masked Close
 frame. While that frame is still being written, `/connect` is refused; after the socket closes,
@@ -317,6 +323,8 @@ An explicit `--static-root` is honoured and resolved the same way.
 
 ```bash
 ./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-chat-client
+# Or connect automatically after startup:
+./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-chat-client ws://localhost:8080/ws
 ```
 
 Then, inside the client:
