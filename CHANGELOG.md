@@ -59,6 +59,14 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Browser chat keeps messages visible across equal usernames and reconnects (Huly QB-864).**
+  It renders accepted server echoes once, uses a per-message ID for own styling, and cannot
+  replace an already open or connecting socket from a stale visibility timer.
+- **Coroutine WebSocket session selects only an offered subprotocol (Huly QB-865).**
+  Exact comma-delimited token matching prevents a near-match from being echoed as accepted.
+- **Coroutine WebSocket client proves its control, buffer and close claims (Huly QB-866).**
+  The fixture observes Pong before judging a bounded burst, reads the peer's Close frame,
+  and distinguishes a raw transport drop; its one-awaiter check uses a rendezvous.
 - **MPSC lesson drains the last published job (Huly QB-718).** Its bounded callback
   reads producer completion before checking both queues empty, so a final enqueue
   cannot arrive between the empty check and retirement.

@@ -90,7 +90,7 @@ public:
 };
 ```
 
-> The real definitions are `01-chat-server.cpp:359-360` and `:596-597`, and `02-chat-client.cpp:192-193` and
+> The real definitions are `01-chat-server.cpp:370-371` and `:607-608`, and `02-chat-client.cpp:192-193` and
 > `:541-542` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
@@ -121,6 +121,7 @@ public:
         if (chat_session->switch_protocol<ChatSession::ws_protocol>(*chat_session, event.data->request, event.data->response)) {
             // Handshake successful, send the response to the client to finalize.
             *chat_session << event.data->response;
+            chat_session->mark_connected(); // only accepted handshakes can decrement later
             ++_connected_users;
         } else {
             // Handshake failed (e.g., not a valid WebSocket request).
@@ -129,6 +130,10 @@ public:
     }
 };
 ```
+
+`mark_connected()` records the accepted handshake on the session. Its disconnect hook
+decrements the counter only once for that accepted session; a failed upgrade does not
+count as a connected user.
 
 ### 3. `ChatSession`: The Individual Connection Handler
 
@@ -158,6 +163,13 @@ before the server removes that session; server shutdown only releases its sessio
 `check-chat-shutdown.py` run covers 0, 1 and 2 announced clients at SIGTERM, one ordinary
 departure among two clients, and a connected but unannounced client. The example writes
 through `qb::io::cout()` / `qb::io::cerr()` so startup and worker output remain synchronized.
+
+The browser chat displays each accepted message from the server's echo, including the sender's.
+An optional, short `client_message_id` is echoed back so that tab can style **its own** message;
+the visible username is never treated as a session identity. Two tabs named `User` therefore
+both display the same broadcast exactly once. The UI keeps one reconnect timer, checks the
+socket again when it fires, and ignores callbacks from an older socket; returning to a visible
+tab cannot replace a connection already open or connecting.
 
 ---
 
@@ -307,7 +319,7 @@ cmake --build --preset release --target qb-example-modules-ws-chat-client
 
 No `--static-root` is needed: the build stages `resources/chat/` next to the binary and the server
 resolves its default `./resources/chat` against the executable's own directory
-(`qb::io::sys::resolve_resource`, `01-chat-server.cpp:766`), so it runs from any working directory.
+(`qb::io::sys::resolve_resource`, `01-chat-server.cpp:777`), so it runs from any working directory.
 An explicit `--static-root` is honoured and resolved the same way.
 
 * **Web Chat**: `http://localhost:8080/`
@@ -404,6 +416,9 @@ This architecture demonstrates **real-world patterns** for building scalable, ma
   order becomes the control flow and the flags disappear.
 * **API**: `qb::http::ws::coro_session`, `next_frame()`, `close_async()`, `set_handshake_hook()`,
   `set_pending_cap()`. The hook negotiates a subprotocol or REFUSES the upgrade by returning false.
+  Its selected subprotocol must match one **whole comma-delimited token** offered by the client:
+  `qb.demo.v10` and `other.qb.demo.v1` do not offer `qb.demo.v1`. Both near misses still upgrade
+  successfully with no subprotocol, which the in-process client checks.
 * **Three rules of the base**: `Self` must define `task<void> run()`; the base holds a `shared_ptr` for
   the coroutine's whole life, so `run()` MUST eventually return or the session leaks; and frames that
   arrive with nobody parked are buffered to `set_pending_cap()`, past which the OLDEST is dropped.
@@ -427,6 +442,11 @@ This architecture demonstrates **real-world patterns** for building scalable, ma
   arriving with nobody parked are buffered, oldest-dropped past the cap. And `connect()` on the same
   object RESETS it, so a client is reusable after a close — unlike `qb::pg::tcp::notify_co_consumer`,
   whose `receive()` channel a disconnect closes for good.
+  This lesson confirms the automatic Pong at the server before judging its buffered-frame burst:
+  with a cap of three, four data frames followed by Ping leave the newest two data frames and
+  Ping. Its close oracle inspects the peer's actual Close code and reason; a separate raw-drop
+  case shows why `close_async().ok` alone is insufficient. The one-awaiter oracle waits until
+  its first receiver has reached the empty buffer, without a fixed sleep.
 * **Two API notes**: `connect(std::string)` is AMBIGUOUS (`uri const&` and `string_view` overloads are
   both reachable by a user-defined conversion) — build the `qb::io::uri`. And `coro_client` is a class
   template with a defaulted transport, so a function PARAMETER of that type needs the `<>`.

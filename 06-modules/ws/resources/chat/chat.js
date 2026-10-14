@@ -5,6 +5,12 @@ class ChatClient {
         this.connected = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.reconnectTimer = null;
+        this.clientNonce = window.crypto && typeof window.crypto.randomUUID === 'function'
+            ? window.crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        this.messageCounter = 0;
+        this.pendingMessageIds = new Set();
 
         // Get DOM elements
         this.messagesContainer = document.getElementById('chatMessages');
@@ -43,15 +49,34 @@ class ChatClient {
     }
 
     connect() {
+        // A delayed visibility retry must not replace a live or pending connection.
+        if (this.ws) {
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) return;
+            if (this.ws.readyState === WebSocket.CLOSING) {
+                this.scheduleReconnect(1000);
+                return;
+            }
+        }
+        if (this.reconnectTimer !== null) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
 
+        this.connected = false;
+        this.sendButton.disabled = true;
+        this.messageInput.disabled = true;
+        this.pendingMessageIds.clear();
         this.updateConnectionStatus('Connecting...', 'loading');
 
         try {
-            this.ws = new WebSocket(wsUrl);
+            const socket = new WebSocket(wsUrl);
+            this.ws = socket;
 
-            this.ws.onopen = () => {
+            socket.onopen = () => {
+                if (this.ws !== socket) return;
                 this.connected = true;
                 this.reconnectAttempts = 0;
                 this.updateConnectionStatus('Connected', 'connected');
@@ -63,11 +88,14 @@ class ChatClient {
                 this.sendUserJoined();
             };
 
-            this.ws.onmessage = (event) => {
+            socket.onmessage = (event) => {
+                if (this.ws !== socket) return;
                 this.handleMessage(event.data);
             };
 
-            this.ws.onclose = (event) => {
+            socket.onclose = (event) => {
+                if (this.ws !== socket) return;
+                this.ws = null;
                 this.connected = false;
                 this.updateConnectionStatus('Disconnected', 'disconnected');
                 this.sendButton.disabled = true;
@@ -81,7 +109,8 @@ class ChatClient {
                 }
             };
 
-            this.ws.onerror = (error) => {
+            socket.onerror = (error) => {
+                if (this.ws !== socket) return;
                 console.error('WebSocket error:', error);
                 this.addSystemMessage('Connection error occurred');
                 this.updateConnectionStatus('Connection Error', 'disconnected');
@@ -96,20 +125,28 @@ class ChatClient {
     }
 
     attemptReconnect() {
+        if (this.reconnectTimer !== null) return;
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000); // Exponential backoff
 
             this.addSystemMessage(`Reconnecting in ${delay / 1000} seconds... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
-            setTimeout(() => {
-                if (!this.connected) {
-                    this.connect();
-                }
-            }, delay);
+            this.scheduleReconnect(delay);
         } else {
             this.addSystemMessage('Max reconnection attempts reached. Please refresh the page.');
         }
+    }
+
+    scheduleReconnect(delay) {
+        if (this.reconnectTimer !== null ||
+            (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING))) {
+            return;
+        }
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect(); // connect re-checks the socket after the delay.
+        }, delay);
     }
 
     sendMessage() {
@@ -122,16 +159,22 @@ class ChatClient {
             type: 'message',
             username: this.username,
             message: message,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            client_message_id: `${this.clientNonce}-${++this.messageCounter}`
         };
 
         try {
+            // Track only recent messages; a lost echo must not grow memory forever.
+            if (this.pendingMessageIds.size >= 100) {
+                this.pendingMessageIds.delete(this.pendingMessageIds.values().next().value);
+            }
+            this.pendingMessageIds.add(messageObj.client_message_id);
             this.ws.send(JSON.stringify(messageObj));
             this.messageInput.value = '';
-
-            // Add our own message to the chat (optimistic update)
-            this.addMessage(messageObj, true);
+            // The server broadcasts to every session, including this one. Render its
+            // accepted echo once, so a second tab with the same name is not suppressed.
         } catch (error) {
+            this.pendingMessageIds.delete(messageObj.client_message_id);
             console.error('Failed to send message:', error);
             this.addSystemMessage('Failed to send message');
         }
@@ -175,15 +218,14 @@ class ChatClient {
 
             switch (messageObj.type) {
                 case 'message':
-                    // Only add if it's not our own message (avoid duplicates)
-                    if (messageObj.username !== this.username) {
-                        this.addMessage(messageObj, false);
-                    }
+                    // A name is not a session identity: two tabs may both be "User".
+                    // Only an echo of this tab's pending ID gets the own-message style.
+                    this.addMessage(messageObj, typeof messageObj.client_message_id === 'string' &&
+                        this.pendingMessageIds.delete(messageObj.client_message_id));
                     break;
                 case 'user_joined':
-                    if (messageObj.username !== this.username) {
-                        this.addSystemMessage(`${messageObj.username} joined the chat`);
-                    }
+                    // The server broadcasts joins only to other sessions.
+                    this.addSystemMessage(`${messageObj.username} joined the chat`);
                     break;
                 case 'user_left':
                     this.addSystemMessage(`${messageObj.username} left the chat`);
@@ -317,11 +359,9 @@ document.addEventListener('visibilitychange', () => {
         console.log('Page hidden - WebSocket may be paused');
     } else {
         console.log('Page visible - WebSocket resuming');
-        if (window.chatClient && !window.chatClient.connected) {
-            // Try to reconnect when page becomes visible again
-            setTimeout(() => {
-                window.chatClient.connect();
-            }, 1000);
+        if (window.chatClient) {
+            // Share the normal retry timer; it checks the current socket before dialing.
+            window.chatClient.scheduleReconnect(1000);
         }
     }
-}); 
+});

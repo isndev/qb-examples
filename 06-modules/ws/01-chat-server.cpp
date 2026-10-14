@@ -26,6 +26,7 @@
  * @ingroup Examples
  */
 
+#include <algorithm>
 #include <iostream>
 #include <filesystem>
 #include <functional>
@@ -187,6 +188,16 @@ private:
         auto response        = create_message(MessageType::MESSAGE, timestamp);
         response["username"] = username;
         response["message"]  = message;
+        // Optional client correlation ID is echoed only when bounded and ASCII-safe.
+        // Names are not identities: two browser tabs may both be called "User".
+        if (auto it = message_json.find("client_message_id"); it != message_json.end() && it->is_string()) {
+            const std::string id    = it->get<std::string>();
+            const bool        valid = !id.empty() && id.size() <= 64 && std::all_of(id.begin(), id.end(), [](unsigned char c) {
+                return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+            });
+            if (valid)
+                response["client_message_id"] = id;
+        }
 
         broadcast_to_all(response.dump());
     }

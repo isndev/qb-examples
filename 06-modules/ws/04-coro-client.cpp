@@ -19,6 +19,7 @@
  * @expect "[buffer] frames that arrive with nobody parked are BUFFERED, in order, up to the cap"
  * @expect "[oneawaiter] two coroutines cannot park on the same client: the second receive() threw"
  * @expect "[close] the client closed and the server echoed the code and reason back"
+ * @expect "[close] transport-drop control: ok alone did not prove a peer Close frame"
  * @expect "[reconnect] connect() on the SAME client works: it clears the buffer, the disconnected"
  * @expect "=== coro-client complete: connect, receive, control frames, backpressure, the"
  *
@@ -63,6 +64,7 @@
  *   ./build/presets/release/examples/06-modules/ws/qb-example-modules-ws-coro-client
  */
 
+#include <chrono>
 #include <cstdint>
 #include <stdexcept>
 #include <type_traits>
@@ -81,6 +83,11 @@ namespace ws_coro_client_example {
 using qb::http::ws::CloseStatus;
 using qb::http::ws::IncomingFrame;
 
+// The client and fixture server share one listener thread. A server-observed Pong is
+// a delivery barrier: all earlier server-to-client frames have been parsed while
+// the client coroutine has deliberately not called receive().
+bool g_burst_barrier_pong = false;
+
 class EchoServer;
 
 /// The fixture: echo text, send a Ping on demand, close on "bye". Written with `coro_session`
@@ -96,6 +103,16 @@ public:
             IncomingFrame frame = co_await next_frame();
             if (frame.kind == IncomingFrame::Kind::Disconnected || frame.kind == IncomingFrame::Kind::Close)
                 co_return;
+            if (frame.kind == IncomingFrame::Kind::Pong) {
+                if (frame.payload == "are you there") {
+                    qb::http::ws::MessageText observed;
+                    observed << "pong-observed";
+                    *this << observed;
+                } else if (frame.payload == "burst-barrier") {
+                    g_burst_barrier_pong = true;
+                }
+                continue;
+            }
             if (frame.kind != IncomingFrame::Kind::Message)
                 continue;
 
@@ -106,14 +123,22 @@ public:
                 continue;
             }
             if (frame.payload == "burst") {
-                // Three replies with nothing asking for them yet: the client's buffer is what
-                // catches these.
-                for (int i = 1; i <= 3; ++i) {
+                // Four data frames plus a Ping exceed the client's cap of three. When the
+                // server sees the automatic Pong, all five reached the client without a
+                // receive() awaiter, leaving part-3, part-4 and this Ping in its buffer.
+                for (int i = 1; i <= 4; ++i) {
                     qb::http::ws::MessageText part;
                     part << "part-" << i;
                     *this << part;
                 }
+                qb::http::ws::MessagePing barrier;
+                barrier << "burst-barrier";
+                *this << barrier;
                 continue;
+            }
+            if (frame.payload == "drop-me") {
+                this->disconnect(); // transport drop WITHOUT a WebSocket Close frame
+                co_return;
             }
             qb::http::ws::MessageText reply;
             reply << "echo:" << frame.payload;
@@ -155,13 +180,17 @@ say(WsClient &ws, std::string const &text) {
 // `task<void>&&`, so a lambda would have to be CALLED, and the temporary closure would die while
 // its frame still referred to it.
 qb::io::async::task<void>
-second_receiver(WsClient &ws, bool &threw, std::string &what) {
+second_receiver(WsClient &ws, bool &await_started, bool &finished, std::string &observed) {
+    // Same listener thread: once the caller sees this flag, the scheduler has run us
+    // through receive() to its suspension (or finished on a surprise queued frame).
+    await_started = true;
     try {
-        [[maybe_unused]] auto frame = co_await ws.receive();
+        auto frame = co_await ws.receive();
+        observed   = frame.payload;
     } catch (std::logic_error const &e) {
-        threw = true;
-        what  = e.what();
+        observed = e.what();
     }
+    finished = true;
 }
 
 } // namespace
@@ -179,9 +208,9 @@ run_client(std::uint16_t port, bool &running, bool &ok) {
 
     // ---- 1. connect ---------------------------------------------------------------------
     WsClient ws;
-    // The buffer that section 4 measures. 64 is chosen from the protocol's own burst size (3
-    // here); the default is 1024 and 0 disables buffering entirely.
-    ws.set_pending_cap(64);
+    // The fixture sends five frames without a receive() awaiter. A cap of three must
+    // retain only the newest three; the default is 1024 and 0 disables buffering.
+    ws.set_pending_cap(3);
     qb::http::ws::ConnectResult connected = co_await ws.connect(uri);
 
     const bool connect_ok = connected.ok;
@@ -206,37 +235,57 @@ run_client(std::uint16_t port, bool &running, bool &ok) {
 
     // ---- 3. a control frame ---------------------------------------------------------------
     say(ws, "ping-me");
-    IncomingFrame ping = co_await ws.receive();
+    IncomingFrame ping       = co_await ws.receive();
+    IncomingFrame pong_proof = co_await ws.receive();
 
-    const bool control_ok = ping.kind == IncomingFrame::Kind::Ping && ping.payload == "are you there";
+    const bool control_ok = ping.kind == IncomingFrame::Kind::Ping && ping.payload == "are you there"
+                            && pong_proof.kind == IncomingFrame::Kind::Message && pong_proof.payload == "pong-observed";
     qb::io::cout() << (control_ok ? "[control] a Ping from the server arrived as a frame of its own and the protocol layer\n"
                                     "          had already answered it with a Pong — you SEE control frames, you do not have\n"
                                     "          to service them\n"
                                   : "[control] UNEXPECTED: the server's Ping did not arrive as Kind::Ping\n");
-    qb::io::cout() << "          (payload '" << ping.payload << "')\n";
+    qb::io::cout() << "          (Ping '" << ping.payload << "', server observed its matching Pong: '" << pong_proof.payload << "')\n";
 
     // ---- 4. the buffer ---------------------------------------------------------------------
     say(ws, "burst");
-    // Deliberately do NOT park: give the loop time to deliver all three while nobody is waiting.
-    co_await qb::io::async::sleep(120ms);
+    // Do not call receive() until the server sees the Pong for its trailing Ping. TCP
+    // ordering then proves the four preceding messages were parsed without a waiter.
+    const auto barrier_deadline = std::chrono::steady_clock::now() + 5s;
+    while (!g_burst_barrier_pong && std::chrono::steady_clock::now() < barrier_deadline)
+        co_await qb::io::async::sleep(1ms);
+    if (!g_burst_barrier_pong) {
+        qb::io::cerr() << "[buffer] UNEXPECTED: the server never observed the burst barrier Pong\n";
+        co_return;
+    }
     IncomingFrame b1 = co_await ws.receive();
     IncomingFrame b2 = co_await ws.receive();
     IncomingFrame b3 = co_await ws.receive();
 
-    const bool buffer_ok = b1.payload == "part-1" && b2.payload == "part-2" && b3.payload == "part-3";
+    const bool buffer_ok = b1.kind == IncomingFrame::Kind::Message && b1.payload == "part-3" && b2.kind == IncomingFrame::Kind::Message
+                           && b2.payload == "part-4" && b3.kind == IncomingFrame::Kind::Ping && b3.payload == "burst-barrier";
     qb::io::cout() << (buffer_ok ? "[buffer] frames that arrive with nobody parked are BUFFERED, in order, up to the cap\n"
                                    "         set by set_pending_cap() — and past it the OLDEST is dropped, so a slow reader\n"
                                    "         loses the head of a burst rather than the newest state\n"
-                                 : "[buffer] UNEXPECTED: the three buffered parts did not arrive in order\n");
-    qb::io::cout() << "         ('" << b1.payload << "', '" << b2.payload << "', '" << b3.payload << "')\n";
+                                 : "[buffer] UNEXPECTED: the cap did not retain the newest three frames\n");
+    qb::io::cout() << "         ('" << b1.payload << "', '" << b2.payload << "', Ping '" << b3.payload << "')\n";
 
     // ---- 5. the one-awaiter rule ------------------------------------------------------------
     // Two consumers on one client is a design error, and the client says so instead of letting
     // one of them silently steal the other's frame.
-    bool        threw = false;
-    std::string message;
-    qb::io::async::coro_scheduler().spawn(second_receiver(ws, threw, message)); // parks first
-    co_await qb::io::async::sleep(30ms);
+    // Section 4 consumed the entire three-frame buffer, and the server sends no
+    // more frames until "release". Wait for the first coroutine to reach receive(),
+    // then rule out an immediate completion before probing a second awaiter.
+    bool        receiver_await_started = false;
+    bool        receiver_finished      = false;
+    std::string receiver_payload;
+    qb::io::async::coro_scheduler().spawn(second_receiver(ws, receiver_await_started, receiver_finished, receiver_payload));
+    const auto await_deadline = std::chrono::steady_clock::now() + 5s;
+    while (!receiver_await_started && std::chrono::steady_clock::now() < await_deadline)
+        co_await qb::io::async::sleep(1ms);
+    if (!receiver_await_started || receiver_finished) {
+        qb::io::cerr() << "[oneawaiter] UNEXPECTED: first receive() never parked on an empty buffer\n";
+        co_return;
+    }
     bool        threw2 = false;
     std::string message2;
     try {
@@ -247,9 +296,12 @@ run_client(std::uint16_t port, bool &running, bool &ok) {
     }
     // Release the parked receiver by sending it something to take.
     say(ws, "release");
-    co_await qb::io::async::sleep(120ms);
+    const auto receiver_deadline = std::chrono::steady_clock::now() + 5s;
+    while (!receiver_finished && std::chrono::steady_clock::now() < receiver_deadline)
+        co_await qb::io::async::sleep(1ms);
 
-    const bool one_awaiter_ok = threw2 && message2.find("already waiting") != std::string::npos;
+    const bool one_awaiter_ok =
+        threw2 && message2.find("already waiting") != std::string::npos && receiver_finished && receiver_payload == "echo:release";
     qb::io::cout() << (one_awaiter_ok ? "[oneawaiter] two coroutines cannot park on the same client: the second receive() threw\n"
                                         "             std::logic_error rather than silently taking the first one's frame. One\n"
                                         "             consumer per client — fan out AFTER you have read, not by reading twice\n"
@@ -257,13 +309,16 @@ run_client(std::uint16_t port, bool &running, bool &ok) {
     qb::io::cout() << "             (" << (message2.empty() ? "<no message>" : message2) << ")\n";
 
     // ---- 6. closing ---------------------------------------------------------------------------
-    qb::http::ws::CloseResult closed = co_await ws.close_async(CloseStatus::Normal, "done for now");
+    qb::http::ws::CloseResult closed     = co_await ws.close_async(CloseStatus::Normal, "done for now");
+    IncomingFrame             close_echo = co_await ws.receive();
 
-    const bool close_ok = closed.ok;
+    const bool close_ok = closed.ok && close_echo.kind == IncomingFrame::Kind::Close && close_echo.close_code == 1000
+                          && close_echo.close_reason == "done for now";
     qb::io::cout() << (close_ok ? "[close] the client closed and the server echoed the code and reason back, which is what\n"
                                   "        close_async() waits for. It does NOT tear the TCP stream down — call disconnect()\n"
                                   "        if you want that too\n"
                                 : "[close] UNEXPECTED: the close handshake did not complete\n");
+    qb::io::cout() << "        (peer frame code " << close_echo.close_code << ", reason '" << close_echo.close_reason << "')\n";
 
     // ---- 7. reconnect on the SAME object ------------------------------------------------------
     qb::http::ws::ConnectResult again  = co_await ws.connect(uri);
@@ -274,13 +329,25 @@ run_client(std::uint16_t port, bool &running, bool &ok) {
         reused              = after.kind == IncomingFrame::Kind::Message && after.payload == "echo:second life";
     }
 
+    // A raw transport drop is the negative control: close_async() also reports ok on
+    // an already-disconnected client. Only the peer's Close frame proved section 6.
+    bool drop_control_ok = false;
+    if (again.ok) {
+        say(ws, "drop-me");
+        IncomingFrame dropped       = co_await ws.receive();
+        const auto    no_peer_close = co_await ws.close_async(CloseStatus::Normal, "not echoed");
+        drop_control_ok             = dropped.kind == IncomingFrame::Kind::Disconnected && no_peer_close.ok;
+    }
+    qb::io::cout() << (drop_control_ok ? "[close] transport-drop control: ok alone did not prove a peer Close frame\n"
+                                       : "[close] UNEXPECTED: the transport-drop control did not reproduce\n");
+
     qb::io::cout() << (reused ? "[reconnect] connect() on the SAME client works: it clears the buffer, the disconnected\n"
                                 "            flag and any half-finished close before it dials again — so a client is\n"
                                 "            reusable, unlike the pgsql notify consumer, whose receive() channel a\n"
                                 "            disconnect closes for good\n"
                               : "[reconnect] UNEXPECTED: the client could not be reused after a close\n");
 
-    ok = connect_ok && frames_ok && control_ok && buffer_ok && one_awaiter_ok && close_ok && reused;
+    ok = connect_ok && frames_ok && control_ok && buffer_ok && one_awaiter_ok && close_ok && reused && drop_control_ok;
     qb::io::cout() << "\n=== coro-client complete: connect, receive, control frames, backpressure, the\n"
                       "    one-awaiter rule, a close and a reuse ===\n"
                       "(for wss://, the only change is qb::http::ws::coro_client_secure)\n";

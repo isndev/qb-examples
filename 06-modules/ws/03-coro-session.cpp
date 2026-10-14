@@ -16,6 +16,7 @@
  * @expect "[server] two servers up on ephemeral ports: one echo, one that refuses every upgrade"
  * @expect "[session] the whole conversation is ONE coroutine: next_frame() in a loop, a branch,"
  * @expect "[subproto] the handshake hook chose a subprotocol: the client offered two and the"
+ * @expect "[subproto] qb.demo.v10 and other.qb.demo.v1 were not mistaken for qb.demo.v1"
  * @expect "[reject] a hook that returns false REFUSES the upgrade, and the client's connect()"
  * @expect "[close] close_async() sent a Close and the client saw the code and the reason it was"
  * @expect "=== coro-session complete: one coroutine per connection, a handshake hook, and a"
@@ -66,9 +67,12 @@
  */
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <string_view>
 #include <qb/io/async.h>
 #include <qb/io/async/coroutine.h>
+#include <qbm/http/utility.h>
 #include <qbm/http/ws.h>
 #include <qbm/http/ws/coro.h>
 
@@ -97,9 +101,15 @@ public:
         // Runs once, on the upgrade request, before the 101 is written. Returning false refuses
         // the upgrade; mutating `response` is how a subprotocol or an extra header is negotiated.
         set_handshake_hook([](EchoSession &, qb::http::Request &req, qb::http::Response &res) {
-            const std::string &offered = req.header("Sec-WebSocket-Protocol");
-            if (offered.find("qb.demo.v1") != std::string::npos)
-                res.set_header("Sec-WebSocket-Protocol", "qb.demo.v1");
+            // A protocol is a comma-delimited token, not an arbitrary substring. Echoing
+            // qb.demo.v1 for qb.demo.v10 or other.qb.demo.v1 violates the client's offer.
+            const std::string_view offered = req.header("Sec-WebSocket-Protocol");
+            for (const auto token : qb::http::utility::split_view(offered, ',')) {
+                if (qb::http::utility::trim_http_whitespace(token) == "qb.demo.v1") {
+                    res.set_header("Sec-WebSocket-Protocol", "qb.demo.v1");
+                    break;
+                }
+            }
             return true;
         });
     }
@@ -235,6 +245,22 @@ drive(std::uint16_t echo_port, std::uint16_t closed_port, bool &running, bool &o
                                    : "[subproto] UNEXPECTED: the negotiated subprotocol was not qb.demo.v1\n");
     qb::io::cout() << "           (offered chat.v9 + qb.demo.v1, negotiated '" << ws.negotiated_subprotocol() << "')\n";
 
+    // A substring match used to return qb.demo.v1 for both near misses. The client's
+    // own negotiation guard rejected that 101. With exact tokens the upgrade succeeds
+    // and negotiates no subprotocol, which is the only RFC-compliant answer here.
+    bool exact_offers_ok = true;
+    for (const char *near_miss : {"qb.demo.v10", "other.qb.demo.v1"}) {
+        qb::http::ws::coro_client probe;
+        probe.add_subprotocol(near_miss);
+        const auto result = co_await probe.connect(qb::io::uri(echo_uri));
+        exact_offers_ok &= result.ok && probe.negotiated_subprotocol().empty();
+        if (result.ok) {
+            [[maybe_unused]] const auto closed_probe = co_await probe.close_async(CloseStatus::Normal, "probe complete");
+        }
+    }
+    qb::io::cout() << (exact_offers_ok ? "[subproto] qb.demo.v10 and other.qb.demo.v1 were not mistaken for qb.demo.v1\n"
+                                       : "[subproto] UNEXPECTED: a near-miss offer selected qb.demo.v1 or failed the upgrade\n");
+
     // ---- 2. the graceful close, initiated by the SERVER ---------------------------------
     say("bye");
     IncomingFrame closing = co_await ws.receive();
@@ -256,7 +282,7 @@ drive(std::uint16_t echo_port, std::uint16_t closed_port, bool &running, bool &o
                                    "         the response status inside the hook: the base sends it before it drops the link\n"
                                  : "[reject] UNEXPECTED: the rejecting server accepted the upgrade\n");
 
-    ok = session_ok && subproto_ok && close_ok && reject_ok;
+    ok = session_ok && subproto_ok && exact_offers_ok && close_ok && reject_ok;
     qb::io::cout() << "\n=== coro-session complete: one coroutine per connection, a handshake hook, and a\n"
                       "    close whose reason reached the other end ===\n";
     co_return;
