@@ -15,6 +15,8 @@
 #include "actors/task_manager.h"
 #include <qbm/http/middleware/all.h>
 #include <qb/io.h>
+#include <chrono>
+#include <optional>
 
 namespace taskmanager {
 namespace actors {
@@ -118,16 +120,74 @@ TaskManager::disconnected(qb::uuid session_id) {
 
 qb::io::async::task<bool>
 TaskManager::prepare_schema() {
-    auto created = co_await _db->query("CREATE TABLE IF NOT EXISTS tasks ("
-                                       "  id          SERIAL PRIMARY KEY,"
-                                       "  title       TEXT NOT NULL,"
-                                       "  description TEXT,"
-                                       "  status      TEXT DEFAULT 'pending',"
-                                       "  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-                                       "  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                                       ");");
-    if (!created.ok()) {
-        qb::io::cerr() << "[TaskManager " << id() << "] CREATE TABLE failed: " << created.error().what() << '\n';
+    // Three TaskManager sessions initialize concurrently. PostgreSQL's IF NOT EXISTS does
+    // not serialize catalog creation, so keep only the migration inside an advisory-locked
+    // transaction. The transaction-scoped timeout bounds the lock and every DDL/catalog query.
+    _db->set_timeout(std::chrono::seconds{5});
+    auto migration = co_await qb::pg::with_transaction(*_db, [](auto &tr) -> qb::io::async::task<void> {
+        auto locked = co_await tr.query("SELECT pg_advisory_xact_lock(190351824, 1);");
+        if (!locked.ok())
+            throw qb::pg::transaction_abort{locked.error()};
+
+        auto created = co_await tr.query("CREATE TABLE IF NOT EXISTS tasks ("
+                                         "  id          SERIAL PRIMARY KEY,"
+                                         "  title       TEXT NOT NULL,"
+                                         "  description TEXT,"
+                                         "  status      TEXT DEFAULT 'pending',"
+                                         "  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                         "  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                                         ");");
+        if (!created.ok())
+            throw qb::pg::transaction_abort{created.error()};
+
+        // IF NOT EXISTS accepts any pre-existing relation named tasks. Refuse to mark this
+        // worker ready unless the columns, defaults and primary key the handlers rely on exist.
+        auto verified =
+            co_await tr.query("WITH expected(name, data_type, nullable) AS (VALUES"
+                              " ('id', 'integer', 'NO'),"
+                              " ('title', 'text', 'NO'),"
+                              " ('description', 'text', 'YES'),"
+                              " ('status', 'text', 'YES'),"
+                              " ('created_at', 'timestamp without time zone', 'YES'),"
+                              " ('updated_at', 'timestamp without time zone', 'YES')"
+                              ")"
+                              " SELECT count(c.column_name) = 6"
+                              "    AND (bool_and(COALESCE(c.data_type = e.data_type AND c.is_nullable = e.nullable, FALSE)) IS TRUE)"
+                              "    AND (bool_and(COALESCE(CASE e.name"
+                              "          WHEN 'id' THEN COALESCE(c.column_default LIKE 'nextval(%', FALSE)"
+                              "          WHEN 'status' THEN c.column_default = '''pending''::text'"
+                              "          WHEN 'created_at' THEN c.column_default IS NOT NULL"
+                              "          WHEN 'updated_at' THEN c.column_default IS NOT NULL"
+                              "          ELSE TRUE END, FALSE)) IS TRUE)"
+                              "    AND EXISTS ("
+                              "      SELECT 1 FROM information_schema.table_constraints tc"
+                              "      JOIN information_schema.key_column_usage kcu"
+                              "        ON kcu.constraint_catalog = tc.constraint_catalog"
+                              "       AND kcu.constraint_schema = tc.constraint_schema"
+                              "       AND kcu.constraint_name = tc.constraint_name"
+                              "       AND kcu.table_name = tc.table_name"
+                              "     WHERE tc.table_schema = current_schema() AND tc.table_name = 'tasks'"
+                              "       AND tc.constraint_type = 'PRIMARY KEY' AND kcu.column_name = 'id')"
+                              "    AND 1 = ("
+                              "      SELECT count(*) FROM information_schema.table_constraints tc"
+                              "      JOIN information_schema.key_column_usage kcu"
+                              "        ON kcu.constraint_catalog = tc.constraint_catalog"
+                              "       AND kcu.constraint_schema = tc.constraint_schema"
+                              "       AND kcu.constraint_name = tc.constraint_name"
+                              "       AND kcu.table_name = tc.table_name"
+                              "     WHERE tc.table_schema = current_schema() AND tc.table_name = 'tasks'"
+                              "       AND tc.constraint_type = 'PRIMARY KEY') AS schema_ok"
+                              " FROM expected e"
+                              " LEFT JOIN information_schema.columns c"
+                              "   ON c.table_schema = current_schema() AND c.table_name = 'tasks' AND c.column_name = e.name;");
+        if (!verified.ok())
+            throw qb::pg::transaction_abort{verified.error()};
+        if (verified.result().empty() || !verified.result()[0][0].template as<bool>())
+            throw qb::pg::transaction_abort{qb::pg::error::client_error{"existing tasks table is incompatible with TaskManager schema"}};
+        co_return;
+    });
+    if (!migration.ok()) {
+        qb::io::cerr() << "[TaskManager " << id() << "] schema migration failed: " << migration.error().what() << '\n';
         co_return false;
     }
 
@@ -163,12 +223,12 @@ TaskManager::prepare_schema() {
                        qb::pg::type_oid_sequence{oid::int4}))
         co_return false;
 
-    // COALESCE(NULLIF($n,''), col): an empty string keeps the existing value, so
-    // partial PUT payloads do not clobber omitted fields.
+    // An omitted description is bound as SQL NULL and preserves the old value;
+    // a present empty string remains TEXT and deliberately clears the column.
     if (!co_await prep("update_task",
                        "UPDATE tasks SET"
                        "   title       = COALESCE(NULLIF($1,''), title),"
-                       "   description = COALESCE(NULLIF($2,''), description),"
+                       "   description = COALESCE($2, description),"
                        "   status      = COALESCE(NULLIF($3,''), status),"
                        "   updated_at  = CURRENT_TIMESTAMP"
                        " WHERE id = $4 RETURNING id;",
@@ -351,19 +411,20 @@ TaskManager::handle_update_task(ctx_t ctx) {
     }
     const int32_t task_id = *task_id_opt;
 
-    models::Task task;
+    models::Task               task;
+    std::optional<std::string> description;
     try {
-        auto data = ctx->request().body().as<qb::json>();
-        // Default to "" so the COALESCE SQL keeps existing values for omitted fields.
-        task.title       = data.value("title", "");
-        task.description = data.value("description", "");
-        task.status      = data.value("status", "");
+        auto data   = ctx->request().body().as<qb::json>();
+        task.title  = data.value("title", "");
+        task.status = data.value("status", "");
+        if (data.contains("description"))
+            description = data.at("description").get<std::string>();
     } catch (...) {
         ctx->bad_request("Invalid JSON");
         co_return;
     }
 
-    auto res = co_await _db->execute("update_task", qb::pg::params{task.title, task.description, task.status, task_id});
+    auto res = co_await _db->execute("update_task", qb::pg::params{task.title, description, task.status, task_id});
     if (!res.ok()) {
         ctx->internal_server_error(res.error().what());
         co_return;

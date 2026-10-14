@@ -59,6 +59,20 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **TaskManager starts all workers on a fresh database and preserves partial update intent (Huly QB-1030, QB-796, QB-797).**
+  Schema creation is serialized and checked before each worker becomes ready. An omitted
+  description keeps its old value, while an explicit empty string clears it. The route smoke
+  test now fails on wrong responses, missing IDs, cache drift or transport errors.
+- **HTTP lessons honor their route and redirect contracts (Huly QB-793, QB-821).**
+  A bodyless `GET /api/users/:id` no longer receives the POST body schema. The HTTP redirect
+  targets the HTTPS listener on port 8443, preserves path and query, and accepts only the
+  loopback Host values this local demonstration can serve.
+- **The upload form survives repeated attempts (Huly QB-822).** Its progress element remains
+  in the document after status changes, concurrent submissions are ignored, and a failed
+  network request leaves the control usable for retry.
+- **The broker client folds command bytes inside `std::toupper`'s valid domain (Huly QB-856).**
+  A high-bit byte in an unknown command can no longer enter the C character API as a negative
+  signed `char`; ASCII command matching is unchanged.
 - **Chat and broker wait for incomplete frames and reject invalid ones (Huly QB-472, QB-473, QB-752).**
   Their parsers wait for the complete body, cap payloads at 64 KiB and the connection's I/O limit
   before allocation, and close on bad magic, version or length. Fragmented and coalesced frames

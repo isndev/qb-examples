@@ -286,7 +286,7 @@ building in parallel never stage into the same directory. (This line used to nam
 | `GET`    | `/tasks`     | List tasks (Redis-cached, `X-Cache` header)                  |
 | `POST`   | `/tasks`     | Create task (`{"title":"…","description":"…","status":"…"}`) |
 | `GET`    | `/tasks/:id` | Get single task                                              |
-| `PUT`    | `/tasks/:id` | Update task (partial JSON accepted)                          |
+| `PUT`    | `/tasks/:id` | Partial update; omitted description is kept, `""` clears it |
 | `DELETE` | `/tasks/:id` | Delete task                                                  |
 | `GET`    | `/ws`        | WebSocket upgrade (101)                                      |
 | `GET`    | `/static/*`  | Static files                                                 |
@@ -296,7 +296,15 @@ building in parallel never stage into the same directory. (This line used to nam
 
 ## Testing
 
-A quick functional smoke-test with `curl`:
+The fail-closed route smoke test checks status codes, JSON fields, cache headers, and the
+distinction between an omitted and an explicitly empty description:
+
+```bash
+./scripts/test_routes.sh                    # http://localhost:8080
+./scripts/test_routes.sh http://host:8080
+```
+
+Individual requests can also be explored with `curl`:
 
 ```bash
 # Health

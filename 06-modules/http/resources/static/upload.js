@@ -1,12 +1,16 @@
 // Upload form handling
+let uploadInProgress = false;
 document.getElementById('uploadForm').addEventListener('submit', function (e) {
     e.preventDefault();
+
+    if (uploadInProgress) return;
 
     const fileInput = document.getElementById('fileInput');
     const descriptionInput = document.getElementById('descriptionInput');
     const tagsInput = document.getElementById('tagsInput');
     const progressDiv = document.getElementById('uploadProgress');
     const statusDiv = document.getElementById('uploadStatus');
+    const submitButton = this.querySelector('button[type="submit"]');
 
     if (!fileInput.files[0]) {
         showResult('Please select a file to upload.', 'danger');
@@ -22,11 +26,14 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
         formData.append('tags', tagsInput.value.trim());
     }
 
+    uploadInProgress = true;
+    submitButton.disabled = true;
+
     // Show progress
     progressDiv.classList.remove('hidden');
     statusDiv.classList.remove('hidden');
     statusDiv.className = 'alert alert-info';
-    statusDiv.textContent = '';
+    statusDiv.textContent = 'Uploading file...';
 
     fetch('/api/upload', {
         method: 'POST',
@@ -47,6 +54,8 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
         })
         .finally(() => {
             progressDiv.classList.add('hidden');
+            submitButton.disabled = false;
+            uploadInProgress = false;
         });
 });
 

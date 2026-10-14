@@ -28,6 +28,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <string_view>
 #include <qb/main.h>
 #include <qb/io/system/file.h> // qb::io::sys::resolve_resource
 #include <qb/system/parse.h>   // qb::to_number
@@ -123,11 +124,40 @@ private:
 
     void
     setup_http_redirect_server() {
-        // Simple redirect to HTTPS
+        // This is a local demo: only its loopback names may select a redirect
+        // destination. The cleartext Host can carry 8080, never the TLS port.
         _http_redirect_server->router().get("/*path", [](auto ctx) {
-            std::string host_header = std::string(ctx->request().header("host"));
-            std::string path        = std::string(ctx->request().uri().path());
-            std::string https_url   = "https://" + host_header + path;
+            const std::string host_header(ctx->request().header("host"));
+            const auto        ascii_equal = [](std::string_view actual, std::string_view expected) {
+                if (actual.size() != expected.size())
+                    return false;
+                for (std::size_t i = 0; i < actual.size(); ++i) {
+                    const char folded = actual[i] >= 'A' && actual[i] <= 'Z' ? static_cast<char>(actual[i] + ('a' - 'A')) : actual[i];
+                    if (folded != expected[i])
+                        return false;
+                }
+                return true;
+            };
+
+            std::string target_host;
+            if (ascii_equal(host_header, "localhost") || ascii_equal(host_header, "localhost:8080")) {
+                target_host = "localhost";
+            } else if (host_header == "127.0.0.1" || host_header == "127.0.0.1:8080") {
+                target_host = "127.0.0.1";
+            } else {
+                // Other domains could turn a reflected Host into an open redirect;
+                // IPv6 is not served by either listener in this example.
+                ctx->response().status() = qb::http::Status::BAD_REQUEST;
+                ctx->response().add_header("Content-Type", "text/plain; charset=utf-8");
+                ctx->response().body() = "Host must be localhost or 127.0.0.1, with optional port 8080";
+                ctx->complete();
+                return;
+            }
+
+            std::string path(ctx->request().uri().path());
+            if (path.empty())
+                path = "/";
+            std::string https_url = "https://" + target_host + ":8443" + path;
 
             std::string encoded_queries = std::string(ctx->request().uri().encoded_queries());
             if (!encoded_queries.empty()) {
@@ -136,14 +166,9 @@ private:
 
             ctx->response().status() = qb::http::Status::MOVED_PERMANENTLY;
             ctx->response().add_header("Location", https_url);
-            ctx->response().add_header("Content-Type", "text/html");
-            ctx->response().body() = "<html><body>"
-                                     "<h1>Redirecting to HTTPS</h1>"
-                                     "<p>This site requires a secure connection. You are being redirected to: "
-                                     "<a href=\""
-                                     + https_url + "\">" + https_url
-                                     + "</a></p>"
-                                       "</body></html>";
+            ctx->response().add_header("Content-Type", "text/html; charset=utf-8");
+            // Keep untrusted Host/path out of HTML; Location carries the URL.
+            ctx->response().body() = "<html><body><h1>Redirecting to HTTPS</h1></body></html>";
             ctx->complete();
         });
 

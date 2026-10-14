@@ -31,6 +31,7 @@
  */
 
 #include "ClientActor.h"
+#include <cctype>
 #include <chrono>
 #include <iostream>
 #include <sstream>
@@ -339,7 +340,7 @@ ClientActor::processCommand(const std::string &command) {
 
     // Convert to uppercase for case-insensitive comparison
     for (auto &c : cmd)
-        c = toupper(c);
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
     // Handle command based on type
     if (cmd == "SUB" || cmd == "SUBSCRIBE") {

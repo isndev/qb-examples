@@ -105,14 +105,14 @@ user_schema() {
     };
 }
 
-/// The validator the middleware is built from. A `shared_ptr` because the middleware holds one
-/// and you may want to keep configuring it afterwards.
+/// The validators the two route-scoped middleware instances are built from. The
+/// body schema belongs to POST; GET /:id has no request body to validate.
 std::shared_ptr<RequestValidator>
-make_user_validator() {
+make_user_validator(bool validate_body = true) {
     auto rv = std::make_shared<RequestValidator>();
 
-    // The body: one JSON schema.
-    rv->for_body(user_schema());
+    if (validate_body)
+        rv->for_body(user_schema());
 
     // A query parameter, TYPED. The value arrives as a string and is converted before the rules
     // see it, so `MinimumRule` compares numbers rather than characters.
@@ -131,9 +131,11 @@ make_user_validator() {
     // Sanitizers run BEFORE validation and rewrite the request in place. That ordering is the
     // point: a name of "  Ada  " passes minLength either way, but "<b>Ada</b>" only stops being
     // markup because escape_html ran first.
-    rv->add_body_sanitizer("name", PredefinedSanitizers::trim());
-    rv->add_body_sanitizer("name", PredefinedSanitizers::escape_html());
-    rv->add_body_sanitizer("email", PredefinedSanitizers::to_lower_case());
+    if (validate_body) {
+        rv->add_body_sanitizer("name", PredefinedSanitizers::trim());
+        rv->add_body_sanitizer("name", PredefinedSanitizers::escape_html());
+        rv->add_body_sanitizer("email", PredefinedSanitizers::to_lower_case());
+    }
 
     return rv;
 }
@@ -299,15 +301,17 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
 
-        auto validator = make_user_validator();
-
         // THE factory. A free function in `qb::http` (not in `qb::http::middleware`), taking
         // the session type as its template argument. On failure it answers 400 with
         // `{"message":"Validation failed.","errors":[{field,rule,message,value?}]}` — note the
-        // wire names differ from the C++ member names.
-        router().use(qb::http::validation_middleware<qb::http::DefaultSession>(validator));
+        // wire names differ from the C++ member names. Separate sibling groups keep the
+        // POST body schema off the bodyless GET route while retaining header/path rules.
+        auto post_routes = router().group("");
+        auto get_routes  = router().group("");
+        post_routes->use(qb::http::validation_middleware<qb::http::DefaultSession>(make_user_validator(), "PostUserValidation"));
+        get_routes->use(qb::http::validation_middleware<qb::http::DefaultSession>(make_user_validator(false), "GetUserValidation"));
 
-        router().post("/api/users", [](auto ctx) {
+        post_routes->post("/api/users", [](auto ctx) {
             // Reaching this handler MEANS the body, the query and the header were valid, and
             // that the sanitizers already rewrote them. That is the whole value of doing this
             // as middleware rather than at the top of every handler.
@@ -318,7 +322,7 @@ public:
             ctx->complete();
         });
 
-        router().get("/api/users/:id", [](auto ctx) {
+        get_routes->get("/api/users/:id", [](auto ctx) {
             ctx->response().status() = qb::http::status::OK;
             ctx->response().set_header("Content-Type", "application/json");
             ctx->response().body() = qb::json{{"id", std::string(ctx->path_param("id"))}}.dump(2);

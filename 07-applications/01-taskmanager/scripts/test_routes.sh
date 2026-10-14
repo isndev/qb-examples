@@ -1,28 +1,96 @@
 #!/usr/bin/env bash
-# Test script for taskmanager_ultimate routes
-# Usage: ./test_routes.sh [host:port]
+# Fail-closed smoke test for the TaskManager HTTP API.
+# Usage: ./test_routes.sh [http://host:port]
+
+set -uo pipefail
 
 BASE="${1:-http://localhost:8080}"
 SEP="────────────────────────────────────────────"
-CURL="curl -s --max-time 5 --no-location"
+CURL=(curl -sS --max-time 5 --no-location)
+MIN_CHECKS=31
 
 pass=0
 fail=0
+response=""
+code=""
+body=""
 
-check() {
-    local label="$1"
-    local expected_code="$2"
-    local actual_code="$3"
-    local body="$4"
-    local cache="$5"
-
-    if [ "$actual_code" = "$expected_code" ]; then
-        echo "  ✓  [$actual_code] $label${cache:+  (X-Cache: $cache)}"
-        ((pass++))
+record() {
+    local ok="$1"
+    local label="$2"
+    local detail="${3:-}"
+    if [ "$ok" -eq 1 ]; then
+        echo "  ✓  $label"
+        pass=$((pass + 1))
     else
-        echo "  ✗  [$actual_code != $expected_code] $label"
-        echo "     body: $body"
-        ((fail++))
+        echo "  ✗  $label${detail:+ — $detail}"
+        fail=$((fail + 1))
+    fi
+}
+
+request() {
+    local allow_ws_timeout=0
+    if [ "${1:-}" = "--allow-ws-timeout" ]; then
+        allow_ws_timeout=1
+        shift
+    fi
+    local rc=0
+    response=$("${CURL[@]}" -i "$@" 2>&1) || rc=$?
+    code=$(printf '%s\n' "$response" | awk '/^HTTP\// { value=$2 } END { print value }')
+    body=$(printf '%s\n' "$response" | awk 'found { print } /^\r?$/ { found=1 }')
+    if [ "$rc" -ne 0 ] && ! { [ "$allow_ws_timeout" -eq 1 ] && [ "$rc" -eq 28 ] && [ "$code" = "101" ]; }; then
+        record 0 "transport $*" "curl exit $rc"
+    fi
+}
+
+header() {
+    local name="$1"
+    printf '%s\n' "$response" | awk -v wanted="$name" '
+        index(tolower($0), tolower(wanted) ":") == 1 {
+            sub("^[^:]*:[[:space:]]*", ""); sub("\\r$", ""); value=$0
+        }
+        END { print value }
+    '
+}
+
+expect_code() {
+    local label="$1"
+    local expected="$2"
+    if [ "$code" = "$expected" ]; then
+        record 1 "$label [$code]"
+    else
+        record 0 "$label" "HTTP ${code:-<none>}, expected $expected; body=$body"
+    fi
+}
+
+expect_header() {
+    local label="$1"
+    local name="$2"
+    local expected="$3"
+    local actual
+    actual=$(header "$name")
+    if [ "$actual" = "$expected" ]; then
+        record 1 "$label [$name: $actual]"
+    else
+        record 0 "$label" "$name=${actual:-<missing>}, expected $expected"
+    fi
+}
+
+expect_json() {
+    local label="$1"
+    local predicate="$2"
+    local rc=0
+    printf '%s' "$body" | python3 -c '
+import json, sys
+document = json.load(sys.stdin)
+scope = {"__builtins__": {"type": type, "int": int, "list": list, "any": any}, "d": document}
+if not eval(sys.argv[1], scope, {}):
+    raise SystemExit(1)
+' "$predicate" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        record 1 "$label"
+    else
+        record 0 "$label" "JSON assertion failed; body=$body"
     fi
 }
 
@@ -30,144 +98,94 @@ echo ""
 echo "Target: $BASE"
 echo "$SEP"
 
-# ── GET /health ──────────────────────────────────────────────────────────────
-echo "GET /health"
-r=$($CURL -i "$BASE/health")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-body=$(echo "$r" | tail -1)
-check "/health" "200" "$code" "$body"
-echo "     $body"
-echo ""
+request "$BASE/health"
+expect_code "GET /health" 200
+expect_json "/health readiness JSON" 'd.get("status") == "ok" and d.get("db") is True and d.get("redis") is True'
 
-# ── GET / (redirect) ─────────────────────────────────────────────────────────
-echo "GET / → redirect"
-r=$($CURL -i "$BASE/")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-location=$(echo "$r" | grep -i "^Location:" | tr -d '\r')
-echo "     $location"
-check "/ redirect" "302" "$code" ""
-echo ""
-# Note: if 301 is used instead of 302, update expected above
+request "$BASE/"
+expect_code "GET / redirect" 302
+expect_header "GET / redirect target" Location "/static/index.html"
 
-# ── GET /static/index.html ───────────────────────────────────────────────────
-echo "GET /static/index.html"
-r=$($CURL -i "$BASE/static/index.html")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-check "/static/index.html" "200" "$code" ""
-echo ""
+request "$BASE/static/index.html"
+expect_code "GET /static/index.html" 200
 
-# ── GET /tasks (first hit → MISS) ────────────────────────────────────────────
-echo "GET /tasks  [1st call → expect X-Cache: MISS]"
-r=$($CURL -i "$BASE/tasks")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-body=$(echo "$r" | tail -1)
-cache=$(echo "$r" | grep -i "^X-Cache:" | awk '{print $2}' | tr -d '\r')
-check "/tasks (1st)" "200" "$code" "$body" "$cache"
-echo "     tasks count: $(echo "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("tasks",[])), "tasks, total=", d.get("total","?"))' 2>/dev/null || echo "parse error: $body")"
-echo ""
+request "$BASE/tasks"
+expect_code "GET /tasks first" 200
+expect_header "GET /tasks first cache" X-Cache MISS
+expect_json "GET /tasks first JSON" 'type(d.get("tasks")) is list and type(d.get("total")) is int'
 
-# ── GET /tasks (second hit → HIT) ────────────────────────────────────────────
-echo "GET /tasks  [2nd call → expect X-Cache: HIT]"
-r=$($CURL -i "$BASE/tasks")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-body=$(echo "$r" | tail -1)
-cache=$(echo "$r" | grep -i "^X-Cache:" | awk '{print $2}' | tr -d '\r')
-check "/tasks (2nd)" "200" "$code" "$body" "$cache"
-echo "     tasks count: $(echo "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("tasks",[])), "tasks, total=", d.get("total","?"))' 2>/dev/null || echo "parse error: $body")"
-echo ""
+request "$BASE/tasks"
+expect_code "GET /tasks second" 200
+expect_header "GET /tasks second cache" X-Cache HIT
+expect_json "GET /tasks second JSON" 'type(d.get("tasks")) is list and type(d.get("total")) is int'
 
-# ── POST /tasks ───────────────────────────────────────────────────────────────
-echo "POST /tasks  [create]"
-r=$($CURL -i -X POST "$BASE/tasks" \
-    -H "Content-Type: application/json" \
-    -d '{"title":"Test Task","description":"From test script","status":"pending"}')
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-body=$(echo "$r" | tail -1)
-check "POST /tasks" "201" "$code" "$body"
-TASK_ID=$(echo "$body" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
-echo "     created id: ${TASK_ID:-PARSE_FAILED   body=$body}"
-echo ""
-
-# ── GET /tasks (after create → cache MISS, invalidated) ──────────────────────
-echo "GET /tasks  [after POST → cache should be MISS (invalidated)]"
-r=$($CURL -i "$BASE/tasks")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-body=$(echo "$r" | tail -1)
-cache=$(echo "$r" | grep -i "^X-Cache:" | awk '{print $2}' | tr -d '\r')
-check "/tasks (after POST)" "200" "$code" "$body" "$cache"
-echo "     tasks count: $(echo "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("tasks",[])), "tasks, total=", d.get("total","?"))' 2>/dev/null || echo "parse error: $body")"
-echo ""
-
-if [ -n "$TASK_ID" ]; then
-    # ── GET /tasks/:id ───────────────────────────────────────────────────────
-    echo "GET /tasks/$TASK_ID"
-    r=$($CURL -i "$BASE/tasks/$TASK_ID")
-    code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-    body=$(echo "$r" | tail -1)
-    check "GET /tasks/:id" "200" "$code" "$body"
-    echo "     $body"
-    echo ""
-
-    # ── PUT /tasks/:id ───────────────────────────────────────────────────────
-    echo "PUT /tasks/$TASK_ID  [update status → in_progress]"
-    r=$($CURL -i -X PUT "$BASE/tasks/$TASK_ID" \
-        -H "Content-Type: application/json" \
-        -d '{"title":"Test Task","description":"Updated","status":"in_progress"}')
-    code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-    body=$(echo "$r" | tail -1)
-    check "PUT /tasks/:id" "200" "$code" "$body"
-    echo "     $body"
-    echo ""
-
-    # ── GET /tasks/:id  verify update ────────────────────────────────────────
-    echo "GET /tasks/$TASK_ID  [verify update]"
-    r=$($CURL -i "$BASE/tasks/$TASK_ID")
-    code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-    body=$(echo "$r" | tail -1)
-    check "GET /tasks/:id (after PUT)" "200" "$code" "$body"
-    echo "     $body"
-    echo ""
-
-    # ── DELETE /tasks/:id ────────────────────────────────────────────────────
-    echo "DELETE /tasks/$TASK_ID"
-    r=$($CURL -i -X DELETE "$BASE/tasks/$TASK_ID")
-    code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-    body=$(echo "$r" | tail -1)
-    check "DELETE /tasks/:id" "200" "$code" "$body"
-    echo "     $body"
-    echo ""
-
-    # ── GET /tasks/:id  after delete ─────────────────────────────────────────
-    echo "GET /tasks/$TASK_ID  [after delete → expect 404]"
-    r=$($CURL -i "$BASE/tasks/$TASK_ID")
-    code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-    body=$(echo "$r" | tail -1)
-    check "GET /tasks/:id (404)" "404" "$code" "$body"
-    echo ""
+request -X POST "$BASE/tasks" -H "Content-Type: application/json" \
+    -d '{"title":"Test Task","description":"original","status":"pending"}'
+expect_code "POST /tasks" 201
+expect_json "POST /tasks response" 'type(d.get("id")) is int and d.get("id") > 0 and d.get("status") == "created"'
+TASK_ID=$(printf '%s' "$body" | python3 -c 'import json,sys; value=json.load(sys.stdin).get("id"); print(value if type(value) is int and value > 0 else "")' 2>/dev/null || true)
+if [ -z "$TASK_ID" ]; then
+    record 0 "POST /tasks produced a usable ID" "body=$body"
+    TASK_ID=0
+else
+    record 1 "POST /tasks produced ID $TASK_ID"
 fi
 
-# ── 404 unknown route ─────────────────────────────────────────────────────────
-echo "GET /nonexistent  [expect 404]"
-r=$($CURL -i "$BASE/nonexistent")
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-check "/nonexistent" "404" "$code" ""
-echo ""
+request "$BASE/tasks"
+expect_code "GET /tasks after POST" 200
+expect_header "GET /tasks after POST cache invalidation" X-Cache MISS
+expect_json "GET /tasks contains created task" 'any(t.get("id") == int("'$TASK_ID'") and t.get("description") == "original" for t in d.get("tasks", []))'
 
-# ── WebSocket upgrade ─────────────────────────────────────────────────────────
-echo "GET /ws  [WebSocket upgrade → expect 101]"
-# curl with max-time 2: gets the 101 then times out (normal)
-r=$($CURL --max-time 2 -i "$BASE/ws" \
+request "$BASE/tasks/$TASK_ID"
+expect_code "GET /tasks/:id" 200
+expect_json "GET /tasks/:id initial fields" 'd.get("id") == int("'$TASK_ID'") and d.get("description") == "original" and d.get("status") == "pending"'
+
+# Omitted description preserves the existing text.
+request -X PUT "$BASE/tasks/$TASK_ID" -H "Content-Type: application/json" \
+    -d '{"status":"in_progress"}'
+expect_code "PUT /tasks/:id without description" 200
+expect_json "PUT /tasks/:id response" 'd.get("id") == int("'$TASK_ID'") and d.get("status") == "updated"'
+
+request "$BASE/tasks/$TASK_ID"
+expect_code "GET after omitted description" 200
+expect_json "omitted description is preserved" 'd.get("description") == "original" and d.get("status") == "in_progress"'
+
+# A present empty description is data and clears the column.
+request -X PUT "$BASE/tasks/$TASK_ID" -H "Content-Type: application/json" \
+    -d '{"description":""}'
+expect_code "PUT /tasks/:id empty description" 200
+
+request "$BASE/tasks/$TASK_ID"
+expect_code "GET after empty description" 200
+expect_json "empty description is stored" 'd.get("description") == "" and d.get("status") == "in_progress"'
+
+request -X DELETE "$BASE/tasks/$TASK_ID"
+expect_code "DELETE /tasks/:id" 200
+expect_json "DELETE /tasks/:id response" 'd.get("id") == int("'$TASK_ID'") and d.get("status") == "deleted"'
+
+request "$BASE/tasks/$TASK_ID"
+expect_code "GET deleted task" 404
+
+request "$BASE/nonexistent"
+expect_code "GET /nonexistent" 404
+
+# curl times out after receiving 101 because the upgraded connection remains open.
+request --allow-ws-timeout --max-time 2 "$BASE/ws" \
     -H "Upgrade: websocket" \
     -H "Connection: Upgrade" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-    -H "Sec-WebSocket-Version: 13" 2>&1)
-code=$(echo "$r" | grep -m1 "^HTTP" | awk '{print $2}')
-echo "     $(echo "$r" | grep -E "^HTTP|^Upgrade:|^Connection:|^Sec-WebSocket" | tr '\n' ' ')"
-check "/ws upgrade" "101" "$code" ""
-echo ""
+    -H "Sec-WebSocket-Version: 13"
+expect_code "GET /ws upgrade" 101
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 echo "$SEP"
 total=$((pass + fail))
 echo "  Results: $pass/$total passed  |  $fail failed"
-echo ""
+
+if [ "$total" -lt "$MIN_CHECKS" ]; then
+    echo "  ✗  only $total checks ran; floor is $MIN_CHECKS"
+    exit 1
+fi
+if [ "$fail" -ne 0 ]; then
+    exit 1
+fi
+exit 0

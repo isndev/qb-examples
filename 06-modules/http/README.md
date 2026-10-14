@@ -142,7 +142,8 @@ Below is a list of the available examples and the key features they showcase:
       `normalize_whitespace`), with the `a.b`, `a[i]` and `a[*]` path grammar.
     * `RequestValidator` — body schema, query, header and path params, plus per-field sanitizers,
       in one call against a whole `qb::http::Request`.
-    * `qb::http::validation_middleware<Session>(...)` handed to `router().use(...)`.
+    * `qb::http::validation_middleware<Session>(...)` scoped through sibling route groups:
+      POST keeps its body schema and sanitizers; bodyless GET checks query, header and path only.
     * `Result` / `Error` — the out-parameter and the `{field_path, rule_violated, message,
       offending_value}` shape you read failures out of.
 * **How it is checked**: a self-check runs BEFORE the server binds and prints a gated verdict for
@@ -190,6 +191,8 @@ Below is a list of the available examples and the key features they showcase:
     * MIME type detection, ETag, Last-Modified headers.
     * Interaction with static HTML/JS/CSS frontend (`index.html`, `upload.html`, etc. in `resources/static`).
       The list displays metadata as text and encodes filenames as URL path segments for download and delete.
+      The upload indicator survives status updates; a concurrent second submit is ignored,
+      and a rejected network request leaves the form available for retry.
 * **Key Endpoints**:
     * `GET /static/*path`: Serves files from `resources/static`.
     * `GET /uploads/*path`: Serves files from `uploads` directory (created by example).
@@ -251,12 +254,15 @@ Below is a list of the available examples and the key features they showcase:
 * **Features**:
     * `qb::http::ssl::Server<>` for HTTPS.
     * Uses the **bundled** self-signed dev certificate — it does not generate one. `_cert_file` /`_key_file` are
-      hard-coded to `resources/ssl/cert.pem` and `resources/ssl/key.pem` (`11-https.cpp:48-49`), resolved next
-      to the executable with `qb::io::sys::resolve_resource` (`:90-91`). If either file is missing the example prints
-      `SSL certificate not found (...)` and refuses to start (`:92-98`, `:146-149`) — there is no `openssl`
-      invocation and no `system()` call anywhere in this directory.
-    * Configuring the server with certificate and private key files (`listen(uri, cert, key)`, `:156`).
-    * Setting up a separate HTTP server on port 8080 that issues 301 redirects to the HTTPS server on port 8443.
+      hard-coded to `resources/ssl/cert.pem` and `resources/ssl/key.pem` (`11-https.cpp:49-50`), resolved next
+      beside the executable using `qb::io::sys::resolve_resource` (`:100-101`). Startup rejects
+      absent files with `SSL certificate not found (...)` (`:102-108`), and the listener also
+      refuses to start without prepared certificates (`:179-183`). No `openssl` invocation or
+      `system()` call exists in this directory.
+    * Starting the TLS listener with certificate and private key paths via `listen(uri, cert, key)` (`:190`).
+    * A separate HTTP server on port 8080 redirects `localhost` and `127.0.0.1` requests to
+      the HTTPS listener on 8443, keeping path and query. Other Host values, including IPv6
+      literals the example does not listen on, receive 400 instead of a broken or external redirect.
     * Security-related headers (HSTS, CSP - conceptual).
 * **Servers**:
     * HTTPS server on `https://localhost:8443`
