@@ -66,17 +66,20 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
           `void on(qb::io::async::event::timer const&)` as the expiry handler.
         * Alternates writing to and reading from `qb_io_example.txt` using synchronous
           `qb::io::sys::file` calls — `open`/`read`/`write`/`close` — triggered by timer events.
-        * Reschedules itself with **`setTimeout(_interval)`** (`01-event-loop.cpp:179`). Not
+        * Reschedules itself with **`setTimeout(_interval)`** (`01-event-loop.cpp:180`). Not
           `updateTimeout()`: the watcher that just fired is one-shot and is not re-armed on that
           branch, and `updateTimeout()` only stamps the last-activity time — it never restarts
-          the timer. The source says so at `:176-178`. `TimerDemonstration` re-arms the same way
-          at `:291`.
+          the timer. The source says so at `:177-179`. `TimerDemonstration` re-arms the same way
+          at `:292`.
     * **`TimerDemonstration`**: the same mixin, showing a recurring timer logging "tick".
     * **`FileWatcher`**: drops to `ev::stat` (a raw `libev` watcher) through
       `qb::io::async::listener::current.loop()`, to monitor one path for attribute changes. For a
       higher-level abstraction see `qb::io::async::directory_watcher`.
     * **`main`**: `qb::io::async::init()`, signal handling, then
       `qb::io::async::run(EVRUN_NOWAIT)` in a loop for a fixed duration.
+      The native handler only stores to a guaranteed lock-free atomic
+      (`01-event-loop.cpp:100-104`); main logs the signal after leaving that context
+      (`:414-419`).
 * **Run**: `./build/presets/release/examples/02-io/qb-example-io-event-loop`
 
 ---
@@ -180,7 +183,9 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   passes it to `trust()` and performs a **real** chain check rather than reaching for
   `set_insecure()`. Section 2 connects a client that trusts only the system store and watches the
   handshake fail; section 3 shows what `set_insecure()` buys and costs. All three are asserted, so
-  a run where the untrusted client got in exits non-zero.
+  a run where the untrusted client got in exits non-zero. The connected client has a global
+  owner for the connector callback, but a function-scope guard releases that owner on every
+  return from `main`, before the thread's async listener is destroyed.
 * **`REQUIRES ssl`**, and it reads `resources/ssl/cert.pem` relatively — run it from its own
   directory, where the build stages that tree.
 * **Run**: `cd build/presets/release/examples/02-io && ./qb-example-io-tls`
@@ -219,6 +224,8 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   noticed, from `async::defer` — `async::callback(f)` with no delay runs **inline** and would not
   help. Backpressure is only visible when the buffers are smaller than the message, so the server
   shrinks `SO_SNDBUF` deliberately; the program exits non-zero if `pending_write` never fired.
+  Both globally owned clients are released by a function-scope guard before the local server
+  and the thread's async listener end their lifetimes, including an early return.
 * **Run**: `./build/presets/release/examples/02-io/qb-example-io-graceful-drain`
 
 ---

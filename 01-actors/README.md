@@ -176,6 +176,8 @@ the file's code.
   half of the boundary `03-event-payloads.cpp` crosses with one.
 * **Actors**: a `Drain` that empties a `qb::lockfree::mpsc::ringbuffer` a bounded batch per loop
   turn, fed by five `std::thread`s (three with a slot of their own, two sharing).
+  It observes producer completion **before** the final empty dequeue snapshot
+  (`12-lockfree-bridge.cpp:215-237`), so the last published job cannot be missed at retirement.
 * **QB Features**: `qb::lockfree::mpsc::ringbuffer` and why its three enqueue overloads are not
   interchangeable, a bounded ring as backpressure, `qb::lockfree::SpinLock` (`trylock`,
   `trylock_for`, `lock`, `unlock`) and when not to use it, `qb::ICallback`.

@@ -59,6 +59,15 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **MPSC lesson drains the last published job (Huly QB-718).** Its bounded callback
+  reads producer completion before checking both queues empty, so a final enqueue
+  cannot arrive between the empty check and retirement.
+- **Event-loop lesson handles native signals without logging inside the handler
+  (Huly QB-719).** A lock-free atomic carries the signal to the main loop; output
+  runs after the handler returns.
+- **TLS and graceful-drain lessons release their async clients before the local
+  listener ends (Huly QB-723).** Normal and early returns clean up the client owners
+  while the event loop they registered with still exists.
 - **Redis Pub/Sub waits for every confirmed subscription (Huly QB-825).** The lesson
   publishes only after both subscribers have acknowledged both channels, and ignores
   duplicate or mismatched acknowledgements.

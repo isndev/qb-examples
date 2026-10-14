@@ -63,6 +63,7 @@
 #include <qb/io.h>
 #include <qb/io/async.h>
 #include <qb/io/system/file.h>
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 
@@ -72,8 +73,10 @@ constexpr const char *TEST_FILENAME  = "qb_io_example.txt";
 constexpr int         MAX_OPERATIONS = 5;
 constexpr double      TIMER_INTERVAL = 1.0; // seconds
 
-// Global atomic flag for termination
-std::atomic<bool> g_running{true};
+// The CRT may deliver a console signal on another thread. Use a lock-free atomic so
+// the handler performs only signal-safe work and the event-loop thread can read it.
+static_assert(std::atomic<unsigned int>::is_always_lock_free);
+std::atomic<unsigned int> g_termination_signal{0};
 
 // Utility function to get timestamp string
 std::string
@@ -97,9 +100,7 @@ printSectionHeader(const std::string &title) {
 // Signal handler for graceful termination
 void
 signalHandler(int signal) {
-    printSectionHeader("Signal Received");
-    qb::io::cout() << "Caught signal " << signal << " (" << (signal == SIGINT ? "SIGINT" : "SIGTERM") << ")" << std::endl;
-    g_running = false;
+    g_termination_signal.store(static_cast<unsigned int>(signal), std::memory_order_relaxed);
 }
 } // namespace
 
@@ -158,7 +159,7 @@ public:
         qb::io::cout() << "FileProcessor: Timer event received at " << getCurrentTimestamp() << std::endl;
 
         // Check termination conditions
-        if (_operation_count >= _max_operations || !g_running) {
+        if (_operation_count >= _max_operations || g_termination_signal.load(std::memory_order_relaxed) != 0) {
             qb::io::cout() << "FileProcessor: " << (_operation_count >= _max_operations ? "Completed all operations" : "Termination requested")
                            << ", stopping" << std::endl;
             return;
@@ -285,7 +286,7 @@ public:
         qb::io::cout() << "TimerDemonstration: Tick #" << _count << " at " << getCurrentTimestamp() << std::endl;
 
         // Check termination conditions
-        if (_count < _max_ticks && g_running) {
+        if (_count < _max_ticks && g_termination_signal.load(std::memory_order_relaxed) == 0) {
             // Continue with the next tick. See FileProcessor::on() — `setTimeout()` is
             // what re-arms the one-shot watcher; `updateTimeout()` would not.
             setTimeout(TICK_INTERVAL);
@@ -404,10 +405,16 @@ main() {
     // Run the event loop until completion or termination request
     int iterations = 0;
 
-    while (g_running && iterations < MAX_ITERATIONS) {
+    while (g_termination_signal.load(std::memory_order_relaxed) == 0 && iterations < MAX_ITERATIONS) {
         qb::io::async::run(EVRUN_NOWAIT);
         std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
         iterations++;
+    }
+
+    const int received_signal = static_cast<int>(g_termination_signal.load(std::memory_order_relaxed));
+    if (received_signal != 0) {
+        printSectionHeader("Signal Received");
+        qb::io::cout() << "Caught signal " << received_signal << " (" << (received_signal == SIGINT ? "SIGINT" : "SIGTERM") << ")" << std::endl;
     }
 
     printSectionHeader("Event Loop Completed");

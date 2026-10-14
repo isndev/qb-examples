@@ -212,8 +212,11 @@ public:
         // There are TWO rings here, so the budget has to be split between them or the turn takes
         // 2 x DRAIN_BUDGET and the sentence this program prints about itself is false. It was, on
         // the first run: 32 was advertised and 64 was measured.
-        std::uint64_t this_turn  = 0;
-        const auto    took_owned = _bridge->owned_slots.dequeue(_scratch.data(), DRAIN_BUDGET);
+        // Observe the producer's release store BEFORE the empty snapshot. If it still says
+        // "producing", a final enqueue may follow this turn's dequeues; try again next turn.
+        const bool    producers_done = !_bridge->producing.load(std::memory_order_acquire);
+        std::uint64_t this_turn      = 0;
+        const auto    took_owned     = _bridge->owned_slots.dequeue(_scratch.data(), DRAIN_BUDGET);
         for (std::size_t i = 0; i < took_owned; ++i)
             _sum += _scratch[i].value;
         _owned += took_owned;
@@ -228,10 +231,10 @@ public:
         if (this_turn > _peak)
             _peak = this_turn;
 
-        // Done when the producers are finished AND both rings have been walked empty. The order
-        // matters: read `producing` AFTER the dequeues, or a producer's last write can land
-        // between the two reads and be left in the ring forever.
-        if (!_bridge->producing.load(std::memory_order_acquire) && this_turn == 0) {
+        // The acquire above synchronizes with the store after every producer joined. Only a
+        // subsequent empty dequeue can then prove both rings drained; an earlier empty read
+        // followed by the final enqueue must not retire this callback.
+        if (producers_done && this_turn == 0) {
             qb::io::cout() << "[bounded] the drain takes at most " << DRAIN_BUDGET
                            << " items per loop turn — an UNBOUNDED drain starves\n"
                               "           every other actor on this core, because the turn never ends while a\n"

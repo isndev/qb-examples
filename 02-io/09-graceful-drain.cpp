@@ -364,6 +364,16 @@ main() {
     g_port = server.transport().local_endpoint().port();
     qb::io::cout() << "[server] listening on 127.0.0.1:" << g_port << "\n\n";
 
+    // Both global clients own async watcher wrappers. A local guard destroys those
+    // owners on every return before this thread's listener ends its lifetime, and
+    // before the server (declared above) is destroyed.
+    struct ClientLifetime {
+        ~ClientLifetime() {
+            g_client.reset();
+            g_promoted.reset();
+        }
+    } client_lifetime;
+
     g_client = std::make_unique<Drain>();
     if (!g_client->connect_to(g_port)) {
         qb::io::cerr() << "[fatal] the client could not connect\n";

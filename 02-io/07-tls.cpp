@@ -194,6 +194,15 @@ main() {
         return 1;
     }
 
+    // The connector below can create a globally held async client. Its base unregisters
+    // from this thread's listener on destruction; release it on every later return,
+    // before the local server and thread_local listener end their lifetimes.
+    struct ClientLifetime {
+        ~ClientLifetime() {
+            g_client.reset();
+        }
+    } client_lifetime;
+
     // The connector runs the TCP connect AND the TLS handshake on this loop, so server and client
     // live in one thread. (A blocking `connect_v4()` on a secure socket would deadlock here: it
     // waits for a handshake the server cannot answer while this thread is inside it.)
