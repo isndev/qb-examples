@@ -173,7 +173,7 @@ public:
         if (getIndex() == 0) {
             const qb::ActorId peer = getServiceId<ConfigTag>(1);
             qb::io::cout() << "[worker@0] addressed the core-1 service with getServiceId, no lookup and no plumbing "
-                           << "(its id is " << static_cast<std::uint32_t>(peer) << ", computed from the tag)\n";
+                           << "(its id is " << peer.raw64() << ", computed from the tag)\n";
             push<Announce>(peer, "worker@0", id());
         } else {
             push<Ack>(_reporter); // core 1 has nothing to announce; report straight away
