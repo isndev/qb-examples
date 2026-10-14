@@ -284,6 +284,7 @@ public:
             if (_header.magic != qb_protocol::MAGIC || _header.version != qb_protocol::VERSION) {
                 qb::io::cerr() << "Invalid header magic or version - Received Magic: 0x" << std::hex << _header.magic << " Version: 0x"
                                << static_cast<int>(_header.version) << std::dec << std::endl;
+                this->not_ok();
                 reset();
                 return 0;
             }
@@ -294,14 +295,16 @@ public:
             // Verify payload length to prevent buffer overflow
             if (_header.length > 1024 * 1024) { // 1MB safety limit
                 qb::io::cerr() << "Payload size too large: " << _header.length << " bytes" << std::endl;
+                this->not_ok();
                 reset();
                 return 0;
             }
 
-            // Resize payload buffer to expected size
-            _payload.resize(_header.length);
+            // A complete header is not a complete message. Wait for the payload before
+            // reporting a size that the I/O component would otherwise reject.
+            if (buffer.size() < HEADER_SIZE + _header.length)
+                return 0;
 
-            // Return expected total message size
             return HEADER_SIZE + _header.length;
         }
 

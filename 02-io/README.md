@@ -150,12 +150,14 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
   ./build/presets/release/examples/02-io/qb-example-io-custom-protocol client 127.0.0.1 9876
   ```
   The client sends `HELLO`, then echoes whatever you type. `quit` drains earlier replies
-  before exit; EOF ends input. A peer disconnect or external stop also wakes a partial
-  console line before joining the input worker. The server stops on Enter or a signal;
+  before exit; EOF ends input. A peer disconnect also wakes a partial console line before
+  joining the input worker. The server stops on Enter or a signal;
   EOF alone leaves its network service running. While a HELLO or echo response is pending,
   the client bounds each I/O wait with `listener::run_once_for(10ms)` so its callback deadline
   is checked even when a silent peer keeps the socket open and Linux timerfd is enabled.
   An unanswered HELLO expires after five seconds and makes client mode exit nonzero.
+  A valid frame may arrive as header and payload in separate reads; invalid magic, version
+  or payload length closes the connection instead of waiting for more bytes.
 
 ---
 

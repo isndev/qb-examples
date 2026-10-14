@@ -183,8 +183,8 @@ The client uses a similar dual-actor architecture to separate network logic from
 
 `main` owns the cancellable `LineSource` and stops it after the engine joins. The command actor
 only polls ready lines and terminal events every 50 ms; it never waits for `stdin` or joins the
-reader on an actor core. `/quit`, EOF and input errors disconnect first, then stop the actors.
-Signals can also stop the actors while a partial input line remains open.
+reader on an actor core. `/quit`, EOF, input errors and signals request the same bounded actor
+shutdown, even while a partial input line remains open.
 An optional URL argument triggers one connection after the WebSocket actor announces its ID.
 It uses the same `/connect` path as typed input; URLs over 256 bytes are rejected before the
 bounded connection event is created.
@@ -194,15 +194,20 @@ connection-intent deadline also ends a stalled DNS lookup or handshake, clears t
 state and permits `/connect` again; a late resolver result cannot install its old socket. Its
 core can still process username and shutdown events while a resolver or peer is slow.
 
+The command client displays a chat line only when the server echoes it, including the sender's;
+an unconnected send displays an error without claiming that the message was delivered.
 When the server sends Close, the manual client echoes its validated payload in a masked Close
 frame. While that frame is still being written, `/connect` is refused; after the socket closes,
 a later `/connect` clears the old buffers and WebSocket parser, installs a fresh HTTP parser and
 handshake key, and announces the user again. A typed `/disconnect` also closes the socket first.
-On SIGINT or SIGTERM while connected, the client sends one **masked** Close frame and waits for
-the peer's echo or transport teardown before ending the actor. A two-second deadline forces
-teardown if the peer stays silent, so shutdown stays bounded even when output cannot drain.
-`check-chat-shutdown.py --build-dir <build>` exercises these paths against a loopback peer,
-including a full send buffer before Close, and bounds the client's exit.
+On `/quit`, EOF, input error, SIGINT or SIGTERM while connected, the client sends one
+**masked** Close frame and waits for the peer's echo or transport teardown before ending the
+actor. A two-second deadline forces teardown if the peer stays silent, so shutdown stays bounded
+even when output cannot drain.
+`check-chat-shutdown.py --build-dir <build>` checks the peer-initiated Close reply,
+reconnect and a full send buffer before Close against a loopback peer.
+`check-interactive-stdin-shutdown.py --build-dir <build>` checks bounded client exit on
+`/quit`, EOF and SIGTERM with an open or partial console line.
 
 ---
 

@@ -55,6 +55,12 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Manual WebSocket chat displays accepted messages once (Huly QB-1042).** The command
+  client waits for the server echo, including its own messages; an unconnected send prints
+  an error without first claiming delivery.
+- **Custom-protocol framing rejects invalid headers and waits for fragmented payloads
+  (Huly QB-1043).** Invalid magic, version or oversized length closes the connection;
+  a valid header alone no longer makes the I/O layer reject a not-yet-complete message.
 - **Custom-protocol client bounds pending reply waits (Huly QB-722).** It arms the
   listener before HELLO and limits blocking passes while callbacks await replies, so a
   silent peer reaches the advertised handshake deadline and exits with failure.

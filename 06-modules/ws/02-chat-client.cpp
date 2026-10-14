@@ -752,8 +752,8 @@ private:
         } else {
             // Regular chat message
             if (_websocket_actor_id.is_valid()) {
+                // Display only the server echo after it accepts the message.
                 push<UserInputEvent>(_websocket_actor_id, input);
-                display_message("<" + _current_username + "> " + input, "own");
             } else {
                 display_message("WebSocket connection not initialized. Please wait...", "error");
             }
@@ -830,8 +830,6 @@ private:
             qb::io::cout() << "\033[35m" << message << "\033[0m\n"; // Magenta
         } else if (type == "chat") {
             qb::io::cout() << "\033[37m" << message << "\033[0m\n"; // White
-        } else if (type == "own") {
-            qb::io::cout() << "\033[32m" << message << "\033[0m\n"; // Green for own messages
         } else if (type == "join") {
             qb::io::cout() << "\033[32m" << message << "\033[0m\n"; // Green for joins
         } else if (type == "leave") {
