@@ -148,8 +148,8 @@ class ClientPeer:
             raise AssertionError(f"missing masked user_joined: {opcode}, {masked}, {payload!r}")
         return peer
 
-    def stop(self):
-        if self.proc.poll() is None:
+    def stop(self, send_quit=True):
+        if send_quit and self.proc.poll() is None:
             self.command("/quit")
         # Keep the writer open while waiting: closing stdin would unblock an
         # actor-owned getline and hide the shutdown deadlock this test covers.
@@ -167,6 +167,14 @@ class ClientPeer:
         if code != 0:
             raise AssertionError(f"chat client exited {code}: {output[-1500:]}")
         return output
+
+    def close_from_cli(self, peer):
+        self.command("/quit")
+        opcode, masked, payload = recv_frame(peer)
+        if opcode != 8 or not masked or payload[:2] != b"\x03\xe8":
+            raise AssertionError(f"/quit Close: opcode={opcode}, masked={masked}, payload={payload!r}")
+        peer.sendall(b"\x88\x02\x03\xe8")
+        return self.stop(send_quit=False)
 
     def close(self):
         for peer in self.peers:
@@ -196,15 +204,21 @@ def check_client_case(binary, peer_close):
         else:
             client.command("/disconnect")
         expect_tcp_closed(first)
+        # The first connection must report its disconnect before reconnect.
+        # During /quit the CLI may already be gone when the second callback is
+        # queued; the wire Close, not that incidental message, is the oracle.
+        client.wait_output("Disconnected from server")
+        if peer_close:
+            client.wait_output("Connection closed:")
         client.command(f"/connect {client.url}")
-        client.accept_upgrade()
+        second = client.accept_upgrade()
         if client.keys[0] == client.keys[1]:
             raise AssertionError("reconnect reused its WebSocket handshake key")
-        output = client.stop()
-        if output.count("Disconnected from server") != 2:
-            raise AssertionError("expected one disconnect callback per connection")
-        if peer_close and output.count("Connection closed:") != 1:
-            raise AssertionError("expected one peer Close callback")
+        output = client.close_from_cli(second)
+        if output.count("Disconnected from server") not in (1, 2):
+            raise AssertionError("expected the first disconnect callback, and at most one at shutdown")
+        if peer_close and output.count("Connection closed:") not in (1, 2):
+            raise AssertionError("expected the first peer Close callback, and at most one at shutdown")
         print(f"PASS client {label}: two handshakes, bounded exit")
     except Exception as exc:
         raise AssertionError(f"client {label}: {exc}") from exc
@@ -241,12 +255,13 @@ def check_client_backpressure(binary):
         if opcode != 8 or not masked or payload != b"\x03\xe8":
             raise AssertionError(f"partial-write Close reply: {opcode}, {masked}, {payload!r}")
         expect_tcp_closed(first)
+        client.wait_output("Disconnected from server")
         client.command(f"/connect {client.url}")
-        client.accept_upgrade()
-        output = client.stop()
-        if output.count("Disconnected from server") != 2:
-            raise AssertionError("expected one disconnect callback per connection")
-        print(f"PASS client blocked Close: {count} masked Pong, complete masked Close, EOF, reconnect")
+        second = client.accept_upgrade()
+        output = client.close_from_cli(second)
+        if output.count("Disconnected from server") not in (1, 2):
+            raise AssertionError("expected the first disconnect callback, and at most one at shutdown")
+        print(f"PASS client blocked Close: {count} masked Pong, complete masked Close, /quit Close, EOF, reconnect")
     except Exception as exc:
         raise AssertionError(f"client blocked Close: {exc}") from exc
     finally:

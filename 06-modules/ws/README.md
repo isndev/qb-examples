@@ -205,7 +205,7 @@ On `/quit`, EOF, input error, SIGINT or SIGTERM while connected, the client send
 actor. A two-second deadline forces teardown if the peer stays silent, so shutdown stays bounded
 even when output cannot drain.
 `check-chat-shutdown.py --build-dir <build>` checks the peer-initiated Close reply,
-reconnect and a full send buffer before Close against a loopback peer.
+reconnect, a full send buffer before Close and the masked `/quit` Close against a loopback peer.
 `check-interactive-stdin-shutdown.py --build-dir <build>` checks bounded client exit on
 `/quit`, EOF and SIGTERM with an open or partial console line.
 
