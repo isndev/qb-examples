@@ -5,8 +5,8 @@
  *          same frame protocol the server speaks — which is what ws::coro_client will replace.
  * @demonstrates qb::http::ws::protocol<S>, qb::http::ws::generateKey, qb::http::ws::MessageText,
  *               qb::http::ws::MessageClose, qb::http::ws::CloseStatus::Normal,
- *               qb::http::WebSocketRequest, qb::Event, registerEvent<E>, transport().connect,
- *               qb::io::SocketStatus::Done
+ *               qb::http::WebSocketRequest, qb::Event, registerEvent<E>,
+ *               qb::io::async::tcp::connect, qb::ScopedCoroContext, ctx.offload
  * @prerequisites 06-modules/ws/01-chat-server
  * @expect "[CLIENT] WebSocket client actor started"
  * @expect "=== QB WebSocket Chat Client ==="
@@ -25,18 +25,23 @@
  */
 
 #include <chrono>
+#include <cstdint>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 #include "../../common/CancelableLineSource.h"
 #include <qb/main.h>
 #include <qb/actor.h>
 #include <qb/string.h>
 #include <qb/system/parse.h>
 #include <qb/io/async.h>
+#include <qb/io/async/coroutine.h>
+#include <qb/io/tcp/socket.h>
 #include <qbm/http/ws.h>
 #include <qb/json.h>
 #include <qb/io.h>
@@ -77,6 +82,13 @@ struct ConnectEvent : qb::Event {
 };
 
 struct DisconnectEvent : qb::Event {};
+struct ConnectDeadlineEvent : qb::Event {
+    std::uint64_t generation;
+    explicit ConnectDeadlineEvent(std::uint64_t attempt)
+        : generation(attempt) {}
+};
+struct CloseDeadlineEvent : qb::Event {};
+struct FinalizeShutdownEvent : qb::Event {};
 
 /**
  * @brief Self-addressed wake-ups for `CommandLineActor`'s two delays.
@@ -118,14 +130,18 @@ class WebSocketClientActor
     : public qb::Actor
     , public qb::io::use<WebSocketClientActor>::tcp::client<> {
 private:
-    std::string _username = "CLIUser";
-    std::string _server_url;
-    qb::ActorId _cmdline_actor_id;
-    bool        _connected      = false;
-    bool        _connecting     = false;
-    bool        _closing        = false; // Peer Close queued; wait for dispose before reusing I/O.
-    bool        _user_announced = false;
-    std::string _ws_key;
+    std::string          _username = "CLIUser";
+    std::string          _server_url;
+    qb::ActorId          _cmdline_actor_id;
+    bool                 _connected          = false;
+    bool                 _connecting         = false;
+    bool                 _closing            = false; // Peer Close queued; wait for dispose before reusing I/O.
+    bool                 _close_sent         = false;
+    bool                 _shutdown_requested = false;
+    bool                 _user_announced     = false;
+    std::string          _ws_key;
+    std::shared_ptr<int> _connect_attempt;
+    std::uint64_t        _connect_generation = 0;
 
 public:
     using Protocol    = qb::http::protocol<WebSocketClientActor>;
@@ -151,6 +167,9 @@ public:
         registerEvent<UsernameChangeEvent>(*this);
         registerEvent<ConnectEvent>(*this);
         registerEvent<DisconnectEvent>(*this);
+        registerEvent<ConnectDeadlineEvent>(*this);
+        registerEvent<CloseDeadlineEvent>(*this);
+        registerEvent<FinalizeShutdownEvent>(*this);
 
         // Inform CommandLine actor of our ID
         if (_cmdline_actor_id.is_valid()) {
@@ -187,6 +206,8 @@ public:
     // Handle connection requests
     void
     on(const ConnectEvent &event) {
+        if (_shutdown_requested)
+            return;
         if (_closing) {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Close in progress; retry /connect after closure", "warning");
             return;
@@ -213,21 +234,93 @@ public:
         reset_io_state();
         _ws_key = qb::http::ws::generateKey();
         this->switch_protocol<Protocol>(*this);
+        _connecting                    = true;
+        _close_sent                    = false;
+        _connect_attempt               = std::make_shared<int>(0);
+        const std::uint64_t generation = ++_connect_generation;
 
-        // Connect to the server
-        if (transport().connect(uri) == qb::io::SocketStatus::Done) {
-            _connecting = true;
-            start();
-            send_websocket_handshake(uri);
-        } else {
-            transport().close();
-            push<DisplayMessageEvent>(_cmdline_actor_id, "Failed to connect to server", "error");
+        // The URI form of async::tcp::connect still resolves DNS on this core.
+        // Resolve on the offload pool, then use its endpoint-list connector with
+        // a finite TCP deadline. The callback's weak token makes a cancelled or
+        // destroyed actor inert without keeping it alive.
+        const std::weak_ptr<int> attempt = _connect_attempt;
+        const std::string        url     = _server_url;
+        const int                family  = uri.af();
+        try {
+            // The TCP connector's deadline starts only after DNS. This actor-owned
+            // timer bounds the whole intent even if the offload worker never returns.
+            spawn([generation](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                co_await ctx.sleep(std::chrono::seconds(5));
+                ctx.template push<ConnectDeadlineEvent>(generation);
+            });
+            spawn([this, attempt, url, family, host, port](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                try {
+                    auto complete = [this, attempt, url](qb::io::tcp::socket &&socket) {
+                        const auto live = attempt.lock();
+                        if (!live)
+                            return;
+                        _connect_attempt.reset();
+                        if (!socket.is_open()) {
+                            _connecting = false;
+                            push<DisplayMessageEvent>(_cmdline_actor_id, "Failed to connect to server", "error");
+                            return;
+                        }
+                        try {
+                            transport() = std::move(socket);
+                            start();
+                            send_websocket_handshake(qb::io::uri(url));
+                        } catch (const std::exception &) {
+                            _connecting = false;
+                            disconnect_now();
+                            push<DisplayMessageEvent>(_cmdline_actor_id, "Could not start WebSocket handshake", "error");
+                        }
+                    };
+
+                    if (family == AF_UNIX) {
+                        if (ctx.cancelled() || !attempt.lock())
+                            co_return;
+                        qb::io::async::tcp::connect<qb::io::tcp::socket>(qb::io::uri(url), std::move(complete), std::chrono::seconds(5));
+                        co_return;
+                    }
+                    auto endpoints = co_await ctx.offload(
+                        [](int af, std::string name, uint16_t number) { return qb::io::tcp::resolve_endpoints(af, name, number); }, family,
+                        host, port);
+                    if (ctx.cancelled() || !attempt.lock())
+                        co_return;
+                    if (endpoints.empty()) {
+                        _connect_attempt.reset();
+                        _connecting = false;
+                        push<DisplayMessageEvent>(_cmdline_actor_id, "No address found for server", "error");
+                        co_return;
+                    }
+                    qb::io::async::tcp::connect<qb::io::tcp::socket>(std::move(endpoints), host, std::move(complete), std::chrono::seconds(5));
+                } catch (const qb::io::async::cancelled_error &) {
+                    co_return;
+                } catch (const std::exception &e) {
+                    if (ctx.cancelled() || !attempt.lock())
+                        co_return;
+                    _connect_attempt.reset();
+                    _connecting = false;
+                    push<DisplayMessageEvent>(_cmdline_actor_id, "Connection setup failed: " + std::string(e.what()), "error");
+                }
+            });
+        } catch (const std::exception &e) {
+            _connect_attempt.reset();
+            _connecting = false;
+            push<DisplayMessageEvent>(_cmdline_actor_id, "Connection setup failed: " + std::string(e.what()), "error");
         }
     }
 
     // Handle disconnect requests
     void
     on(const DisconnectEvent &event) {
+        // Invalidate any unresolved attempt even if a prior socket still awaits dispose.
+        _connect_attempt.reset();
+        if (_connecting && !transport().is_open()) {
+            _connecting = false;
+            push<DisplayMessageEvent>(_cmdline_actor_id, "Connection attempt cancelled", "info");
+            return;
+        }
         if (_closing) {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Close in progress", "warning");
             return;
@@ -239,6 +332,18 @@ public:
         } else {
             push<DisplayMessageEvent>(_cmdline_actor_id, "Not connected!", "warning");
         }
+    }
+
+    void
+    on(const ConnectDeadlineEvent &event) {
+        // A delayed event from an earlier attempt must not cancel a retry.
+        if (!_connecting || event.generation != _connect_generation)
+            return;
+        _connect_attempt.reset();
+        _connecting = false;
+        if (transport().is_open())
+            disconnect_now();
+        push<DisplayMessageEvent>(_cmdline_actor_id, "Connection timed out", "error");
     }
 
     // Handle HTTP response to WebSocket handshake
@@ -307,10 +412,16 @@ public:
         std::string close_reason(event.data, event.size);
         push<DisplayMessageEvent>(_cmdline_actor_id, "Connection closed: " + close_reason, "warning");
         // Declaring this handler suppresses the protocol's default Close echo.
-        // The parser already marked this frame for client-side masking.
-        *this << event.ws;
+        // The parser marked this frame for client-side masking. An initiated
+        // close already sent one frame; do not send a second on its echo.
+        if (!_close_sent) {
+            *this << event.ws;
+            _close_sent = true;
+        }
         _connected      = false;
         _user_announced = false;
+        // The protocol marks itself not-ok after this handler and disposes only
+        // after its queued Close bytes have drained; dispose wakes shutdown.
     }
 
     // Handle TCP disconnection
@@ -326,7 +437,26 @@ public:
     on(qb::io::async::event::dispose &&) {
         // The watcher is stopped; close the socket before allowing reconnect.
         transport().close();
-        _closing = false;
+        _closing    = false;
+        _close_sent = false;
+        if (_shutdown_requested)
+            push<FinalizeShutdownEvent>(id());
+    }
+
+    void
+    on(const CloseDeadlineEvent &) {
+        if (!_shutdown_requested)
+            return;
+        // Peer Close or output drain may stall. This actor event runs outside the
+        // I/O dispatch, so synchronous teardown is safe before actor destruction.
+        disconnect_now();
+        qb::Actor::kill();
+    }
+
+    void
+    on(const FinalizeShutdownEvent &) {
+        if (_shutdown_requested)
+            qb::Actor::kill();
     }
 
 private:
@@ -443,13 +573,40 @@ public:
 
     void
     on(const qb::KillEvent &event) noexcept {
-        if (_connected) {
-            // Send close frame before disconnecting
-            qb::http::ws::MessageClose close_msg(qb::http::ws::CloseStatus::Normal, "Client shutting down");
-            *this << close_msg;
+        if (_shutdown_requested)
+            return;
+        _shutdown_requested = true;
+        _connect_attempt.reset();
+        if (_connected || _closing) {
+            if (_connected && !_close_sent) {
+                try {
+                    qb::http::ws::MessageClose close_msg(qb::http::ws::CloseStatus::Normal, "Client shutting down");
+                    close_msg.masked = true;
+                    *this << close_msg;
+                    _close_sent = true;
+                    _closing    = true;
+                } catch (const std::exception &) {
+                    disconnect_now();
+                    qb::Actor::kill();
+                    return;
+                }
+            }
+            // Wait for the peer's Close or a transport drop. If neither arrives,
+            // force teardown after a bounded grace period instead of hanging join().
+            try {
+                spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+                    co_await ctx.sleep(std::chrono::seconds(2));
+                    ctx.template push<CloseDeadlineEvent>();
+                });
+            } catch (const std::exception &) {
+                disconnect_now();
+                qb::Actor::kill();
+            }
+            return;
         }
 
-        disconnect();
+        if (_connecting || transport().is_open())
+            disconnect_now();
         qb::Actor::kill();
     }
 };
@@ -543,6 +700,8 @@ public:
 
     void
     on(const ShutdownTick &) {
+        // Also covers EOF before SetWebSocketActorEvent delivered the peer ID.
+        // A second KillEvent cannot interrupt an in-progress Close handshake.
         broadcast<qb::KillEvent>();
     }
 
@@ -693,9 +852,10 @@ private:
         _running = false;
         display_message("Shutting down chat client...", "info");
 
-        // Disconnect first, then stop both actors after the pending close can drain.
+        // Ask the WebSocket actor to send its masked Close and finish its own
+        // bounded handshake. DisconnectEvent would tear the socket down first.
         if (_websocket_actor_id.is_valid()) {
-            push<DisconnectEvent>(_websocket_actor_id);
+            push<qb::KillEvent>(_websocket_actor_id);
         }
         spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
             co_await ctx.sleep(std::chrono::milliseconds(500));

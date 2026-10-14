@@ -55,6 +55,15 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Custom-protocol client bounds pending reply waits (Huly QB-722).** It arms the
+  listener before HELLO and limits blocking passes while callbacks await replies, so a
+  silent peer reaches the advertised handshake deadline and exits with failure.
+- **Manual WebSocket chat keeps its actor responsive during connection attempts
+  (Huly QB-834).** DNS resolution runs off the owning core; both the TCP connection and
+  the whole attempt have deadlines, and late results cannot revive a canceled attempt.
+- **Manual WebSocket chat drains a masked Close on signal (Huly QB-832).** Shutdown
+  sends one masked client Close and waits for peer closure or a bounded deadline before
+  tearing down the socket.
 - **Browser chat keeps messages visible across equal usernames and reconnects (Huly QB-864).**
   It renders accepted server echoes once, uses a per-message ID for own styling, and cannot
   replace an already open or connecting socket from a stale visibility timer.

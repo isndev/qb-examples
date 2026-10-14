@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 843 distinct capabilities, 1691 claims.**
+**105 programs, 7 tiers, 842 distinct capabilities, 1692 claims.**
 
 ## 1. By capability
 
@@ -120,7 +120,7 @@ can disagree.
 | `ctx.cancellation_point` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.cancelled` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.id` | `04-patterns/09-discovery.cpp` |
-| `ctx.offload` | `03-coroutines/15-offloading-blocking-work.cpp` |
+| `ctx.offload` | `03-coroutines/15-offloading-blocking-work.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `ctx.push<Drained>` | `01-actors/10-signals-and-shutdown.cpp` |
 | `ctx.push<Step>` | `01-actors/08-child-actors.cpp` |
 | `ctx.push_to` | `05-services/04-shutdown-and-drain/main.cpp` |
@@ -398,7 +398,6 @@ can disagree.
 | `total_permits` | `03-coroutines/12-sync-primitives.cpp` |
 | `tracked_slot_count` | `04-patterns/01-pubsub.cpp` |
 | `transport().bind_v4` | `02-io/04-udp.cpp` |
-| `transport().connect` | `06-modules/ws/02-chat-client.cpp` |
 | `transport().connect_v4` | `02-io/03-tcp.cpp`, `02-io/05-custom-protocol.cpp` |
 | `transport().init()` | `02-io/04-udp.cpp` |
 | `transport().listen_v4` | `02-io/03-tcp.cpp`, `02-io/05-custom-protocol.cpp`, `02-io/06-framing-toolbox.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `05-services/05-sharded-accept/main.cpp` |
@@ -493,7 +492,7 @@ can disagree.
 | `qb::Request<int>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `qb::RequireEvent` | `04-patterns/09-discovery.cpp` |
 | `qb::SagaScope` | `04-patterns/07-saga.cpp` |
-| `qb::ScopedCoroContext` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `qb::ScopedCoroContext` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `03-coroutines/15-offloading-blocking-work.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `qb::Service` | `01-actors/07-service-actor.cpp` |
 | `qb::ServiceActor<ConfigTag>` | `01-actors/07-service-actor.cpp` |
 | `qb::SignalEvent` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
@@ -833,7 +832,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::io::SocketStatus::Done` | `02-io/03-tcp.cpp`, `06-modules/ws/02-chat-client.cpp` |
+| `qb::io::SocketStatus::Done` | `02-io/03-tcp.cpp` |
 
 ### `qb::io::async`
 
@@ -984,7 +983,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::io::async::tcp::connect` | `02-io/07-tls.cpp`, `02-io/13-tls-certificate-renewal.cpp` |
+| `qb::io::async::tcp::connect` | `02-io/07-tls.cpp`, `02-io/13-tls-certificate-renewal.cpp`, `06-modules/ws/02-chat-client.cpp` |
 
 ### `qb::io::log`
 
@@ -1411,7 +1410,7 @@ can disagree.
   - A single Redis node can grant one time-limited lease: SET NX PX acquires it, and Lua compares the owner's random token before renewal or removal. Expiry permits takeover; an old owner must never delete a new owner's lease.
 - **`06-modules/ws/01-chat-server.cpp`** — 14 capabilities
   - A WebSocket server and an HTTP server side by side: the HTTP one serves the page, the WebSocket one owns the sockets that the page upgrades onto.
-- **`06-modules/ws/02-chat-client.cpp`** — 10 capabilities
+- **`06-modules/ws/02-chat-client.cpp`** — 11 capabilities
   - The client half of the handshake, by hand: generateKey, the upgrade request, then the same frame protocol the server speaks — which is what ws::coro_client will replace.
 - **`06-modules/ws/03-coro-session.cpp`** — 20 capabilities
   - A WebSocket session written as ONE coroutine instead of a bag of callbacks: `coro_session<Self, Server>`, `while (auto f = co_await next_frame())`, a handshake hook that negotiates a subprotocol or refuses the upgrade, and a graceful close.

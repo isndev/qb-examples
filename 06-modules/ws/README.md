@@ -90,8 +90,8 @@ public:
 };
 ```
 
-> The real definitions are `01-chat-server.cpp:370-371` and `:607-608`, and `02-chat-client.cpp:138-139` and
-> `:486-487` — all four are `qb::io::async::task<bool> onInit() override`.
+> The real definitions are `01-chat-server.cpp:370-371` and `:607-608`, and `02-chat-client.cpp:154-155` and
+> `:643-644` — all four are `qb::io::async::task<bool> onInit() override`.
 
 ### 2. `ChatServer`: The WebSocket Specialist
 
@@ -188,11 +188,19 @@ Signals can also stop the actors while a partial input line remains open.
 An optional URL argument triggers one connection after the WebSocket actor announces its ID.
 It uses the same `/connect` path as typed input; URLs over 256 bytes are rejected before the
 bounded connection event is created.
+The network actor resolves DNS through its actor-scoped offload pool, then connects through
+the non-blocking endpoint-list connector with a five-second TCP deadline. A separate five-second
+connection-intent deadline also ends a stalled DNS lookup or handshake, clears the connecting
+state and permits `/connect` again; a late resolver result cannot install its old socket. Its
+core can still process username and shutdown events while a resolver or peer is slow.
 
 When the server sends Close, the manual client echoes its validated payload in a masked Close
 frame. While that frame is still being written, `/connect` is refused; after the socket closes,
 a later `/connect` clears the old buffers and WebSocket parser, installs a fresh HTTP parser and
 handshake key, and announces the user again. A typed `/disconnect` also closes the socket first.
+On SIGINT or SIGTERM while connected, the client sends one **masked** Close frame and waits for
+the peer's echo or transport teardown before ending the actor. A two-second deadline forces
+teardown if the peer stays silent, so shutdown stays bounded even when output cannot drain.
 `check-chat-shutdown.py --build-dir <build>` exercises these paths against a loopback peer,
 including a full send buffer before Close, and bounds the client's exit.
 

@@ -592,6 +592,12 @@ public:
         return _running;
     }
 
+    [[nodiscard]] bool
+    hasPendingCallbacks() {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return !_callbacks.empty();
+    }
+
     // Send a hello message
     void
     sendHello(std::function<void(bool)> on_connected = nullptr) {
@@ -604,12 +610,13 @@ public:
         if (on_connected) {
             std::lock_guard<std::mutex> lock(_mutex);
             _callbacks[msg_id] = {
-                [on_connected](const qb::custom_message &msg) {
-                    if (msg.type == qb_protocol::MessageType::ACK) {
-                        on_connected(true);
-                    } else {
-                        on_connected(false);
-                    }
+                [this, on_connected](const qb::custom_message &msg) {
+                    const bool accepted = msg.type == qb_protocol::MessageType::ACK;
+                    // A silent or rejecting peer must end client mode after its bounded
+                    // HELLO deadline; otherwise an empty callback map can park forever.
+                    if (!accepted)
+                        _running = false;
+                    on_connected(accepted);
                 },
                 std::chrono::steady_clock::now() + std::chrono::seconds(5), true
             };
@@ -851,6 +858,10 @@ runClient(const std::string &host, uint16_t port) {
 
     // Initialize async environment
     qb::io::async::init();
+    // A HELLO callback is pending before the stdin worker exists. run_once_for()
+    // requires this owner-thread wake watcher to be armed even on that first turn.
+    // startInteractiveMode() repeats the call after ACK; arm_wake() is idempotent.
+    qb::io::async::listener::current.arm_wake();
 
     // Create client
     EchoClient client;
@@ -867,8 +878,10 @@ runClient(const std::string &host, uint16_t port) {
     qb::io::cout() << "Connected to server" << std::endl;
 
     // Send initial hello message to establish connection
-    client.sendHello([&client](bool success) {
+    bool handshake_ok = false;
+    client.sendHello([&client, &handshake_ok](bool success) {
         if (success) {
+            handshake_ok = true;
             qb::io::cout() << "Connection protocol completed successfully" << std::endl;
             // Start interactive mode in separate thread
             client.startInteractiveMode();
@@ -879,10 +892,11 @@ runClient(const std::string &host, uint16_t port) {
 
     // Main event loop - keep running until disconnect or a drained interactive exit.
     while (client.isRunning()) {
-        // Before quit the worker's wake ends the regular blocking I/O turn.
-        // After quit, cap each turn so a silent peer cannot hold the shutdown
-        // deadline or callback timeouts hostage inside EVRUN_ONCE.
-        if (client.isQuitting())
+        // A queued reply callback has a steady-clock expiry but is not a libev timer.
+        // Use the pre-armed listener's one-turn cap while callbacks or quit are pending: with
+        // timerfd enabled, bare EVRUN_ONCE may otherwise wait far past that expiry
+        // when the peer leaves the socket open without sending anything.
+        if (client.isQuitting() || client.hasPendingCallbacks())
             qb::io::async::listener::current.run_once_for(std::chrono::milliseconds(10));
         else
             qb::io::async::run(EVRUN_ONCE);
@@ -895,13 +909,14 @@ runClient(const std::string &host, uint16_t port) {
         client.checkTimeouts();
         client.finishInteractiveShutdown();
 
-        // The bounded post-quit pump already paces idle turns.
-        if (!client.isQuitting())
+        // Bounded turns already park in the backend; regular unbounded turns keep
+        // their existing pacing after a real socket event.
+        if (!client.isQuitting() && !client.hasPendingCallbacks())
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     qb::io::cout() << "Client shutting down" << std::endl;
-    return 0;
+    return handshake_ok ? 0 : 1;
 }
 
 int
