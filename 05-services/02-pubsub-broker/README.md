@@ -36,9 +36,10 @@ they are subscribed to.
 
 * **`ClientActor`**: Connects to the broker server, sends user commands (subscribe, publish, unsubscribe) using
   `BrokerProtocol`, and displays messages received from the server.
-* **`InputActor`**: Handles console input, allowing commands like `SUB topic` and `PUB topic message`.
-  Its `std::getline` call in `on(qb::LoopEvent const&)` blocks its dedicated core until a whole line arrives
-  (`client/InputActor.cpp:41-45`); an open partial line is not cancellable here.
+* **`InputActor`**: Handles commands such as `SUB topic` and `PUB topic message`. A `LineSource` owned by `main` reads
+  stdin outside the engine; the callback drains at most 16 ready lines per pass (`client/InputActor.cpp:42-48`).
+  An open partial line cannot block the actor core or shutdown. `quit`, EOF and input errors end both client actors;
+  commands over the event's 1024-byte capacity are rejected instead of truncated.
 
 **Shared Components (`shared/` directory):**
 
@@ -121,3 +122,6 @@ minimizing data copies and improving performance.
     * `PUB <topic_name> <your message content>`
     * `help`
     * `quit`
+
+   Press Enter in the server terminal to stop it. EOF disables console control without stopping the service;
+   SIGINT/SIGTERM still stop the engine, even if stdin has an unfinished line.

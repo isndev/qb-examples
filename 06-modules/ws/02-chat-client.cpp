@@ -24,27 +24,22 @@
  * @ingroup Examples
  */
 
+#include <chrono>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
-#include <chrono>
-#include <atomic>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
+#include <utility>
+#include "../../common/CancelableLineSource.h"
 #include <qb/main.h>
 #include <qb/actor.h>
 #include <qb/string.h>
 #include <qb/system/parse.h>
 #include <qb/io/async.h>
-#include <qb/io/protocol/text.h>
-#include <qb/io/system/file.h>
-#include <qb/io/transport/file.h>
-#include <qb/io/protocol/text.h>
 #include <qbm/http/ws.h>
 #include <qb/json.h>
+#include <qb/io.h>
 
 // Forward declarations
 class WebSocketClientActor;
@@ -93,7 +88,7 @@ struct DisconnectEvent : qb::Event {};
  * `co_await ctx.sleep(d)` puts the wait inside the actor's cancellation scope instead, so a
  * killed actor stops receiving ticks and the polling loop ends by itself.
  */
-struct InputPollTick : qb::Event {}; ///< every 50 ms: drain one line from the input queue
+struct InputPollTick : qb::Event {}; ///< every 50 ms: drain bounded console input
 struct ShutdownTick : qb::Event {};  ///< 500 ms after /quit: broadcast the kill
 
 struct SetWebSocketActorEvent : qb::Event {
@@ -109,55 +104,6 @@ struct DisplayMessageEvent : qb::Event {
         : message(std::make_shared<std::string>(std::move(msg)))
         , type(msg_type) {}
 };
-
-// Thread-safe input queue for cross-platform stdin handling
-class InputQueue {
-private:
-    std::queue<std::string> _queue;
-    std::mutex              _mutex;
-    std::condition_variable _cv;
-    std::atomic<bool>       _shutdown{false};
-
-public:
-    void
-    push(const std::string &input) {
-        {
-            std::lock_guard<std::mutex> lock(_mutex);
-            if (!_shutdown) {
-                _queue.push(input);
-            }
-        }
-        _cv.notify_one();
-    }
-
-    bool
-    try_pop(std::string &input) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (!_queue.empty()) {
-            input = _queue.front();
-            _queue.pop();
-            return true;
-        }
-        return false;
-    }
-
-    void
-    shutdown() {
-        {
-            std::lock_guard<std::mutex> lock(_mutex);
-            _shutdown = true;
-        }
-        _cv.notify_all();
-    }
-
-    bool
-    is_shutdown() const {
-        return _shutdown.load();
-    }
-};
-
-// Global input queue - shared between input thread and actor
-static InputQueue g_input_queue;
 
 /**
  * @brief WebSocket client actor for chat communication
@@ -198,7 +144,7 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
 
-        std::cout << "[CLIENT] WebSocket client actor started" << std::endl;
+        qb::io::cout() << "[CLIENT] WebSocket client actor started" << std::endl;
 
         // Register events
         registerEvent<UserInputEvent>(*this);
@@ -491,7 +437,7 @@ public:
     // `handler.on(event)` from outside the class (qb/system/event/router.h).
     void
     on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
+        qb::io::cout() << "Signal " << event.signum << " received." << std::endl;
         push<qb::KillEvent>(id());
     }
 
@@ -512,26 +458,25 @@ public:
  * @brief Command line interface actor for user interaction
  *
  * This actor handles:
- * - Non-blocking user input via polling thread-safe queue
+ * - Non-blocking user input from the cancellable source owned by main
  * - Command parsing (/connect, /username, /quit, etc.)
+ * - One automatic connection, after the WebSocket actor announces its ID, when given a URL
  * - Message display with color coding
  * - Help and status information
  */
 class CommandLineActor : public qb::Actor {
 private:
-    qb::ActorId       _websocket_actor_id;
-    std::thread       _input_thread;
-    std::atomic<bool> _running{true};
-    std::string       _current_username = "CLIUser";
+    qb::ActorId                    _websocket_actor_id;
+    qb_example::input::LineSource &_input;
+    bool                           _running          = true;
+    std::string                    _current_username = "CLIUser";
+    std::string                    _initial_url;
 
 public:
-    explicit CommandLineActor(qb::ActorId &websocket_id)
-        : _websocket_actor_id(websocket_id) {}
-
-    // Destructor to ensure thread is properly cleaned up
-    ~CommandLineActor() {
-        cleanup_thread();
-    }
+    CommandLineActor(qb::ActorId &websocket_id, qb_example::input::LineSource &input, std::string initial_url)
+        : _websocket_actor_id(websocket_id)
+        , _input(input)
+        , _initial_url(std::move(initial_url)) {}
 
     void
     set_websocket_actor_id(qb::ActorId websocket_id) {
@@ -547,26 +492,15 @@ public:
         registerEvent<qb::KillEvent>(*this);
         registerEvent<qb::SignalEvent>(*this);
 
-        std::cout << "=== QB WebSocket Chat Client ===\n";
-        std::cout << "Type /help for available commands\n";
-        std::cout << "Type /connect ws://localhost:8080/ws to connect to server\n\n";
+        qb::io::cout() << "=== QB WebSocket Chat Client ===\n";
+        qb::io::cout() << "Type /help for available commands\n";
+        qb::io::cout() << "Type /connect ws://localhost:8080/ws to connect to server\n\n";
 
         // Register events
         registerEvent<DisplayMessageEvent>(*this);
         registerEvent<SetWebSocketActorEvent>(*this);
         registerEvent<InputPollTick>(*this);
         registerEvent<ShutdownTick>(*this);
-
-        // Start input handling thread
-        _input_thread = std::thread([this]() {
-            std::string line;
-            while (_running && std::getline(std::cin, line)) {
-                if (!line.empty()) {
-                    g_input_queue.push(line);
-                }
-            }
-            g_input_queue.shutdown();
-        });
 
         // Start periodic checking for input with a small delay
         schedule_input_check();
@@ -582,7 +516,17 @@ public:
     void
     on(const SetWebSocketActorEvent &event) {
         _websocket_actor_id = event.websocket_actor_id;
+        if (!_websocket_actor_id.is_valid()) {
+            return;
+        }
         display_message("WebSocket actor connected to CommandLine interface", "info");
+        if (_running && !_initial_url.empty()) {
+            // The actor ID arrives after both actors start. Consume the argument once,
+            // through the same validation and event path as an interactive /connect.
+            std::string url = std::move(_initial_url);
+            _initial_url.clear();
+            request_connect(url);
+        }
     }
 
     /**
@@ -619,10 +563,22 @@ private:
         if (!_running)
             return;
 
-        // Check for input non-blockingly
-        std::string input;
-        if (g_input_queue.try_pop(input)) {
-            handle_input(input);
+        // Bound work per tick so a large pasted input cannot starve socket events.
+        qb_example::input::Event next;
+        for (std::size_t drained = 0; drained < 16 && _input.try_pop(next); ++drained) {
+            if (next.kind != qb_example::input::Event::Kind::line) {
+                if (next.kind == qb_example::input::Event::Kind::error) {
+                    display_message("Console input failed; closing chat client", "error");
+                }
+                begin_shutdown();
+                return;
+            }
+            if (!next.text.empty()) {
+                handle_input(next.text);
+                if (!_running) {
+                    return;
+                }
+            }
         }
 
         // Schedule next check in 50ms
@@ -650,30 +606,9 @@ private:
         if (command == "/help") {
             show_help();
         } else if (command == "/quit" || command == "/exit") {
-            _running = false; // Stop the input thread
-            display_message("Shutting down chat client...", "info");
-
-            // Send disconnect to WebSocket first
-            if (_websocket_actor_id.is_valid()) {
-                push<DisconnectEvent>(_websocket_actor_id);
-            }
-
-            // Broadcast KillEvent to all actors to shutdown gracefully. Small delay to let the
-            // disconnect finish; the broadcast itself is a call on this actor, so it happens in
-            // `on(ShutdownTick&)` rather than inside a timer holding `this`.
-            spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-                co_await ctx.sleep(std::chrono::milliseconds(500));
-                ctx.template push<ShutdownTick>();
-            });
+            begin_shutdown();
         } else if (command.substr(0, 9) == "/connect ") {
-            std::string url = command.substr(9);
-            if (!url.empty() && _websocket_actor_id.is_valid()) {
-                push<ConnectEvent>(_websocket_actor_id, url);
-            } else if (!_websocket_actor_id.is_valid()) {
-                display_message("WebSocket connection not initialized. Please wait...", "error");
-            } else {
-                display_message("Usage: /connect <websocket_url>", "error");
-            }
+            request_connect(std::string_view(command).substr(9));
         } else if (command.substr(0, 10) == "/username ") {
             std::string new_username = command.substr(10);
             if (!new_username.empty() && new_username.length() <= 50 && _websocket_actor_id.is_valid()) {
@@ -698,57 +633,74 @@ private:
     }
 
     void
+    request_connect(std::string_view url) {
+        if (url.empty()) {
+            display_message("Usage: /connect <websocket_url>", "error");
+        } else if (url.size() > qb::string<256>{}.capacity() || url.find('\0') != std::string_view::npos) {
+            display_message("WebSocket URL must be at most 256 bytes and contain no NUL", "error");
+        } else if (!_websocket_actor_id.is_valid()) {
+            display_message("WebSocket connection not initialized. Please wait...", "error");
+        } else {
+            push<ConnectEvent>(_websocket_actor_id, url);
+        }
+    }
+
+    void
     show_help() {
-        std::cout << "\n=== Available Commands ===\n";
-        std::cout << "/connect <url>    - Connect to WebSocket server (e.g., ws://localhost:8080/ws)\n";
-        std::cout << "/disconnect       - Disconnect from server\n";
-        std::cout << "/username <name>  - Change your username\n";
-        std::cout << "/status          - Show current status\n";
-        std::cout << "/help            - Show this help message\n";
-        std::cout << "/quit or /exit   - Exit the chat client\n";
-        std::cout << "\nType any other text to send a chat message\n\n";
+        qb::io::cout() << "\n=== Available Commands ===\n";
+        qb::io::cout() << "/connect <url>    - Connect to WebSocket server (URL up to 256 bytes)\n";
+        qb::io::cout() << "/disconnect       - Disconnect from server\n";
+        qb::io::cout() << "/username <name>  - Change your username\n";
+        qb::io::cout() << "/status          - Show current status\n";
+        qb::io::cout() << "/help            - Show this help message\n";
+        qb::io::cout() << "/quit or /exit   - Exit the chat client\n";
+        qb::io::cout() << "\nType any other text to send a chat message\n\n";
     }
 
     void
     display_message(const std::string &message, const std::string &type) {
         if (type == "error") {
-            std::cout << "\033[31m" << message << "\033[0m\n"; // Red
+            qb::io::cout() << "\033[31m" << message << "\033[0m\n"; // Red
         } else if (type == "success") {
-            std::cout << "\033[32m" << message << "\033[0m\n"; // Green
+            qb::io::cout() << "\033[32m" << message << "\033[0m\n"; // Green
         } else if (type == "warning") {
-            std::cout << "\033[33m" << message << "\033[0m\n"; // Yellow
+            qb::io::cout() << "\033[33m" << message << "\033[0m\n"; // Yellow
         } else if (type == "info") {
-            std::cout << "\033[36m" << message << "\033[0m\n"; // Cyan
+            qb::io::cout() << "\033[36m" << message << "\033[0m\n"; // Cyan
         } else if (type == "system") {
-            std::cout << "\033[35m" << message << "\033[0m\n"; // Magenta
+            qb::io::cout() << "\033[35m" << message << "\033[0m\n"; // Magenta
         } else if (type == "chat") {
-            std::cout << "\033[37m" << message << "\033[0m\n"; // White
+            qb::io::cout() << "\033[37m" << message << "\033[0m\n"; // White
         } else if (type == "own") {
-            std::cout << "\033[32m" << message << "\033[0m\n"; // Green for own messages
+            qb::io::cout() << "\033[32m" << message << "\033[0m\n"; // Green for own messages
         } else if (type == "join") {
-            std::cout << "\033[32m" << message << "\033[0m\n"; // Green for joins
+            qb::io::cout() << "\033[32m" << message << "\033[0m\n"; // Green for joins
         } else if (type == "leave") {
-            std::cout << "\033[31m" << message << "\033[0m\n"; // Red for leaves
+            qb::io::cout() << "\033[31m" << message << "\033[0m\n"; // Red for leaves
         } else if (type == "rename") {
-            std::cout << "\033[33m" << message << "\033[0m\n"; // Yellow for renames
+            qb::io::cout() << "\033[33m" << message << "\033[0m\n"; // Yellow for renames
         } else {
-            std::cout << message << "\n"; // Default
+            qb::io::cout() << message << "\n"; // Default
         }
-        // Keep status visible when the CLI is piped while a socket drains.
-        std::cout.flush();
+        // qb::io::cout flushes this complete line under its output lock.
     }
 
     void
-    cleanup_thread() {
-        _running = false;
-        g_input_queue.shutdown();
-
-        // Make sure thread is properly joined
-        if (_input_thread.joinable()) {
-            // Give the thread a moment to finish reading current line
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            _input_thread.join();
+    begin_shutdown() {
+        if (!_running) {
+            return;
         }
+        _running = false;
+        display_message("Shutting down chat client...", "info");
+
+        // Disconnect first, then stop both actors after the pending close can drain.
+        if (_websocket_actor_id.is_valid()) {
+            push<DisconnectEvent>(_websocket_actor_id);
+        }
+        spawn([](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
+            co_await ctx.sleep(std::chrono::milliseconds(500));
+            ctx.template push<ShutdownTick>();
+        });
     }
 
 public:
@@ -758,44 +710,49 @@ public:
     // `handler.on(event)` from outside the class (qb/system/event/router.h).
     void
     on(const qb::SignalEvent &event) noexcept {
-        std::cout << "Signal " << event.signum << " received." << std::endl;
+        qb::io::cout() << "Signal " << event.signum << " received." << std::endl;
         push<qb::KillEvent>(id());
     }
 
     void
     on(const qb::KillEvent &event) noexcept {
-        cleanup_thread();
         this->kill();
     }
 };
 
 int
 main(int argc, char *argv[]) {
-    qb::Main engine;
+    if (auto helper = qb_example::input::maybe_run_helper(argc, argv)) {
+        return *helper;
+    }
 
-    std::cout << "QB WebSocket Chat Client Configuration:\n";
+    // The source outlives the engine; only main stops and joins its reader.
+    qb_example::input::LineSource input;
+    qb::Main                      engine;
+
+    qb::io::cout() << "QB WebSocket Chat Client Configuration:\n";
 
     // Create actors - CommandLine first since WebSocket needs its ID
-    auto websocket_actor_id = qb::ActorId{};
-    auto cmdline_actor_id   = engine.addActor<CommandLineActor>(0, websocket_actor_id);
-    websocket_actor_id      = engine.addActor<WebSocketClientActor>(1, cmdline_actor_id);
+    auto        websocket_actor_id = qb::ActorId{};
+    std::string initial_url        = argc > 1 ? argv[1] : "";
+    auto        cmdline_actor_id = engine.addActor<CommandLineActor>(0, std::ref(websocket_actor_id), std::ref(input), std::move(initial_url));
+    websocket_actor_id           = engine.addActor<WebSocketClientActor>(1, cmdline_actor_id);
 
-    std::cout << "WebSocket Actor ID: " << websocket_actor_id.index() << "\n";
-    std::cout << "CommandLine Actor ID: " << cmdline_actor_id.index() << "\n\n";
+    qb::io::cout() << "WebSocket Actor ID: " << websocket_actor_id.index() << "\n";
+    qb::io::cout() << "CommandLine Actor ID: " << cmdline_actor_id.index() << "\n\n";
 
     // Handle command line arguments
     if (argc > 1) {
-        std::string server_url = argv[1];
-        std::cout << "Auto-connecting to: " << server_url << "\n";
-        std::cout << "After startup, type: /connect " << server_url << " to connect\n\n";
+        qb::io::cout() << "Auto-connect requested: " << argv[1] << "\n\n";
     }
 
     // Start the engine
     engine.start();
     engine.join();
+    input.stop();
 
     if (engine.hasError()) {
-        std::cerr << "Engine error occurred" << std::endl;
+        qb::io::cerr() << "Engine error occurred" << std::endl;
         return 1;
     }
 

@@ -1,9 +1,9 @@
 /**
  * @file examples/05-services/01-tcp-chat/client/main.cpp
  * @tier 05-services
- * @teaches The other half of a two-binary project: console input on one core, the socket on
- *          another, so a blocking read never holds up the network — and an exit code that
- *          reports what the engine actually did.
+ * @teaches The other half of a two-binary project: a cancellable console reader outside
+ *          the engine, input delivery on one core and the socket on another, with an exit
+ *          code that reports what the engine actually did.
  * @demonstrates qb::Main, addActor<T>, qb::io::uri, qb::ActorId, engine.start, engine.join,
  *               engine.hasError, qb::io::cout, qb::io::cerr
  * @prerequisites 01-actors/04-cores-and-placement, 02-io/03-tcp
@@ -22,12 +22,11 @@
  *     -   `ClientActor`: Placed on core 1, responsible for network communication with the
  *         chat server. It takes the username, the `InputActor`'s ID (to know its counterpart,
  *         though not strictly used for sending messages back in this example), and the server URI.
- * 4.  Starts the QB engine using `engine.start()` (asynchronously) and then waits for the
- *     engine to terminate using `engine.join()`.
+ * 4.  Starts the QB engine asynchronously, joins its cores and stops the console reader.
  * 5.  Includes basic error handling for argument parsing and engine execution.
  *
- * This demonstrates a simple multi-core actor deployment strategy where UI/input handling
- * is separated from network operations, promoting responsiveness.
+ * This separates console I/O from both actor cores, so a partial line cannot hold up
+ * engine shutdown or network operations.
  *
  * QB Features Demonstrated:
  * - `qb::Main`: The main engine kvinnherad for the actor system.
@@ -42,7 +41,10 @@
 
 #include <qb/main.h>
 #include <qb/io/uri.h>
+#include <chrono>
+#include <functional>
 #include <iostream>
+#include "../../../common/CancelableLineSource.h"
 #include "ClientActor.h"
 #include "InputActor.h"
 #include "../shared/Events.h"
@@ -69,6 +71,10 @@
  */
 int
 main(int argc, char *argv[]) {
+    if (auto helper = qb_example::input::maybe_run_helper(argc, argv)) {
+        return *helper;
+    }
+
     // Validate command-line arguments
     if (argc != 4) {
         qb::io::cerr() << "Usage: " << argv[0] << " <host> <port> <username>" << std::endl;
@@ -76,8 +82,9 @@ main(int argc, char *argv[]) {
     }
 
     try {
-        // Initialize QB engine
-        qb::Main engine;
+        // The source outlives the engine and every actor holding its reference.
+        qb_example::input::LineSource input;
+        qb::Main                      engine;
 
         // Prepare server connection URI
         qb::io::uri server_uri("tcp://" + std::string(argv[1]) + ":" + std::string(argv[2]));
@@ -86,8 +93,9 @@ main(int argc, char *argv[]) {
         auto client_id = qb::ActorId(); // Placeholder for client ID
 
         // Create InputActor on core 0 for UI handling
-        auto input_id = engine.addActor<InputActor>(0,                  // Core 0: User interface
-                                                    std::ref(client_id) // Reference for message routing
+        auto input_id = engine.addActor<InputActor>(0,                   // Core 0: User interface
+                                                    std::ref(client_id), // Reference for message routing
+                                                    std::ref(input)      // Cancellable console source
         );
 
         // Create ClientActor on core 1 for network handling
@@ -97,10 +105,14 @@ main(int argc, char *argv[]) {
                                                  server_uri            // Server address
         );
 
+        // The input core has no socket wakeup; a short park avoids idle polling at 100% CPU.
+        engine.core(0).setLatency(std::chrono::milliseconds{5});
+
         // Start the engine and wait for completion
         qb::io::cout() << "Connecting to chat server at " << server_uri.source() << std::endl;
         engine.start();
         engine.join();
+        input.stop();
 
         // Return status based on engine state
         return engine.hasError() ? 1 : 0;
