@@ -262,8 +262,8 @@ The executables land in `build/presets/<preset>/examples/02-io/`.
 * **Details**: `qb::io::cout()` takes a **process-wide** mutex in its destructor and formats on the
   calling thread; `QB_LOG_*` encodes into a per-thread buffer and returns, and a background thread
   owns the file. The part nobody expects: with `QB_WITH_LOGGING` on (the default) a static
-  initialiser in `qb/src/qb/io/logger.cpp` has **already** called `log::init("./qb", 512)` before
-  `main()` runs, so every qb binary creates `./qb.1.log` in its working directory and starts a
+  initialiser in `qb/src/qb/io/logger.cpp` has **already** opened `./qb` with a 512 MB roll, as
+  `log::init("./qb", 512)` would, before `main()` runs, so every qb binary creates `./qb.1.log` in its working directory and starts a
   logging thread whether or not it ever logs. Calling `log::init` yourself REPLACES that logger
   rather than adding one — which is also how you flush it. `qb::ring_buffer<T,N>` is the window
   (it publishes `size()` alongside `capacity()`/`empty()`/`full()` — `size()` was private while the capacity it bounds was public, which 3.0 fixed), `qb::tsc_ticks()` the

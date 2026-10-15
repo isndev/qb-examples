@@ -38,15 +38,16 @@
  *
  * THE PART NOBODY EXPECTS
  * -----------------------
- * With `QB_WITH_LOGGING=ON` (the default), `qb/src/qb/io/logger.cpp:169-197` runs a static
- * initialiser that calls `qb::io::log::init("./qb", 512)` and `setLevel(INFO)` — so **every**
- * executable linking qb-io creates `./qb.1.log` in its working directory and starts a logging
- * thread before `main()` is entered, whether or not it ever logs a line. Measured on this tree:
- * an empty `qb.1.log` sits next to every example binary that has ever been run. Two consequences
- * worth knowing: a service whose working directory is not writable gets a silently failed open
- * (the ofstream's state is not checked), and calling `log::init` yourself does not add a logger,
- * it REPLACES that one — which is what the first section below does, and why it is also the way
- * to flush: tearing the old logger down joins its thread and closes its file.
+ * With `QB_WITH_LOGGING=ON` (the default), `qb/src/qb/io/logger.cpp:190-207` runs a static
+ * initialiser that opens `./qb` with a 512 MB roll, as `qb::io::log::init("./qb", 512)` would, and
+ * calls `setLevel(INFO)` (`DEBUG` in a debug build) — so **every** executable linking qb-io creates
+ * `./qb.1.log` in its working directory and starts a logging thread before `main()` is entered,
+ * whether or not it ever logs a line. Measured on this tree: an empty `qb.1.log` sits next to every
+ * example binary that has ever been run. Two consequences worth knowing: a service whose working
+ * directory is not writable prints one `WARNING: qb logging is enabled ...` line on stderr
+ * (`qb::io::cerr`) and then discards every log line, and calling `log::init` yourself does not add
+ * a logger, it REPLACES that one — which is what the first section below does, and why it is also
+ * the way to flush: tearing the old logger down joins its thread and closes its file.
  *
  * TIMING WITH tsc_ticks()
  * -----------------------
