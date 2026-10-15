@@ -45,9 +45,13 @@ if (QB_BUILD_TESTS AND TARGET ${QB_APP_TARGET})
                 SOURCES tests/feed-stop.cpp DEPENDS qb-core
                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src
                 LABELS serial)
+    set_tests_properties(qb-examples-test-system-market-feed-stop PROPERTIES TIMEOUT 15)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME qb-examples-test-system-market-data-hub-shutdown
              COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_startup_failure.py $<TARGET_FILE:${QB_APP_TARGET}>)
+    # The three subprocess controls have independent 5, 5 and 7 second deadlines;
+    # the peer thread can take another 2 seconds to join. Leave room for process
+    # startup on Windows Debug while preserving each control's tighter deadline.
     set_tests_properties(qb-examples-test-system-market-data-hub-shutdown
-                         PROPERTIES LABELS "tier:system;module:qb-examples;network" RUN_SERIAL TRUE TIMEOUT 20)
+                         PROPERTIES LABELS "tier:system;module:qb-examples;network" RUN_SERIAL TRUE TIMEOUT 30)
 endif ()

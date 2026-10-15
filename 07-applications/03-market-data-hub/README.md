@@ -18,9 +18,9 @@ a real std::thread ─spsc ring─▶ IngestActor ─send<>─▶ 3 × Aggregato
 |---|---|
 | feed thread | `qb::lockfree::spsc::ringbuffer` — the sanctioned bridge from a thread that knows nothing about actors |
 | `IngestActor` | `qb::ICallback` drain per loop turn, `qb::WorkerPool::for_key` sticky routing, `send<>` on the hot path |
-| `AggregatorActor` | per-symbol state with no locking (sticky routing is what makes that safe), `qb::batcher` coalescing |
-| `PublisherActor` | `qb::io::use<T>::tcp::server<Session>` inside an actor, a binary wire format, the latency measurement |
-| `SubscriberActor` | the other end of the wire, in the same process, so the format is proven rather than asserted |
+| `AggregatorActor` | per-symbol state with no locking, latest price guarded by sequence despite unordered ticks, `qb::batcher` coalescing |
+| `PublisherActor` | `qb::io::use<T>::tcp::server<Session>` inside an actor, a 36-byte binary record, feed-to-handler-entry latency |
+| `SubscriberActor` | the other end of the wire, rejecting malformed records and recording each symbol for the final producer comparison |
 
 ## Layout
 
@@ -29,17 +29,20 @@ include/market_data/model.h      the domain, and the cross-core payload rule it 
 include/market_data/protocol.h   the wire: size_as_header framing + big-endian fields
 src/actors.h                     the four actors
 src/main.cpp                     engine wiring, the feed thread, the report  (carries the header block)
-tests/feed-stop.cpp              the real producer with a full ring and no consumer
+tests/feed-stop.cpp              producer shutdown, unordered latest price, wire and oracle controls
 scripts/check_startup_failure.py  publisher bind, subscriber connect and early-disconnect controls
 ```
 
 ## The number at the end
 
-It is printed as a **distribution** (min / p50 / p90 / p99 / max), not a headline. A single figure
-would be a claim about hardware this program has never run on; and the batch window (4 ms) plus the
-ring backlog dominate the tail by construction, so a p99 that looks bad is usually a batch that was
-waiting on purpose. Compare the shape between two builds on one machine — never medians between
-machines.
+It covers the feed thread's timestamp through entry to the Publisher's batch handler. It includes
+the ring, actor queues and batch wait; it excludes conversion, encoding, socket writes and subscriber
+reception. It is printed as a **distribution** (min / p50 / p90 / p99 / max), not a headline.
+Compare shapes between two builds on one machine, never medians between machines. Completion is a
+separate oracle: the producer independently counts every tick and records per-symbol totals. The
+subscriber checks record shape and monotonic sequence; after shutdown, the final audit compares
+counts and decoded per-symbol price/VWAP/volume with the producer. Intermediate prices and VWAPs
+are not compared to a separate reference.
 
 ## Startup and stream controls
 
@@ -58,6 +61,10 @@ machines.
   disconnect before the end-of-stream marker returns a failed verdict instead of leaving the
   feed parked. If the engine stops with a full ring, the stop flag lets the producer join; the
   flag is read only on the waiting paths, not on a successful tick enqueue.
+* Each shard's end marker carries its sent-tick count. The aggregator flushes only after that
+  many ticks arrive, even if unordered `send<>` delivery puts the marker ahead of an older tick.
+  A missing tick fails within 20 seconds and stops the engine instead of hanging the standalone
+  binary before its final oracle.
 
 ## Build and run
 

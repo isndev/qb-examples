@@ -4,8 +4,8 @@
  *   IngestActor      drains a lock-free ring written by a FOREIGN thread and routes each tick to
  *                    a shard with `WorkerPool::for_key`. Hot path: `send<>`, not `push<>`.
  *   AggregatorActor  keeps per-symbol state and COALESCES its output with `qb::batcher`.
- *   PublisherActor   owns the TCP server, writes batches as binary frames, and measures the
- *                    end-to-end latency of every quote.
+ *   PublisherActor   owns the TCP server, writes batches as binary frames, and measures feed
+ *                    timestamp to Publisher handler entry for every quote.
  *   SubscriberActor  the wire's other end, in this same process, so the format is proven rather
  *                    than asserted.
  */
@@ -18,6 +18,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <qb/actor.h>
@@ -46,19 +47,21 @@ now_ns() {
 class IngestActor
     : public qb::Actor
     , public qb::ICallback {
-    TickRing                *_ring;
-    std::atomic<bool>       *_feeding;
-    std::vector<qb::ActorId> _shard_ids;
-    qb::WorkerPool           _shards;
-    Report                  *_report = nullptr;
-    std::uint64_t            _routed = 0;
-    bool                     _ended  = false;
+    TickRing                  *_ring;
+    std::atomic<bool>         *_feeding;
+    std::vector<qb::ActorId>   _shard_ids;
+    std::vector<std::uint32_t> _sent_by_shard;
+    qb::WorkerPool             _shards;
+    Report                    *_report = nullptr;
+    std::uint64_t              _routed = 0;
+    bool                       _ended  = false;
 
 public:
     IngestActor(TickRing *ring, std::atomic<bool> *feeding, std::vector<qb::ActorId> shards, Report *report)
         : _ring(ring)
         , _feeding(feeding)
         , _shard_ids(std::move(shards))
+        , _sent_by_shard(_shard_ids.size(), 0)
         , _shards(_shard_ids)
         , _report(report) {}
 
@@ -81,13 +84,14 @@ public:
             const qb::ActorId dest = _shards.for_key(t.sym_ix);
 
             // THE HOT PATH, and the one line worth staring at. `send<>` is unordered and legal
-            // only for a trivially-destructible event; it skips the destructor bookkeeping
-            // `push<>` does. Ticks are independent samples, so ordering between them buys
-            // nothing — and this is exactly the case `send` exists for.
+            // for this trivially-destructible event. Every tick contributes to volume and VWAP;
+            // the aggregator compares per-symbol sequence numbers before replacing the latest
+            // price, so a delayed older tick cannot roll it back.
             // Note the shape: `send` CONSTRUCTS the event from these arguments and returns void,
             // where `push` returns a reference you fill in afterwards. There is no reference to
             // hold here, which is also why there is nothing to invalidate.
             send<TickEvent>(dest, Symbol(kSymbolNames[t.sym_ix]), t.at_ns, t.seq, t.price, t.volume);
+            ++_sent_by_shard[t.sym_ix % _shard_ids.size()];
             ++_routed;
         }
 
@@ -95,8 +99,8 @@ public:
             _ended          = true;
             _report->routed = _routed;
             _report->shards = static_cast<std::uint32_t>(_shards.size());
-            for (auto id : _shard_ids)
-                push<EndOfFeed>(id); // ORDERED: it must arrive after every send<> above
+            for (std::size_t shard = 0; shard < _shard_ids.size(); ++shard)
+                push<EndOfFeed>(_shard_ids[shard]).expected = _sent_by_shard[shard];
             unregisterCallback(*this);
         }
     }
@@ -105,18 +109,17 @@ public:
 // ---------------------------------------------------------------------------------------
 // AGGREGATOR — per-symbol state, and one publish per batch instead of one per tick.
 // ---------------------------------------------------------------------------------------
-class AggregatorActor : public qb::Actor {
-    struct Book {
-        double        vwap_num = 0;
-        std::uint64_t vwap_den = 0;
-        double        last     = 0;
-        std::uint32_t volume   = 0;
-        std::uint32_t updates  = 0;
-    };
-
-    qb::ActorId                          _publisher;
-    qb::unordered_map<std::string, Book> _books;
-    std::uint32_t                        _emitted = 0;
+class AggregatorActor
+    : public qb::Actor
+    , public qb::ICallback {
+    qb::ActorId                                _publisher;
+    Report                                    *_report;
+    qb::unordered_map<std::string, SymbolBook> _books;
+    std::uint32_t                              _emitted = 0;
+    ShardDrain                                 _drain;
+    bool                                       _finalized      = false;
+    bool                                       _watching_drain = false;
+    std::chrono::steady_clock::duration        _drain_timeout;
 
     // Held as a MEMBER, and `[this]` is safe here precisely because it is: the window timer is
     // bound to this actor's scope, so a flush can never fire after the actor is gone.
@@ -125,8 +128,10 @@ class AggregatorActor : public qb::Actor {
                               }};
 
 public:
-    explicit AggregatorActor(qb::ActorId publisher)
-        : _publisher(publisher) {}
+    AggregatorActor(qb::ActorId publisher, Report *report, std::chrono::steady_clock::duration drain_timeout = std::chrono::seconds(20))
+        : _publisher(publisher)
+        , _report(report)
+        , _drain_timeout(drain_timeout) {}
 
     qb::io::async::task<bool>
     onInit() override {
@@ -137,34 +142,73 @@ public:
 
     void
     on(TickEvent &t) {
-        Book &b = _books[std::string(t.symbol.c_str())];
-        b.vwap_num += t.price * t.volume;
-        b.vwap_den += t.volume;
-        b.last = t.price;
-        b.volume += t.volume;
-        ++b.updates;
+        SymbolBook &b = _books[std::string(t.symbol.c_str())];
+        b.accept(t.seq, t.price, t.volume);
 
         Quote q;
-        q.symbol  = t.symbol;
-        q.at_ns   = t.at_ns; // carried through, so the publisher measures FEED to WIRE
-        q.last    = b.last;
-        q.vwap    = b.vwap_den ? b.vwap_num / static_cast<double>(b.vwap_den) : b.last;
-        q.volume  = b.volume;
-        q.updates = b.updates;
+        q.symbol   = t.symbol;
+        q.at_ns    = t.at_ns; // carried through to the Publisher handler-entry measurement
+        q.last     = b.last;
+        q.vwap     = b.vwap_den ? b.vwap_num / static_cast<double>(b.vwap_den) : b.last;
+        q.volume   = b.volume;
+        q.updates  = b.updates;
+        q.last_seq = b.last_seq;
 
         // May flush RIGHT HERE if this quote fills the buffer.
         _batch.add(context(), std::move(q));
+        _drain.tick();
+        finish_if_ready();
     }
 
     void
-    on(EndOfFeed const &) {
-        // The batcher's window timer is cancelled with the actor, so buffered items are DROPPED
-        // rather than flushed at shutdown. A final manual flush is not optional.
+    on(EndOfFeed const &end) {
+        _drain.end(end.expected, std::chrono::steady_clock::now(), _drain_timeout);
+        if (!_drain.complete() && !_watching_drain) {
+            registerCallback(*this);
+            _watching_drain = true;
+        }
+        finish_if_ready();
+    }
+
+    void
+    on(qb::LoopEvent const &) override {
+        if (_watching_drain && _drain.expired(std::chrono::steady_clock::now()))
+            fail_drain("[aggregator] timed out waiting for announced ticks");
+    }
+
+private:
+    void
+    stop_watching_drain() {
+        if (_watching_drain) {
+            unregisterCallback(*this);
+            _watching_drain = false;
+        }
+    }
+
+    void
+    fail_drain(char const *reason) {
+        stop_watching_drain();
+        _report->aggregator_failed.store(true, std::memory_order_release);
+        qb::io::cerr() << reason << '\n';
+        qb::Main::stop();
+    }
+
+    void
+    finish_if_ready() {
+        if (_drain.overrun()) {
+            fail_drain("[aggregator] received more ticks than ingest announced");
+            return;
+        }
+        if (_finalized || !_drain.complete())
+            return;
+        _finalized = true;
+        stop_watching_drain();
+        // The batcher's timer is cancelled with this actor. Flush after every announced tick,
+        // including sends that reached us after EndOfFeed.
         _batch.flush();
         push<AggregatorDone>(_publisher).emitted = _emitted;
     }
 
-private:
     void
     publish(std::vector<Quote> &&quotes) {
         _emitted += static_cast<std::uint32_t>(quotes.size());
@@ -240,6 +284,7 @@ public:
             w.vwap_micros = static_cast<std::uint64_t>(q.vwap * 1'000'000.0);
             w.volume      = q.volume;
             w.updates     = q.updates;
+            w.last_seq    = q.last_seq;
             encode(w, frame);
         }
         _quotes += static_cast<std::uint32_t>(batch.quotes.size());
@@ -352,9 +397,23 @@ public:
     on(Protocol::message &&msg) {
         // One frame, many records. `size` is the payload length, so the record count is arithmetic
         // rather than a guess.
+        if (_report->wire_complete) {
+            _report->subscriber_failed = true;
+            qb::io::cerr() << "[subscriber] frame after end-of-stream\n";
+            qb::Main::stop();
+            return;
+        }
+        if (msg.size % kWireQuoteSize != 0) {
+            fail_subscriber(*_report, "[subscriber] partial wire record");
+            return;
+        }
         for (std::size_t off = 0; off + kWireQuoteSize <= msg.size; off += kWireQuoteSize) {
             const WireQuote q = decode(msg.data + off);
             if (q.symbol[0] == '\0') { // the end-of-stream sentinel
+                if (!is_end_marker(q) || off + kWireQuoteSize != msg.size) {
+                    fail_subscriber(*_report, "[subscriber] malformed end-of-stream");
+                    return;
+                }
                 _report->wire_complete = true;
                 _report->last_symbol   = Symbol(std::string(_last.symbol, strnlen(_last.symbol, sizeof(_last.symbol))).c_str());
                 _report->last_price    = static_cast<double>(_last.last_micros) / 1'000'000.0;
@@ -363,7 +422,36 @@ public:
                 push<SubscriberDone>(_publisher).records = _records;
                 return;
             }
-            _last = q;
+            int        symbol_index = -1;
+            const auto name_size    = strnlen(q.symbol, sizeof(q.symbol));
+            if (std::any_of(q.symbol + name_size, q.symbol + sizeof(q.symbol), [](char byte) { return byte != '\0'; })) {
+                fail_subscriber(*_report, "[subscriber] malformed wire symbol");
+                return;
+            }
+            const std::string_view name(q.symbol, name_size);
+            for (int i = 0; i < kSymbols; ++i)
+                if (name == kSymbolNames[i]) {
+                    symbol_index = i;
+                    break;
+                }
+            if (symbol_index < 0) {
+                fail_subscriber(*_report, "[subscriber] unknown wire symbol");
+                return;
+            }
+            auto &observed = _report->wire_symbols[static_cast<std::size_t>(symbol_index)];
+            if (q.updates != observed.records + 1 || q.last_seq >= kTicksPerSymbol
+                || (observed.seen && (q.last_seq < observed.last_seq || q.volume <= observed.volume))) {
+                fail_subscriber(*_report, "[subscriber] non-monotonic symbol record");
+                return;
+            }
+            observed.seen        = true;
+            observed.records     = q.updates;
+            observed.updates     = q.updates;
+            observed.last_seq    = q.last_seq;
+            observed.volume      = q.volume;
+            observed.last_micros = q.last_micros;
+            observed.vwap_micros = q.vwap_micros;
+            _last                = q;
             ++_records;
         }
     }
