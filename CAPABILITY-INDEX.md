@@ -1424,4 +1424,4 @@ can disagree.
 - **`07-applications/02-auction-house/src/main.cpp`** — 17 capabilities
   - Work that has to happen BEFORE the engine exists: the schema is created by a coroutine driven with run_sync on the main thread, and only then do the actors start — because an actor that finds no table has nowhere to put the failure.
 - **`07-applications/03-market-data-hub/src/main.cpp`** — 14 capabilities
-  - A whole application with NO HTTP and NO SQL: a foreign feed thread bridged by a lock-free ring, sticky fan-out with WorkerPool, per-shard state, batched publication, a binary protocol on qb-io, `send<>` on the hot path, `setLatency(0)` — and an end-to-end latency DISTRIBUTION rather than a headline number.
+  - A whole application with NO HTTP and NO SQL: a foreign feed thread bridged by a lock-free ring, sticky fan-out with WorkerPool, per-shard state, batched publication, a binary protocol on qb-io, `send<>` on the hot path, `setLatency(0)` — and a feed-to-publisher-entry latency DISTRIBUTION rather than a headline number.

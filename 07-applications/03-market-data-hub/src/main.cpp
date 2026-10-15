@@ -3,8 +3,8 @@
  * @tier 07-applications
  * @teaches A whole application with NO HTTP and NO SQL: a foreign feed thread bridged by a
  *          lock-free ring, sticky fan-out with WorkerPool, per-shard state, batched publication,
- *          a binary protocol on qb-io, `send<>` on the hot path, `setLatency(0)` — and an
- *          end-to-end latency DISTRIBUTION rather than a headline number.
+ *          a binary protocol on qb-io, `send<>` on the hot path, `setLatency(0)` — and a
+ *          feed-to-publisher-entry latency DISTRIBUTION rather than a headline number.
  * @demonstrates qb::Main, core, setLatency, qb::duration::zero, addActor<T>, start, join,
  *               hasError, usedCoreSet, qb::ActorId,
  *               qb::lockfree::spsc::ringbuffer<Tick, 4096>, enqueue,
@@ -15,7 +15,7 @@
  * @expect "[ingest] routed "
  * @expect "[wire] decoded "
  * @expect "[publish] "
- * @expect "[latency] feed-thread timestamp to wire, over "
+ * @expect "[latency] feed-thread timestamp to Publisher handler entry, over "
  * @expect "          A DISTRIBUTION and not a headline: a single number would be a claim about"
  * @expect "=== market-data-hub complete: "
  *
@@ -40,28 +40,28 @@
  *     one producer, one consumer, no mutex, and a full ring returns false instead of growing.
  *   * INGEST routes with `WorkerPool::for_key(symbol)`, not `next()`: a symbol's state lives on
  *     exactly one shard, so sticky routing is what makes lock-free per-symbol aggregation possible.
- *   * The tick event travels by `send<>`. It is unordered and legal only for a trivially-
- *     destructible event; ticks are independent samples, so ordering between them buys nothing and
- *     the destructor bookkeeping `push<>` does is pure cost.
+ *   * The tick event travels by `send<>`. It is unordered, so every tick contributes to
+ *     volume/VWAP while only the greatest per-symbol sequence updates the latest price.
  *   * The QUOTE BATCH travels by `push<>`, because it owns a vector. That is not a style choice —
  *     `send` on an event owning heap is a compile error at all three sinks.
  *   * AGGREGATORS batch with `qb::batcher`: 64 quotes or 4 ms, whichever comes first, so the
  *     publisher does one write per batch instead of one per tick.
- *   * The WIRE is a fixed 32-byte record behind a 4-byte length prefix, big-endian, with prices as
- *     integer micro-units. `size_as_header` does the framing; no parser is written.
+ *   * The WIRE is a fixed 36-byte record behind a 4-byte length prefix, big-endian, with prices as
+ *     integer micro-units and the latest sequence. `size_as_header` does the framing.
  *
  * WHAT THE NUMBER AT THE END IS, AND WHAT IT IS NOT
  * -------------------------------------------------
- * It is the time from the FEED THREAD's timestamp to the moment the quote is handed to the socket:
- * one ring crossing, one cross-core `send`, one aggregation, one batch window and one serialisation.
- * The feed runs FLAT OUT, so the ring is usually non-empty and this number includes QUEUEING delay —
- * which is exactly what a real feed's end-to-end latency includes, and the reason a burst test and a
- * paced test measure different things.
+ * It is the time from the FEED THREAD's timestamp to the start of the Publisher's batch handler:
+ * one ring crossing, one cross-core `send`, one aggregation and one batch window. It does NOT
+ * include conversion, encoding, socket writes or subscriber reception. The feed runs flat out,
+ * so the ring is usually non-empty and this number includes queueing delay.
  * It is printed as min/p50/p90/p99/max BECAUSE a single headline number would be a claim about
  * hardware this program has never run on — and because the batch WINDOW (up to 4 ms) dominates the
  * tail by construction, so a p99 that looks bad is usually a batch that was waiting on purpose.
  * Compare the shape of the distribution between two builds on ONE machine; never compare medians
- * between machines.
+ * between machines. The independent producer reference and subscriber's per-symbol final
+ * records, not the latency samples, check completeness and final values. Intermediate
+ * prices/VWAPs are not compared to an independent reference.
  *
  * WHERE THE PROMISE LIVES, AND WHY IT IS NARROWER THAN THE PROGRAM
  * ----------------------------------------------------------------
@@ -76,7 +76,8 @@
  * SHUTDOWN IS A SEQUENCE, NOT AN EXIT
  * -----------------------------------
  * The feed thread stops, ingest sees an empty ring and a finished producer and pushes `EndOfFeed`
- * (ordered, so it lands after the last `send<>`), each aggregator does a FINAL manual `flush()` —
+ * with each shard's expected count. A shard waits for all its unordered ticks, failing after
+ * 20 seconds if one never arrives, before its FINAL manual `flush()` —
  * the batcher's window timer is cancelled with the actor, so buffered items would otherwise be
  * dropped — the publisher writes an empty-symbol sentinel record, and only when the SUBSCRIBER has
  * decoded it does the successful path call `qb::Main::stop()`. A failed connect or a disconnect
@@ -114,7 +115,7 @@ constexpr std::uint16_t kPort = 18432;
 /// bounded ring, exactly as a vendor SDK callback would.
 void
 feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &publisher_accepted, std::atomic<bool> &subscriber_started,
-            std::atomic<bool> &stop_requested) {
+            std::atomic<bool> &stop_requested, FeedReference *reference) {
     // Wait for both ends of the local wire before producing anything. Without the publisher's
     // accept, the first ~10000 quotes are sent into an empty session list; without the
     // subscriber's start, the receive side may not yet be draining its socket.
@@ -149,6 +150,8 @@ feed_thread(TickRing &ring, std::atomic<bool> &feeding, std::atomic<bool> &publi
                 }
                 std::this_thread::yield();
             }
+            if (reference)
+                reference->record(t);
             ++produced;
         }
     }
@@ -170,6 +173,7 @@ main() {
     std::atomic<bool>                          subscriber_started{false};
     std::atomic<bool>                          stop_feed{false};
     Report                                     report;
+    FeedReference                              reference;
 
     qb::Main engine;
 
@@ -187,7 +191,7 @@ main() {
     std::vector<qb::ActorId> shards;
     shards.reserve(kAggregators);
     for (int i = 0; i < kAggregators; ++i)
-        shards.push_back(engine.addActor<AggregatorActor>(static_cast<qb::CoreId>(1 + i), publisher));
+        shards.push_back(engine.addActor<AggregatorActor>(static_cast<qb::CoreId>(1 + i), publisher, &report));
 
     engine.addActor<IngestActor>(static_cast<qb::CoreId>(kAggregators + 1), &ring, &feeding, shards, &report);
     // The private test probe sends only the subscriber to a reserved adjacent port. The
@@ -207,7 +211,7 @@ main() {
     std::thread feed;
     if (!engine.hasError())
         feed = std::thread(feed_thread, std::ref(ring), std::ref(feeding), std::ref(publisher_accepted), std::ref(subscriber_started),
-                           std::ref(stop_feed));
+                           std::ref(stop_feed), &reference);
     else
         feeding.store(false, std::memory_order_release);
 
@@ -231,27 +235,26 @@ main() {
     qb::io::cout() << "[wire] decoded " << report.wire_records << " binary records; the last quote was " << report.last_symbol.c_str()
                    << " last=" << report.last_price << " vwap=" << report.last_vwap << " after " << report.last_updates << " updates\n";
     qb::io::cout() << "[publish] " << report.quotes << " quotes published in binary frames; the aggregators emitted " << report.emitted << "\n";
-    qb::io::cout() << "[latency] feed-thread timestamp to wire, over " << report.latencies.size()
+    qb::io::cout() << "[latency] feed-thread timestamp to Publisher handler entry, over " << report.latencies.size()
                    << " quotes (nanoseconds, on THIS machine and this build):\n"
                    << "          min " << (report.latencies.empty() ? 0 : report.latencies.front()) << "  p50 " << pct(0.50) << "  p90 "
                    << pct(0.90) << "  p99 " << pct(0.99) << "  max " << (report.latencies.empty() ? 0 : report.latencies.back()) << "\n";
     qb::io::cout() << "          A DISTRIBUTION and not a headline: a single number would be a claim about\n"
                       "          somebody else's hardware. Compare shapes across runs, not medians across machines\n";
 
-    // The pipeline's own verdict, and the only one worth exiting on: every quote the aggregators
-    // emitted reached the wire and was decoded there. A run that loses a record must not exit 0
-    // just because the engine had no error of its own.
-    const bool complete = report.wire_complete && !report.subscriber_failed && report.quotes > 0 && report.quotes == report.emitted
-                          && report.wire_records == report.quotes;
-    const bool ok       = !engine.hasError() && complete;
+    // Compare against the foreign producer, not only against downstream counts that could all
+    // shrink together. The reference is read only after its thread has joined.
+    const AuditResult audit = audit_complete(reference, report, kTicksPerSymbol);
+    const bool        ok    = !engine.hasError() && audit.ok;
     if (!ok)
         qb::io::cerr() << "[fatal] engine error=" << (engine.hasError() ? "yes" : "no")
                        << ", subscriber finished=" << (report.wire_complete ? "yes" : "no")
                        << ", subscriber failed=" << (report.subscriber_failed ? "yes" : "no") << ", quotes=" << report.quotes
-                       << ", emitted=" << report.emitted << ", decoded=" << report.wire_records << "\n";
+                       << ", emitted=" << report.emitted << ", decoded=" << report.wire_records << ", audit=" << audit.reason
+                       << ", symbol=" << audit.symbol << "\n";
     qb::io::cout() << "\n=== market-data-hub complete: "
-                   << (ok ? "feed, fan-out, batch, wire — every quote emitted was decoded at the other end"
-                          : "FAILED — the engine errored, or a quote did not reach the wire")
+                   << (ok ? "feed, fan-out, batch, wire — all tick counts and final symbol values verified"
+                          : "FAILED — engine, feed, or wire oracle rejected the run")
                    << " ===\n";
     return ok ? 0 : 1;
 }

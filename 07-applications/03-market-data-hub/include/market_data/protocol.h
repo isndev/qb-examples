@@ -1,7 +1,7 @@
 /*
  * market-data-hub — the wire.
  *
- * A market feed does not speak JSON. This is the shape it speaks instead: a fixed 32-byte record
+ * A market feed does not speak JSON. This is the shape it speaks instead: a fixed 36-byte record
  * behind a 4-byte big-endian length prefix, framed by `qb::protocol::base::size_as_header`, which
  * means NO PARSER IS WRITTEN HERE — the archetype owns the length handling and hands `onMessage`
  * a complete frame. (`02-io/06-framing-toolbox` is the tier-2 lesson this reuses.)
@@ -32,13 +32,22 @@ struct WireQuote {
     std::uint64_t vwap_micros{};
     std::uint32_t volume{};
     std::uint32_t updates{};
+    std::uint32_t last_seq{}; ///< greatest per-symbol sequence represented by last_micros
 };
 
-inline constexpr std::size_t kWireQuoteSize = 8 + 8 + 8 + 4 + 4; // 32 bytes, stated rather than sizeof()
+inline constexpr std::size_t kWireQuoteSize = 8 + 8 + 8 + 4 + 4 + 4; // 36 bytes, stated rather than sizeof()
 /// A record whose symbol is this one means "the stream is finished".
 inline constexpr const char *kEndOfStream = "\0\0\0\0\0\0\0";
 
-/// Serialise one record into `out` (32 bytes appended).
+inline bool
+is_end_marker(WireQuote const &q) noexcept {
+    for (char byte : q.symbol)
+        if (byte != '\0')
+            return false;
+    return q.last_micros == 0 && q.vwap_micros == 0 && q.volume == 0 && q.updates == 0 && q.last_seq == 0;
+}
+
+/// Serialise one record into `out` (36 bytes appended).
 inline void
 encode(WireQuote const &q, std::string &out) {
     out.append(q.symbol, sizeof(q.symbol));
@@ -46,10 +55,12 @@ encode(WireQuote const &q, std::string &out) {
     const auto vwap = qb::endian::to_big_endian(q.vwap_micros);
     const auto vol  = qb::endian::to_big_endian(q.volume);
     const auto upd  = qb::endian::to_big_endian(q.updates);
+    const auto seq  = qb::endian::to_big_endian(q.last_seq);
     out.append(reinterpret_cast<const char *>(&last), sizeof(last));
     out.append(reinterpret_cast<const char *>(&vwap), sizeof(vwap));
     out.append(reinterpret_cast<const char *>(&vol), sizeof(vol));
     out.append(reinterpret_cast<const char *>(&upd), sizeof(upd));
+    out.append(reinterpret_cast<const char *>(&seq), sizeof(seq));
 }
 
 /// Deserialise one record from `data` (which must hold at least `kWireQuoteSize` bytes).
@@ -58,15 +69,17 @@ decode(const char *data) {
     WireQuote q;
     std::memcpy(q.symbol, data, sizeof(q.symbol));
     std::uint64_t last{}, vwap{};
-    std::uint32_t vol{}, upd{};
+    std::uint32_t vol{}, upd{}, seq{};
     std::memcpy(&last, data + 8, sizeof(last));
     std::memcpy(&vwap, data + 16, sizeof(vwap));
     std::memcpy(&vol, data + 24, sizeof(vol));
     std::memcpy(&upd, data + 28, sizeof(upd));
+    std::memcpy(&seq, data + 32, sizeof(seq));
     q.last_micros = qb::endian::from_big_endian(last);
     q.vwap_micros = qb::endian::from_big_endian(vwap);
     q.volume      = qb::endian::from_big_endian(vol);
     q.updates     = qb::endian::from_big_endian(upd);
+    q.last_seq    = qb::endian::from_big_endian(seq);
     return q;
 }
 

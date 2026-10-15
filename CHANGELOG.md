@@ -55,6 +55,14 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Market Data Hub keeps the latest price despite unordered tick delivery (Huly QB-809) and
+  verifies the full feed against its wire output (Huly QB-868).** Every tick still contributes
+  to volume and VWAP, while the greatest per-symbol sequence chooses the latest price. The binary
+  quote record now carries that sequence (36 bytes); each shard waits for its announced tick count
+  before closing the batch. The independent producer reference and the
+  subscriber's final per-symbol values reject early loss or corrupted final data; intermediate
+  prices are not independently checked. The latency label
+  names its actual feed-to-Publisher-entry boundary.
 - **Manual WebSocket chat displays accepted messages once (Huly QB-1042).** The command
   client waits for the server echo, including its own messages; an unconnected send prints
   an error without first claiming delivery.
