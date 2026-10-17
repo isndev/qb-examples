@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 842 distinct capabilities, 1692 claims.**
+**105 programs, 7 tiers, 844 distinct capabilities, 1694 claims.**
 
 ## 1. By capability
 
@@ -225,6 +225,7 @@ can disagree.
 | `is_alive` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `is_closed` | `03-coroutines/09-channels.cpp` |
 | `is_connected` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `is_gap` | `06-modules/redis/04-pubsub.cpp` |
 | `is_in_multi` | `06-modules/redis/05-transactions.cpp` |
 | `is_locked` | `03-coroutines/12-sync-primitives.cpp` |
 | `is_null` | `06-modules/pgsql/06-typed-rows.cpp` |
@@ -267,6 +268,7 @@ can disagree.
 | `ok` | `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `onMessage` | `02-io/05-custom-protocol.cpp`, `02-io/06-framing-toolbox.cpp` |
 | `on_compensate` | `04-patterns/07-saga.cpp` |
+| `on_connected` | `06-modules/redis/09-reliability.cpp` |
 | `on_disconnected` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_error` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_escalate` | `04-patterns/02-supervisor.cpp` |
@@ -1384,7 +1386,7 @@ can disagree.
   - The four everyday Redis structures — string, hash, list, set — and the one thing that tells them apart in this client: the C++ TYPE each command's Reply comes back as. An unordered_set is not a stylistic choice, it is what a Redis set IS.
 - **`06-modules/redis/03-coroutines-and-pipelining.cpp`** — 7 capabilities
   - Awaiting Redis, and what pipelining is: three commands issued inside one when_all leave together and come back together, where three sequential co_awaits pay three round trips.
-- **`06-modules/redis/04-pubsub.cpp`** — 9 capabilities
+- **`06-modules/redis/04-pubsub.cpp`** — 10 capabilities
   - Redis Pub/Sub as two actors: a publisher on one connection, and a subscriber whose whole loop is `while (auto msg = co_await receive())` on a second one.
 - **`06-modules/redis/05-transactions.cpp`** — 16 capabilities
   - Redis transactions as this client actually implements them: MULTI queues, EXEC runs the batch in one atomic step, DISCARD throws it away, and WATCH makes the whole thing conditional on nobody else having touched a key. Plus the trap that decides whether your MULTI block works: what a QUEUED reply looks like to a TYPED client.
@@ -1394,7 +1396,7 @@ can disagree.
   - Running your logic INSIDE Redis, in the three forms the server offers: an anonymous EVAL, a cached script called by SHA, and a named 7.0 Function. Includes the trap that decides whether an EVALSHA deployment survives a restart — NOSCRIPT.
 - **`06-modules/redis/08-sorted-sets-and-ttl.cpp`** — 29 capabilities
   - The sorted set as the structure that keeps the ORDER for you — a leaderboard and a sliding-window rate limiter with one atomic EVAL — plus expiry (EXPIRE/TTL/PERSIST and which writes clear a TTL) and the cursor SCAN you must reach for instead of KEYS.
-- **`06-modules/redis/09-reliability.cpp`** — 29 capabilities
+- **`06-modules/redis/09-reliability.cpp`** — 30 capabilities
   - What every other Redis example assumes away: that the server can be unreachable, can drop your connection, and can make you wait. Bounded connect retry, auto-reconnect, what happens to a command that was IN FLIGHT when the link died, blocking commands that park a coroutine without blocking the loop, INFO as a health probe — and TLS.
 - **`06-modules/redis/10-cache-actor.cpp`** — 8 capabilities
   - Redis inside an actor rather than beside one: the client is a member, the connect happens in a coroutine onInit, and every command is awaited from a handler that never blocks.

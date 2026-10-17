@@ -275,12 +275,15 @@ main() {
     bool                     waiting         = true;
 
     consumer.on_message([&](qb::redis::message &&msg) {
+        if (msg.is_gap()) // a reconnection left a hole before this point: nothing to record
+            return;
         received.push_back(msg.payload);
         if (received.size() == 3)
             waiting = false;
     });
     consumer.on_error([&consumer_errors](qb::redis::error &&) { ++consumer_errors; });
-    consumer.on_disconnected([&disconnected](qb::io::async::event::disconnected &&) { disconnected = true; });
+    // Called once per ready connection lost, with its cause (user, peer or protocol): qb-io's reconnect vocabulary.
+    consumer.on_disconnected([&disconnected](qb::io::down_reason) { disconnected = true; });
 
     bool sub_connecting = true;
     bool sub_connected  = false;

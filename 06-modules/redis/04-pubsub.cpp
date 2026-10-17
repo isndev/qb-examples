@@ -3,7 +3,7 @@
  * @tier 06-modules
  * @teaches Redis Pub/Sub as two actors: a publisher on one connection, and a subscriber whose whole
  *          loop is `while (auto msg = co_await receive())` on a second one.
- * @demonstrates qb::redis::tcp::client, qb::redis::tcp::co_consumer, spawn, qb::ScopedCoroContext,
+ * @demonstrates qb::redis::tcp::client, qb::redis::tcp::co_consumer, is_gap, spawn, qb::ScopedCoroContext,
  *               ctx.sleep, qb::io::async::callback, qb::io::async::task<void>, registerEvent<E>,
  *               qb::KillEvent
  * @prerequisites 06-modules/redis/01-connect, 03-coroutines/02-actor-coroutines
@@ -45,8 +45,9 @@
  * - `qb::redis::tcp::co_consumer`: coroutine-based Pub/Sub consumer with `receive()`.
  *   - `co_await consumer.connect()`
  *   - `co_await consumer.subscribe(channel)` → `Reply<qb::redis::subscription>`
- *   - `co_await consumer.receive()` → `std::optional<qb::redis::message>` loop
- *   - `consumer.disconnect()` to close the channel and end the loop
+ *   - `co_await consumer.receive()` → `std::optional<qb::redis::message>` loop; a gap marker
+ *     (`msg->is_gap()`, an empty channel) says a reconnection or a full queue left a hole there
+ *   - `consumer.disconnect()` to take the consumer down, which closes the channel and ends the loop
  * - `spawn()` for actor-scoped background coroutines: retain the consumer in the frame,
  *   capture values read after suspension, and address other actors by id through the context.
  *   A queued message can resume after the subscriber actor is gone.
@@ -247,10 +248,11 @@ public:
         // receive() can be returned after actor reap, and the next loop condition calls receive()
         // again. Capture the other values before suspension and address the coordinator by id.
         //
-        // `disconnect()` tears down the transport immediately in this handler. Its
-        // `event::disconnected` handler closes the message channel before returning,
-        // waking a parked `receive()` for a later scheduler pass. The next `kill()`
-        // may reap this actor before that pass; closing the channel and resuming its
+        // `disconnect()` tears down the transport immediately in this handler and takes the
+        // consumer down, which closes the message channel before returning, waking a parked
+        // `receive()` for a later scheduler pass. Only `down` ends the stream: a loss an armed
+        // reconnection run recovers from leaves it open, with a gap marker where it has a hole.
+        // The next `kill()` may reap this actor before that pass; closing the channel and resuming its
         // receiver are distinct steps. The qbm-redis lifecycle tests cover manual
         // disconnect and peer loss with a live consumer. A live closed channel drains
         // buffered messages before yielding `nullopt`.
@@ -263,6 +265,10 @@ public:
             while (auto msg = co_await consumer->receive()) {
                 if (ctx.cancelled())
                     break;
+                if (msg->is_gap()) { // a reconnection or a full queue: what is missing is not here
+                    cout << name << " missed messages (" << qb::io::gap_reason_name(msg->gap.reason) << ")" << std::endl;
+                    continue;
+                }
                 cout << name << " received on '" << msg->channel << "': " << msg->payload << std::endl;
 
                 if (coordinator != qb::ActorId()) {

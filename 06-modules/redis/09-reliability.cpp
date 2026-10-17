@@ -7,7 +7,7 @@
  *          park a coroutine without blocking the loop, INFO as a health probe — and TLS.
  * @demonstrates qb::redis::RetryPolicy, with_max_attempts, with_initial_delay, with_multiplier,
  *               with_jitter, with_connect_timeout, with_on_retry,
- *               connect_with_retry, enable_auto_reconnect, disable_auto_reconnect, is_connected,
+ *               connect_with_retry, enable_auto_reconnect, disable_auto_reconnect, on_connected, is_connected,
  *               qb::redis::tcp::client, client_id, client_kill, brpop, rpush, info, del,
  *               qb::redis::Reply<T>, ok, error, result, raw,
  *               qb::io::async::init, qb::io::async::run_until, qb::io::async::coro_scheduler,
@@ -19,6 +19,7 @@
  * @expect "[drop] the connection was killed from another client, and the command that was IN"
  * @expect "[drop] raw() == nullptr is the discriminator: this is a dead link, not a nil value"
  * @expect "[drop] auto-reconnect brought the CONNECTION back by itself — but nothing re-sent the"
+ * @expect "[drop] the INFO submitted while the run reconnected was HELD, then answered: on_connected"
  * @expect "[block] BRPOP parked the coroutine for 1s and the event loop kept turning:"
  * @expect "[block] and a push from another client wakes it at once, not at the timeout"
  * @expect "[health] INFO is the health probe: it answers on the same connection you already have,"
@@ -37,13 +38,16 @@
  * 1. `RetryPolicy{}` defaults to `max_attempts = -1` — UNLIMITED. As a startup policy that turns
  *    "the database is misconfigured" into "the process hangs and prints nothing". Bound it.
  * 2. A dropped connection does NOT strand your `co_await`. The client fails every pending reply
- *    (`redis.h:1156-1181`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
+ *    (`redis.h:2025-2054`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
  *    false` and `raw() == nullptr`. That null is the discriminator between "the link died" and
  *    "the value was nil" — the same one `05-transactions` needs to tell a WATCH abort from a
  *    parse error. (The DESTRUCTOR path is the other one: destroying the client discards its
  *    pending handlers uninvoked, which orphans the frame instead of resuming it.)
- * 3. Auto-reconnect restores the CONNECTION, not the REQUEST. Nothing is replayed; if the
- *    command mattered, retrying it is your code's job, and it must be safe to run twice.
+ * 3. Auto-reconnect restores the CONNECTION -- and its handshake -- not the REQUEST. A command that
+ *    was in flight is failed, never replayed; if it mattered, retrying it is your code's job, and it
+ *    must be safe to run twice -- `redis.retrying()` does it for the commands that are (read-only ones, and
+ *    idempotent writes on request). A command submitted WHILE the run reconnects is held, and leaves once
+ *    the client is ready again: `on_connected` says when, no polling of `is_connected()` needed.
  * 4. A blocking command (BRPOP and friends) blocks the SERVER-side call, not your process. The
  *    coroutine parks and the event loop keeps turning — section 4 counts the turns to prove it.
  *
@@ -178,6 +182,8 @@ run_reliability(bool &ok) {
     // 3. A KILLED LINK, AND WHAT WAS IN FLIGHT WHEN IT DIED
     // -----------------------------------------------------------------------------------
     redis.enable_auto_reconnect(qb::redis::RetryPolicy{}.with_max_attempts(5).with_initial_delay(50ms).with_jitter(false));
+    int reconnections = 0; // on_connected fires each time the client becomes ready: here, after the run
+    redis.on_connected([&reconnections] { ++reconnections; });
 
     auto my_id = co_await redis.client_id();
 
@@ -210,16 +216,18 @@ run_reliability(bool &ok) {
                                        : "[drop] UNEXPECTED: the failed reply carried a raw value\n");
     qb::io::cout() << "       (the error text was: " << (parked.error.empty() ? "<empty>" : parked.error) << ")\n";
 
-    // Auto-reconnect runs as a detached task on this same loop, so it needs turns to finish.
-    for (int i = 0; i < 100 && !redis.is_connected(); ++i)
-        co_await qb::io::async::sleep(10ms);
+    // The client saw the loss -- the BRPOP failed -- so the run is reconnecting now. A command submitted
+    // meanwhile is HELD: it leaves once the client is ready again, no polling of is_connected().
     auto after = co_await redis.info("server");
 
-    const bool back = redis.is_connected() && after.ok();
+    const bool back = reconnections == 1 && redis.is_connected() && after.ok();
     qb::io::cout() << (back ? "[drop] auto-reconnect brought the CONNECTION back by itself — but nothing re-sent the\n"
-                              "       BRPOP. A reconnect restores the link, never the request, so a retry is your\n"
-                              "       code's job and the command must be safe to run twice\n"
+                              "       BRPOP. A reconnect restores the link and its handshake, never the request, so a\n"
+                              "       retry is your code's job and the command must be safe to run twice\n"
                             : "[drop] UNEXPECTED: the client did not reconnect by itself\n");
+    qb::io::cout() << (back ? "[drop] the INFO submitted while the run reconnected was HELD, then answered: on_connected\n"
+                              "       fired once, when the client was ready again\n"
+                            : "[drop] UNEXPECTED: the command submitted during the reconnect did not wait for it\n");
     redis.disable_auto_reconnect();
     qb::io::cout() << "\n";
 
