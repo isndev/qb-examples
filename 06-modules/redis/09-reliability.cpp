@@ -38,14 +38,15 @@
  * 1. `RetryPolicy{}` defaults to `max_attempts = -1` — UNLIMITED. As a startup policy that turns
  *    "the database is misconfigured" into "the process hangs and prints nothing". Bound it.
  * 2. A dropped connection does NOT strand your `co_await`. The client fails every pending reply
- *    (`redis.h:1951-1977`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
+ *    (`redis.h:1986-2012`, `(*entry.handler)(nullptr)`), so the coroutine resumes with `ok() ==
  *    false` and `raw() == nullptr`. That null is the discriminator between "the link died" and
  *    "the value was nil" — the same one `05-transactions` needs to tell a WATCH abort from a
  *    parse error. (The DESTRUCTOR path is the other one: destroying the client discards its
  *    pending handlers uninvoked, which orphans the frame instead of resuming it.)
  * 3. Auto-reconnect restores the CONNECTION -- and its handshake -- not the REQUEST. A command that
  *    was in flight is failed, never replayed; if it mattered, retrying it is your code's job, and it
- *    must be safe to run twice. A command submitted WHILE the run reconnects is held, and leaves once
+ *    must be safe to run twice -- `redis.retrying()` does it for the commands that are (read-only ones, and
+ *    idempotent writes on request). A command submitted WHILE the run reconnects is held, and leaves once
  *    the client is ready again: `on_connected` says when, no polling of `is_connected()` needed.
  * 4. A blocking command (BRPOP and friends) blocks the SERVER-side call, not your process. The
  *    coroutine parks and the event loop keeps turning — section 4 counts the turns to prove it.
