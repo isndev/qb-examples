@@ -9,6 +9,7 @@
  * @prerequisites 06-modules/pgsql/03-transactions
  * @expect "Successfully connected to PostgreSQL."
  * @expect "--- Running Error Handling Scenarios ---"
+ * @expect "Unique violation on constraint"
  * @example qbm-pgsql: Error Handling (coroutine API)
  *
  * @brief Demonstrates PostgreSQL error handling with the modern **coroutine** API.
@@ -24,8 +25,10 @@
  *     if (reply.ok()) { use reply.result(); }
  *     else            { inspect reply.error(); }
  *
- * `db_error` carries: `what()` (message), `severity`, `code` (SQLSTATE string), `detail`, and the
- * structured `sqlstate` enum. Client-side conversion failures (NULL into a non-optional, or a
+ * `db_error` carries: `what()` (message), `severity`, `code` (SQLSTATE string), `detail`, the
+ * structured `sqlstate` enum, and for a server error every other field the server sent --
+ * `constraint_name()`, `table_name()`, `column_name()`, `hint()`, `position()`, `where()`...
+ * (`std::string_view`, empty when absent). Client-side conversion failures (NULL into a non-optional, or a
  * multidimensional SQL array requested as a flat `std::vector`) are still thrown as
  * `qb::pg::error::value_is_null` /
  * `qb::pg::error::field_type_mismatch` and are caught with try/catch.
@@ -142,6 +145,13 @@ private:
         qb::io::cerr() << "SQLSTATE (Code): " << err.code << " (Enum: " << static_cast<int>(err.sqlstate) << ")" << std::endl;
         if (!err.detail.empty())
             qb::io::cerr() << "Detail: " << err.detail << std::endl;
+        // Every other field the server sent; empty when it did not send it, or for a client error.
+        if (!err.constraint_name().empty())
+            qb::io::cerr() << "Constraint: " << err.constraint_name() << " on table " << err.table_name() << std::endl;
+        if (!err.position().empty())
+            qb::io::cerr() << "Position in the query: " << err.position() << std::endl;
+        if (!err.hint().empty())
+            qb::io::cerr() << "Hint: " << err.hint() << std::endl;
         qb::io::cerr() << "-------------------------" << std::endl;
     }
 
@@ -210,7 +220,9 @@ private:
                     qb::io::cerr() << "UNEXPECTED SUCCESS: Duplicate insert somehow succeeded." << std::endl;
                     ok = false;
                 } else {
-                    ok = ok && std::string(dup.error().code) == "23505";
+                    // The SQLSTATE says a unique constraint was violated; constraint_name() says WHICH one.
+                    ok = ok && std::string(dup.error().code) == "23505" && dup.error().constraint_name() == "error_test_items_name_key";
+                    qb::io::cout() << "Unique violation on constraint " << dup.error().constraint_name() << std::endl;
                     printDbError("Unique Constraint Violation", dup.error());
                 }
             }

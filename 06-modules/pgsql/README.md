@@ -35,7 +35,7 @@ These examples are designed to illustrate core functionalities of the `qbm-pgsql
 - Implementing error handling strategies.
 
 Only `05-errors.cpp` is an actor application (`ErrorHandlingActor`, driven by `qb::Main`,
-`05-errors.cpp:76`, `:301-309`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
+`05-errors.cpp:79`, `:313-321`). Examples **1–4 use no actors at all**: they are standalone `qb-io`
 coroutines, scaffolded as `qb::io::async::init()` + `coro_scheduler().spawn(...)` + `run_until(...)`
 (`01-connect-and-query.cpp:90-96`).
 
@@ -70,9 +70,10 @@ co_await db.commit();
 
 The coroutine examples use linear error handling; `09-callbacks-and-await` shows the separate
 `.then()` / `.success()` / `.error()` callback chain. `db_error` carries `what()`,
-`severity`, `code` (SQLSTATE string), `detail` and a structured `sqlstate` enum. Client-side conversion failures are
+`severity`, `code` (SQLSTATE string), `detail`, a structured `sqlstate` enum and, for a server error, every other field
+the server sent (`constraint_name()`, `table_name()`, `hint()`, `position()`, ...). Client-side conversion failures are
 still **thrown**: `qb::pg::error::value_is_null` and `qb::pg::error::field_type_mismatch`, caught with `try`/`catch`
-(`05-errors.cpp:259`, `:270`).
+(`05-errors.cpp:271`, `:282`).
 
 ## Prerequisites
 
