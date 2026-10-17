@@ -58,6 +58,11 @@ consume_messages(WebSocketHandler *handler, std::shared_ptr<qb::redis::tcp::co_c
     while (auto msg = co_await sub->receive()) {
         if (stop.is_cancelled())
             break;
+        if (msg->is_gap()) { // a full queue (or a reconnection) dropped events: clients re-read state on their own
+            qb::io::cerr() << "[WebSocketHandler] Redis events lost (" << qb::io::gap_reason_name(msg->gap.reason) << ", " << msg->gap.lost
+                           << " dropped)\n";
+            continue;
+        }
         try {
             auto data = qb::json::parse(msg->payload);
             qb::io::cout() << "[WebSocketHandler] broadcasting " << data.value("type", "?") << " to " << handler->client_count()

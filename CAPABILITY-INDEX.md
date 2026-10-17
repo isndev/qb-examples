@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 843 distinct capabilities, 1693 claims.**
+**105 programs, 7 tiers, 844 distinct capabilities, 1694 claims.**
 
 ## 1. By capability
 
@@ -225,6 +225,7 @@ can disagree.
 | `is_alive` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `is_closed` | `03-coroutines/09-channels.cpp` |
 | `is_connected` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
+| `is_gap` | `06-modules/redis/04-pubsub.cpp` |
 | `is_in_multi` | `06-modules/redis/05-transactions.cpp` |
 | `is_locked` | `03-coroutines/12-sync-primitives.cpp` |
 | `is_null` | `06-modules/pgsql/06-typed-rows.cpp` |
@@ -1385,7 +1386,7 @@ can disagree.
   - The four everyday Redis structures — string, hash, list, set — and the one thing that tells them apart in this client: the C++ TYPE each command's Reply comes back as. An unordered_set is not a stylistic choice, it is what a Redis set IS.
 - **`06-modules/redis/03-coroutines-and-pipelining.cpp`** — 7 capabilities
   - Awaiting Redis, and what pipelining is: three commands issued inside one when_all leave together and come back together, where three sequential co_awaits pay three round trips.
-- **`06-modules/redis/04-pubsub.cpp`** — 9 capabilities
+- **`06-modules/redis/04-pubsub.cpp`** — 10 capabilities
   - Redis Pub/Sub as two actors: a publisher on one connection, and a subscriber whose whole loop is `while (auto msg = co_await receive())` on a second one.
 - **`06-modules/redis/05-transactions.cpp`** — 16 capabilities
   - Redis transactions as this client actually implements them: MULTI queues, EXEC runs the batch in one atomic step, DISCARD throws it away, and WATCH makes the whole thing conditional on nobody else having touched a key. Plus the trap that decides whether your MULTI block works: what a QUEUED reply looks like to a TYPED client.

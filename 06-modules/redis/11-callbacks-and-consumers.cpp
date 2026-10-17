@@ -275,6 +275,8 @@ main() {
     bool                     waiting         = true;
 
     consumer.on_message([&](qb::redis::message &&msg) {
+        if (msg.is_gap()) // a reconnection left a hole before this point: nothing to record
+            return;
         received.push_back(msg.payload);
         if (received.size() == 3)
             waiting = false;
