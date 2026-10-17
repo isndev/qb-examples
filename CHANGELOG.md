@@ -11,6 +11,13 @@ plumbing do not qualify.
 
 ### Added
 
+- **`06-modules/pgsql/07-listen-notify` teaches the reconnect contract (Huly QB-111).** Its fourth rule used to
+  measure that a reconnected consumer listens on nothing until the program re-issues LISTEN. With the client's
+  reconnection run armed, the server-side drop is now recovered by the client itself: the LISTEN is replayed on the new
+  session (checked on the server with `pg_listening_channels()`), and the same `receive()` loop reads a gap marker
+  where the stream has a hole, then the next notification. Section 5 shows that an explicit `disconnect()` ends the
+  session: the stream ends and the channels are forgotten.
+
 - **PostgreSQL COPY and CancelRequest have a live lesson (Huly QB-121).**
   `11-copy-and-cancel` streams CSV in and out, observes session metadata and negotiated SCRAM,
   cancels a server-confirmed active query with `cancel_async()`, and verifies the connection survives.

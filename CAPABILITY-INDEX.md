@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 842 distinct capabilities, 1692 claims.**
+**105 programs, 7 tiers, 850 distinct capabilities, 1702 claims.**
 
 ## 1. By capability
 
@@ -67,6 +67,7 @@ can disagree.
 | `attempts` | `03-coroutines/13-retry-and-single-flight.cpp` |
 | `available_permits` | `03-coroutines/12-sync-primitives.cpp` |
 | `await` | `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
+| `backend_pid` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `backpressure` | `03-coroutines/11-async-streams.cpp` |
 | `begin` | `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
 | `bitcount` | `06-modules/redis/12-cardinality-and-bitmaps.cpp` |
@@ -136,10 +137,11 @@ can disagree.
 | `del` | `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `disable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
 | `discard` | `06-modules/redis/05-transactions.cpp` |
-| `disconnect` | `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `disconnect` | `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp` |
+| `down_reason` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `drain_to` | `03-coroutines/11-async-streams.cpp` |
 | `empty` | `03-coroutines/11-async-streams.cpp`, `04-patterns/03-worker-pool.cpp` |
-| `enable_auto_reconnect` | `06-modules/redis/09-reliability.cpp` |
+| `enable_auto_reconnect` | `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/redis/09-reliability.cpp` |
 | `engine.core` | `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.hasError` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `engine.join` | `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
@@ -240,6 +242,7 @@ can disagree.
 | `lindex` | `06-modules/redis/02-data-types.cpp` |
 | `listen` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/06-validation.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `listen_v4` | `06-modules/http/10-client.cpp`, `06-modules/http/14-streaming-and-cookies.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `listened_channels` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `llen` | `06-modules/redis/02-data-types.cpp` |
 | `local_endpoint` | `02-io/06-framing-toolbox.cpp`, `02-io/12-quic.cpp`, `03-coroutines/14-foreign-awaitables.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `05-services/05-sharded-accept/main.cpp`, `06-modules/ws/03-coro-session.cpp` |
 | `lock` | `01-actors/12-lockfree-bridge.cpp` |
@@ -267,6 +270,7 @@ can disagree.
 | `ok` | `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
 | `onMessage` | `02-io/05-custom-protocol.cpp`, `02-io/06-framing-toolbox.cpp` |
 | `on_compensate` | `04-patterns/07-saga.cpp` |
+| `on_connected` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `on_disconnected` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_error` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `on_escalate` | `04-patterns/02-supervisor.cpp` |
@@ -813,7 +817,9 @@ can disagree.
 | --- | --- |
 | `qb::io::cerr` | `02-io/01-event-loop.cpp`, `02-io/02-files.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::io::cout` | `01-actors/01-hello-actor.cpp`, `02-io/01-event-loop.cpp`, `02-io/02-files.cpp`, `02-io/08-timeouts-and-watchers.cpp`, `02-io/09-graceful-drain.cpp`, `02-io/10-crypto-and-compression.cpp`, `02-io/11-logging-and-metrics.cpp`, `02-io/12-quic.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `qb::io::down_reason` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `qb::io::endpoint` | `02-io/04-udp.cpp` |
+| `qb::io::gap_reason` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `qb::io::uri` | `02-io/07-tls.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `06-modules/http/12-http2.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp` |
 | `qb::io::use<EchoServer>::tcp::server<EchoSession>` | `06-modules/ws/03-coro-session.cpp`, `06-modules/ws/04-coro-client.cpp` |
 | `qb::io::use<T>` | `06-modules/ws/01-chat-server.cpp` |
@@ -1077,6 +1083,7 @@ can disagree.
 | capability | demonstrated by |
 | --- | --- |
 | `qb::pg::Reply<void>` | `06-modules/pgsql/10-streaming-results.cpp` |
+| `qb::pg::RetryPolicy` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `qb::pg::await` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::connection_options` | `06-modules/pgsql/08-tls-and-limits.cpp` |
 | `qb::pg::discard_error` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
@@ -1084,6 +1091,7 @@ can disagree.
 | `qb::pg::discard_query` | `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::isolation_level` | `06-modules/pgsql/03-transactions.cpp` |
 | `qb::pg::notification` | `06-modules/pgsql/07-listen-notify.cpp` |
+| `qb::pg::notification_kind` | `06-modules/pgsql/07-listen-notify.cpp` |
 | `qb::pg::params` | `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp` |
 | `qb::pg::results` | `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/10-streaming-results.cpp` |
 | `qb::pg::ssl_verify_mode` | `06-modules/pgsql/08-tls-and-limits.cpp` |
@@ -1368,8 +1376,8 @@ can disagree.
   - What failure looks like on each layer: a syntax error, a constraint violation, a NULL read as a value and a field read as the wrong type — each with the exception that names it.
 - **`06-modules/pgsql/06-typed-rows.cpp`** — 17 capabilities
   - Reading a result set without writing a loop: a row as a std::tuple, `one<>()` for the single-row query, `all<>()` versus the lazy `rows<>()` view, `field::text()` for a read with no copy, and `resultset::json()` instead of a hand-written to_json().
-- **`06-modules/pgsql/07-listen-notify.cpp`** — 21 capabilities
-  - PostgreSQL as an event bus: LISTEN/NOTIFY, a `notify_co_consumer` you `co_await`, a TRIGGER that publishes on every INSERT — and the four rules that decide whether that is a good idea (transactional delivery, no durability, an 8000-byte payload, and a subscription that does not survive a reconnect).
+- **`06-modules/pgsql/07-listen-notify.cpp`** — 31 capabilities
+  - PostgreSQL as an event bus: LISTEN/NOTIFY, a `notify_co_consumer` you `co_await`, a TRIGGER that publishes on every INSERT — and the four rules that decide whether that is a good idea (transactional delivery, no durability, an 8000-byte payload, and a subscription that belongs to the session: the client replays it after a reconnection and marks the hole the server cannot replay).
 - **`06-modules/pgsql/08-tls-and-limits.cpp`** — 16 capabilities
   - Encrypting a PostgreSQL connection — which is a STARTTLS negotiation on the same port, not a second port — what the default verification level really promises, and the two limits you set per connection and per transaction: connect_timeout and statement_timeout.
 - **`06-modules/pgsql/09-callbacks-and-await.cpp`** — 19 capabilities

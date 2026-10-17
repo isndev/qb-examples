@@ -310,21 +310,23 @@ applications. Remember to adapt the connection settings and SQL schemas to your 
   poll. A `notify_co_consumer` you `co_await`, and a TRIGGER that calls `pg_notify()` so the writer
   does not have to know a listener exists.
 * **API**: `qb::pg::tcp::notify_co_consumer`, `listen`/`unlisten`/`unlisten_all`, `notify`,
-  `on_notify` + `on_notify_dropped`, `receive()`, `notify_channel_capacity()`.
+  `on_notify` + `on_notify_dropped`, `receive()`, `notify_channel_capacity()`, `enable_auto_reconnect`,
+  `on_connected`, `listened_channels()`, `notification::kind`.
 * **The four rules it measures**: delivery is TRANSACTIONAL (a NOTIFY inside a transaction arrives at
   COMMIT, never after a rollback); it is NOT a queue (one sent while nobody listens is gone); the
   payload is capped at 8000 bytes, so send an identifier and let the reader fetch the row; and the
-  subscription belongs to the CONNECTION, so a reconnect subscribes you to nothing.
-* **And `receive()` comes back with the connection**: a drop closes the consumer's queue — which is
-  what ends a parked `co_await receive()`, with `nullopt` — and once the same consumer is connected
-  again it serves the new connection from a fresh queue, carrying over anything received and not yet
-  read. The example measures it: after the reconnect and the re-LISTEN, the same object's `receive()`
-  hands over the notification the re-LISTEN let through. (Until 3.3 the queue stayed closed and
-  `receive()` answered `nullopt` for ever — Huly QB-252.)
-* **The link is dropped from the server**: `pg_terminate_backend` from the publisher, which is what a
-  failover or an admin does. `disconnect()` would do as well — it completes the teardown inside the
-  call and is safe from a coroutine (until 3.3 it pumped the event loop, and from a coroutine that
-  re-entered the scheduler — Huly QB-253).
+  subscription belongs to the SESSION — which the client keeps for you.
+* **A reconnection replays the LISTEN and marks the hole** (Huly QB-111): the link is dropped from the
+  server (`pg_terminate_backend` from the publisher — what a failover or an admin does), the armed
+  reconnection run makes a new session and replays what `listen()` left, and the SAME `receive()` loop
+  goes on: its next element is a gap marker (`kind == notification_kind::gap`, reason `reconnect`) —
+  what was published while no session listened is gone, so that is where to reconcile against the
+  table, on the same connection, which is ready — then the next notification. The example checks the
+  replay on the server itself (`pg_listening_channels()`). Until 3.3 a reconnected consumer listened on
+  nothing until the program issued LISTEN again.
+* **`disconnect()` ends the session**: terminal (`down`, reason `user`, no run), the stream ends with
+  `nullopt`, the channels are forgotten, and the next `connect()` is a fresh session. It completes the
+  teardown inside the call and is safe from a coroutine (Huly QB-253).
 * **Run**: `./build/presets/release/examples/06-modules/pgsql/qb-example-modules-pgsql-listen-notify`
 
 ---
