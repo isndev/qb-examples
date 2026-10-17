@@ -109,7 +109,7 @@ cost depends on what a previous run left behind cannot be judged by a timeout.
   Disconnect closes the channel and schedules a parked receiver, but a message already committed to
   its awaiter can still be returned after actor reap. The loop checks actor-scope cancellation before
   forwarding that message; the retained consumer makes the next `receive()` safe.
-  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:2014-2015`): `cb_consumer` is the
+  Both consumers are real types (`qbm/redis/src/qbm/redis/redis.h:3138-3139`): `cb_consumer` is the
   callback-driven one, `co_consumer` the coroutine one. This example uses `co_consumer`.
 * **Run**: `./build/presets/release/examples/06-modules/redis/qb-example-modules-redis-pubsub`
 
@@ -210,12 +210,13 @@ a genuine parse error, and how to read a heterogeneous batch through `raw()`.
   what happens to a command that was IN FLIGHT when the link died, blocking commands that park a
   coroutine without blocking the loop, `INFO` as a health probe, and the TLS seam.
 * **QB/QBM Redis Features**: `qb::redis::RetryPolicy` and its builders, `connect_with_retry`,
-  `enable_auto_reconnect`/`disable_auto_reconnect`, `is_connected`, `client_id`/`client_kill`,
+  `enable_auto_reconnect`/`disable_auto_reconnect`, `on_connected`, `is_connected`, `client_id`/`client_kill`,
   `brpop`, `info`, `qb::redis::tcp::ssl::client`.
 * **Four things it measures rather than asserts**: `RetryPolicy{}` defaults to UNLIMITED attempts (a
   startup hang waiting to happen); a dropped connection FAILS every pending reply rather than
   stranding it, so `ok()` is false and `raw()` is `nullptr` — that null is the discriminator between
-  a dead link and a nil value; auto-reconnect restores the CONNECTION, never the request; and a
+  a dead link and a nil value; auto-reconnect restores the CONNECTION and its handshake, never the
+  request -- a command submitted while it reconnects is held, and `on_connected` says when it is back; and a
   1 s `BRPOP` parks the coroutine while a second coroutine on the same thread keeps ticking.
 * **It handles detached-task errors**: `coro_scheduler().spawn(t)` reports uncaught task exceptions
   at `final_suspend`. The `guarded()` wrapper also catches an error in the application, records
@@ -259,7 +260,7 @@ These examples provide a practical starting point for leveraging Redis with the 
 * **API**: the callback-FIRST form (`set(cb, key, value)`, `del(cb, k1, k2, k3)`), the callback
   `connect(handler, uri)`, `await()` as the drain, `pending_reply_count()`,
   `qb::redis::tcp::pipeline` + `flush()`, and `qb::redis::tcp::cb_consumer` with
-  `on_message` / `on_error` / `on_disconnected`.
+  `on_message` / `on_error` / `on_disconnected` (the connector's `void(qb::io::down_reason)` hook).
 * **Why the handler is argument ONE**: most of these commands are variadic, and a trailing-callback
   convention cannot coexist with a trailing parameter pack. The overloads are separated by
   `std::is_invocable_v<Func, Reply<T>&&>`, so a non-callable first argument fails to compile rather

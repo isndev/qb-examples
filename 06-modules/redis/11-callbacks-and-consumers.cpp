@@ -280,7 +280,8 @@ main() {
             waiting = false;
     });
     consumer.on_error([&consumer_errors](qb::redis::error &&) { ++consumer_errors; });
-    consumer.on_disconnected([&disconnected](qb::io::async::event::disconnected &&) { disconnected = true; });
+    // Called once per ready connection lost, with its cause (user, peer or protocol): qb-io's reconnect vocabulary.
+    consumer.on_disconnected([&disconnected](qb::io::down_reason) { disconnected = true; });
 
     bool sub_connecting = true;
     bool sub_connected  = false;
