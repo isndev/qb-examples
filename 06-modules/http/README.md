@@ -341,7 +341,7 @@ The `resources` directory contains static assets used by some examples.
   ever holds chunk headers. `Chunk` + `add_chunk` is the other half: it appends the chunk-encoded BYTES
   yourself. Doing both encodes twice.
 * **One measured trap, and it is the reason the body below is assigned PLAIN**: the one-shot verbs
-  (`1.1/http.h:796-800`) and `qb::http1::Client` (`1.1/client.cpp:125-127`) COMPRESS the body themselves
+  (`1.1/http.h:1121-1125`) and `qb::http1::Client` (`1.1/client.cpp:125-127`) COMPRESS the body themselves
   when `Content-Encoding` is set. Calling `compress()` as well encodes twice — measured, 9000 bytes →
   108 gzip → 109 on the wire, and the peer's single `uncompress()` hands back 108 bytes of gzip that
   look like a corrupt payload. There is no diagnostic.
