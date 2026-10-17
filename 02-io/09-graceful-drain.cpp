@@ -50,12 +50,15 @@
  * and one that hangs up on its own answer.
  *
  * Measured, and worth knowing: `eos` fires on that path too, and it is the LAST thing you are told
- * before the teardown — run this and you will see `eos` and then `disconnected`, in that order, from
- * the same drain. That is what makes `close_after_deliver()` usable: it is the one call that means
- * "tell me when the last byte is really gone", so it would be perverse for it to be the one path
- * that never reported delivery. Until 3.0 it was exactly that: the write loop tested
- * `_reason || !_protocol->ok()` and returned before emitting `eos`, and `close_after_deliver()`
- * marks the protocol not-ok, so the disposal won and the event was swallowed.
+ * before the teardown — run this and you will see `eos` and then `disconnected`, in that order. Not
+ * from the same drain: since 3.3 a session a server accepted closes AFTER its peer — it shuts its
+ * sending side down, drops what the client still sends, and disposes when the client closes or
+ * `linger()` (2 s) elapses — because closing on unread input resets the client, which on Windows
+ * loses the very farewell (Huly QB-1089). That is what makes `close_after_deliver()` usable: it is
+ * the one call that means "tell me when the last byte is really gone", so it would be perverse for
+ * it to be the one path that never reported delivery. Until 3.0 it was exactly that: the write
+ * loop tested `_reason || !_protocol->ok()` and returned before emitting `eos`, and
+ * `close_after_deliver()` marks the protocol not-ok, so the disposal won and the event was swallowed.
  *
  * An aborting `disconnect()` still emits nothing, and the distinction is the point: `eos` asserts
  * that queued output reached the transport. A graceful close has flushed it, so the claim is true;
@@ -72,7 +75,7 @@
  * The client below reconnects when its connection drops, which means destroying and recreating the
  * very object whose handler noticed. Doing that inline frees memory the framework is still standing
  * on. `async::callback(f)` — with no delay — does NOT help: it calls `f` INLINE, right there
- * (`qb/src/qb/io/async/io.h:387`). `async::defer(f)` queues `f` to the tail of the current loop
+ * (`qb/src/qb/io/async/io.h:398`). `async::defer(f)` queues `f` to the tail of the current loop
  * turn, after every watcher for this turn has returned. It is the correct primitive, and it had
  * **zero** call sites in 55 programs.
  *
