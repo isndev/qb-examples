@@ -255,9 +255,9 @@ public:
         co_return true;
     }
 
-    // THE line. Every reply to one of our asks arrives here as an ordinary event; `resolve_ask`
-    // hands it to the parked coroutine. It returns false for an event that is not ours, which is
-    // where unsolicited handling would go.
+    // Own responses arrive here as events: resolve_ask delivers live ones and discards obsolete
+    // ones, such as retired ask_any losers. True means consumed, not necessarily resumed.
+    // False identifies unrelated work, where unsolicited handling would go.
     void
     on(Quote &q) {
         (void) resolve_ask(q);

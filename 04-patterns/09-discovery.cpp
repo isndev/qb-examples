@@ -197,7 +197,7 @@ public:
     void
     on(qb::RequireEvent &e) {
         if (resolve_require(e))
-            return; // a reply to a co_await ping/require of OURS — hand it back to that coroutine
+            return; // own discovery response — deliver if live, otherwise discard as obsolete
         if (is<Worker>(e))
             ++_workers;
         else if (is<Cache>(e))

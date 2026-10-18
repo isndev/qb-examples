@@ -123,7 +123,7 @@ public:
     void
     on(Quote &q) {
         // A reply to one of OUR upstream asks is not a request and must not be answered.
-        // `resolve_ask` already delivered it to the parked coroutine; returning true means
+        // `resolve_ask` delivered a live reply or discarded an obsolete one; true means
         // "consumed". This is the branch `qb::answer` performs for you in the simple case.
         if (resolve_ask(q))
             return;
@@ -264,7 +264,7 @@ public:
     void
     on(Quote &q) {
         if (resolve_ask(q))
-            return; // a reply to one of our asks — already delivered to the parked coroutine
+            return; // an own response — delivered if live, otherwise discarded as obsolete
         // NOTE WHAT ELSE ARRIVES HERE. This line prints TWICE: once for the deliberate XMR
         // request of section 6, and once for the BTC event ForgetfulResponder built fresh in
         // section 5. The correlation-less "reply" is not recognised as a reply at all — it
