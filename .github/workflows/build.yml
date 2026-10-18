@@ -21,9 +21,13 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  # Nightly, against whatever the same-named qb/qbm branches are that day: the path filters
-  # cannot see a qb-side change, and a stale green here would vouch for a pairing that no
-  # longer exists. Same schedule and reasoning as the three qbm modules' lanes.
+  # Nightly, against whatever qb/qbm's develop is that day: the path filters cannot see a
+  # qb-side change, and a stale green here would vouch for a pairing that no longer exists.
+  # Same schedule and reasoning as the three qbm modules' lanes -- and the same trap: GitHub
+  # runs a schedule from the DEFAULT branch, `main`, so without the two schedule expressions
+  # below (this checkout's `ref:` and REF_NAME) the nightly built main against main, the last
+  # release, which only changes at a release (Huly QB-558; held by
+  # dev/agent/check-nightly-pairing.py in the superproject).
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
@@ -57,6 +61,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: examples
+          ref: ${{ github.event_name == 'schedule' && 'develop' || github.ref }}
 
       # github.base_ref for a PR (the branch being merged INTO), github.ref_name otherwise.
       # Never github.head_ref: on a fork PR that string is attacker-controlled, and it is
@@ -67,7 +72,7 @@ jobs:
         env:
           INPUT_REF: ${{ inputs.qb_ref }}
           BASE_REF: ${{ github.base_ref }}
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ github.event_name == 'schedule' && 'develop' || github.ref_name }}
         run: |
           set -euo pipefail
           ref="${INPUT_REF}"
