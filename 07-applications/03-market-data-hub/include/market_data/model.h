@@ -91,6 +91,11 @@ struct SymbolBook {
     }
 };
 
+/// How long a shard waits, after its end marker, for the ticks ingest announced before it fails
+/// the run: the default of `ShardDrain::end` and of `AggregatorActor`, named once so a test that
+/// injects a shorter bound can prove the injected one ended the run (it cannot finish before this).
+inline constexpr std::chrono::seconds kShardDrainTimeout{20};
+
 /// The terminal event may overtake unordered ticks. A shard finishes only after it has seen
 /// the exact number of ticks the ingest actor sent to it.
 struct ShardDrain {
@@ -105,7 +110,7 @@ struct ShardDrain {
     }
     void
     end(std::uint32_t count, std::chrono::steady_clock::time_point now,
-        std::chrono::steady_clock::duration timeout = std::chrono::seconds(20)) noexcept {
+        std::chrono::steady_clock::duration timeout = kShardDrainTimeout) noexcept {
         expected = count;
         ended    = true;
         deadline = now + timeout;

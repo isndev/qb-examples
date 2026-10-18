@@ -128,7 +128,7 @@ class AggregatorActor
                               }};
 
 public:
-    AggregatorActor(qb::ActorId publisher, Report *report, std::chrono::steady_clock::duration drain_timeout = std::chrono::seconds(20))
+    AggregatorActor(qb::ActorId publisher, Report *report, std::chrono::steady_clock::duration drain_timeout = kShardDrainTimeout)
         : _publisher(publisher)
         , _report(report)
         , _drain_timeout(drain_timeout) {}

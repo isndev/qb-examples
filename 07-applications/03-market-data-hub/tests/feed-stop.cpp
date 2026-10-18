@@ -72,8 +72,8 @@ TEST(MarketFeedStop, EndMarkerWaitsForDelayedTicks) {
     const auto start = std::chrono::steady_clock::time_point{};
     drain.end(2, start); // A terminal event may reach this shard before two unordered sends.
     EXPECT_FALSE(drain.complete());
-    EXPECT_FALSE(drain.expired(start + std::chrono::seconds(19)));
-    EXPECT_TRUE(drain.expired(start + std::chrono::seconds(20)));
+    EXPECT_FALSE(drain.expired(start + kShardDrainTimeout - std::chrono::seconds(1)));
+    EXPECT_TRUE(drain.expired(start + kShardDrainTimeout));
     drain.tick();
     EXPECT_FALSE(drain.complete());
     drain.tick();
@@ -101,11 +101,18 @@ TEST(MarketFeedStop, MissingTickStopsRealAggregator) {
     qb::Main   engine;
     const auto aggregator = engine.addActor<AggregatorActor>(0, qb::ActorId{}, &report, std::chrono::milliseconds(25));
     engine.addActor<DrainTriggerActor>(0, aggregator);
+    // The injected 25 ms bound must be the one that ends the run. Timed here, from before the engine
+    // starts: a shard that waited for kShardDrainTimeout instead cannot have finished before it, and
+    // the host's time to start this executable (outside main) is not part of the measurement.
+    const auto began = std::chrono::steady_clock::now();
     engine.start();
     engine.join();
+    const auto took = std::chrono::steady_clock::now() - began;
 
     EXPECT_TRUE(report.aggregator_failed.load(std::memory_order_acquire));
     EXPECT_FALSE(audit_complete(FeedReference{}, report, 1).ok);
+    EXPECT_LT(took, kShardDrainTimeout) << "the shard waited " << std::chrono::duration_cast<std::chrono::milliseconds>(took).count()
+                                        << " ms: the production drain bound ended the run, not the injected 25 ms";
 }
 
 TEST(MarketFeedStop, WireRecordCarriesLatestSequence) {

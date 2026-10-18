@@ -63,6 +63,12 @@ plumbing do not qualify.
   subscriber's final per-symbol values reject early loss or corrupted final data; intermediate
   prices are not independently checked. The latency label
   names its actual feed-to-Publisher-entry boundary.
+- **Market Data Hub's drain bound has one name, and its test no longer times the host.** The
+  20-second wait for announced ticks is `kShardDrainTimeout`, the default of both `ShardDrain::end`
+  and `AggregatorActor`. The feed-stop test asserted that its injected 25 ms bound ended the run
+  through a 15 s ctest `TIMEOUT`, a clock that also counts the host starting the executable: a
+  Windows CI runner stalled past it on a binary it had never run, before the first test case. The
+  case now measures its own run against `kShardDrainTimeout`, and the test has the system tier's timeout.
 - **Manual WebSocket chat displays accepted messages once (Huly QB-1042).** The command
   client waits for the server echo, including its own messages; an unconnected send prints
   an error without first claiming delivery.
