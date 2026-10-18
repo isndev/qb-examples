@@ -63,8 +63,8 @@ are not compared to a separate reference.
   flag is read only on the waiting paths, not on a successful tick enqueue.
 * Each shard's end marker carries its sent-tick count. The aggregator flushes only after that
   many ticks arrive, even if unordered `send<>` delivery puts the marker ahead of an older tick.
-  A missing tick fails within 20 seconds and stops the engine instead of hanging the standalone
-  binary before its final oracle.
+  A missing tick fails within `kShardDrainTimeout` (20 seconds, `include/market_data/model.h`)
+  and stops the engine instead of hanging the standalone binary before its final oracle.
 
 ## Build and run
 
