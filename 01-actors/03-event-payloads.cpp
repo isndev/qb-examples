@@ -28,8 +28,8 @@
  * destructor. The receiving core then `reinterpret_cast`s those bytes back into your type. So
  * the event is not moved and it is not copy-constructed: it is **relocated**.
  *
- * That is also not a cross-core-only concern. Pipe growth, pipe compaction, `reply()` and
- * `forward()` relocate same-core events the same way. Assume every event may move.
+ * Event pipes grow without moving queued events. `reply()` and `forward()` can still relocate
+ * an event on the same core, so payloads must remain valid after relocation.
  *
  * THE RULE, AND WHY THERE IS NO static_assert FOR IT
  * --------------------------------------------------
@@ -59,7 +59,7 @@
  * `qb::Event` keeps its routing header in PRIVATE members named `id`, `dest`, `source`,
  * `bucket_size` and `state`. A derived event that declares any of those HIDES the base field —
  * and until 3.0 that compiled clean and silently corrupted routing. It is now a compile error
- * naming the field and the type (`Event.h:912-954`); the line is left below, commented out,
+ * naming the field and the type (`qb/src/qb/core/Event.h:1135-1162`); the line is left below, commented out,
  * because a compile error cannot be demonstrated at runtime.
  *
  * Build:

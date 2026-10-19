@@ -62,6 +62,11 @@ plumbing do not qualify.
 
 ### Fixed
 
+- **Payload and lifecycle lessons reflect the current implementation (Huly QB-1102).**
+  Event pipes grow without relocating queued events; replies and forwards can still relocate
+  them. Correct the routing-field validation, ring enqueue and immediate-callback references,
+  and describe actor reclamation through its owned slot. Executable code and output stay unchanged.
+
 - **Market Data Hub keeps the latest price despite unordered tick delivery (Huly QB-809) and
   verifies the full feed against its wire output (Huly QB-868).** Every tick still contributes
   to volume and VWAP, while the greatest per-symbol sequence chooses the latest price. The binary
