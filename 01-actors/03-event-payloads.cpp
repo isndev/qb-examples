@@ -24,7 +24,7 @@
  * WHAT THE ENGINE ACTUALLY DOES
  * -----------------------------
  * A cross-core `push` copies the event's bytes into the destination core's mailbox with
- * `memcpy` (`qb/src/qb/core/Main.cpp:289`) and reclaims the source slot WITHOUT running a
+ * `memcpy` (`qb/src/qb/core/Main.cpp:285`) and reclaims the source slot WITHOUT running a
  * destructor. The receiving core then `reinterpret_cast`s those bytes back into your type. So
  * the event is not moved and it is not copy-constructed: it is **relocated**.
  *
@@ -37,8 +37,8 @@
  * the old bytes after the relocation. C++20 has no `is_trivially_relocatable`, and the nearest
  * available trait — `is_trivially_copyable` — is far too strict: it would reject
  * `std::shared_ptr` and `std::vector`, both of which are perfectly safe here because they point
- * at the HEAP, not at themselves. So the framework declines to assert (`Main.cpp:222-225`) and
- * ships a **debug-only** guard instead: `event_points_into_itself` (`Main.cpp:247-261`) scans
+ * at the HEAP, not at themselves. So the framework declines to assert (`Main.cpp:218-221`) and
+ * ships a **debug-only** guard instead: `event_points_into_itself` (`Main.cpp:243-257`) scans
  * the event's own byte range for a pointer aimed back into it, and on a hit logs `QB_LOG_CRIT`
  * and asserts. It exists in Debug builds only, and it relies on the Debug-only zeroing in
  * `qb::detail::prepare_event_storage` — do not remove one without the other.
@@ -59,7 +59,7 @@
  * `qb::Event` keeps its routing header in PRIVATE members named `id`, `dest`, `source`,
  * `bucket_size` and `state`. A derived event that declares any of those HIDES the base field —
  * and until 3.0 that compiled clean and silently corrupted routing. It is now a compile error
- * naming the field and the type (`Event.h:912-954`); the line is left below, commented out,
+ * naming the field and the type (`Event.h:854-896`); the line is left below, commented out,
  * because a compile error cannot be demonstrated at runtime.
  *
  * Build:
@@ -220,7 +220,7 @@ public:
         // These bytes were memcpy'd out of another core's pipe. Every member below is readable
         // because none of them held an address inside the event.
         qb::io::cout() << "[core " << getIndex() << "] payload survived the crossing: id=" << r.sequence << " sensor='" << r.sensor
-                       << "' origin=" << static_cast<std::uint32_t>(r.origin) << "\n";
+                       << "' origin=" << r.origin.raw64() << "\n";
         qb::io::cout() << "[core " << getIndex() << "] boxed body (shared_ptr) still readable, " << r.samples->size() << " samples, first "
                        << r.samples->front() << " — the vector never moved; only the two words of the handle did\n";
     }

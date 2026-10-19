@@ -369,7 +369,7 @@ main() {
 
     std::atomic<bool> run_ok{false};
     auto              main_actor_id = engine.addActor<MainActor>(0, std::ref(run_ok));
-    if (main_actor_id == 0) {
+    if (!main_actor_id.is_valid()) {
         qb::io::cerr() << "Failed to create main actor" << std::endl;
         return 1;
     }

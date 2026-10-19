@@ -27,12 +27,12 @@
  * An actor may be killed at any time — by `kill()`, by a `KillEvent`, by SIGINT. Its
  * coroutines do not stop being suspended when that happens: a frame parked on a 30-second
  * timer is still parked and still owns whatever its locals own. `kill()` marks the actor dead
- * and queues it for reaping (`Actor.cpp:731-742`, `VirtualCore.cpp:1260-1262`); the reaper erases
- * it from the core's map (`VirtualCore.cpp:1228-1233`). Without cancellation that is either a
+ * and queues it for reaping (`Actor.cpp:759-770`, `VirtualCore.cpp:1315-1317`); the reaper erases
+ * it from the core's registry (`VirtualCore.cpp:1282-1289`). Without cancellation that is either a
  * leak — the frame never unwinds — or use-after-free when it later touches the actor.
  *
  * The mechanism is one `qb::io::async::cancellation_token` per actor: its SCOPE. `kill()`
- * cancels it (`Actor.cpp:738-742`), every cancellation-aware awaiter has registered an
+ * cancels it (`Actor.cpp:766-770`), every cancellation-aware awaiter has registered an
  * `on_cancel` hook, each hook re-queues its coroutine, and each coroutine resumes into a
  * thrown `cancelled_error` and UNWINDS NORMALLY. Destructors run. `catch` blocks run. This
  * program watches that happen with a counter rather than asserting it in prose.

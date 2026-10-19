@@ -194,8 +194,7 @@ main(int argc, char *argv[]) {
         }
 
         worker_ids.push_back(id);
-        qb::io::cout() << "[Main] Worker " << (i + 1) << "/" << NUM_WORKERS << " created on core " << core << " (actor "
-                       << static_cast<std::uint32_t>(id) << ")\n";
+        qb::io::cout() << "[Main] Worker " << (i + 1) << "/" << NUM_WORKERS << " created on core " << core << " (actor " << id.raw64() << ")\n";
     }
 
     // Create TCP listener on dedicated core
@@ -207,8 +206,7 @@ main(int argc, char *argv[]) {
         return 1;
     }
 
-    qb::io::cout() << "[Main] TcpListener created on core " << LISTENER_CORE << " (actor " << static_cast<std::uint32_t>(listener_id)
-                   << ")\n\n";
+    qb::io::cout() << "[Main] TcpListener created on core " << LISTENER_CORE << " (actor " << listener_id.raw64() << ")\n\n";
 
     qb::io::cout() << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     qb::io::cout() << "Server running at http://localhost:" << PORT << "\n";
