@@ -45,6 +45,15 @@ plumbing do not qualify.
 
 ### Changed
 
+- **Actor identity examples preserve the complete 64-bit value (Huly QB-970/QB-971).**
+  Diagnostic numbers use `raw64()` and admission checks use `is_valid()` instead of
+  the former 32-bit conversion or comparisons to integer zero. These lessons require
+  the matching ActorId64 framework candidate; they do not choose its release version
+  or claim that its changed event layout is performance-neutral. The death-watch lesson
+  (`01-actors/13-death-watch`), its README and the supervisor lesson no longer say that an id is
+  reused: a replacement that takes a dead actor's slot gets a new generation, so an old id never
+  names it.
+
 - **Auction House builds accepted-bid replies with fewer temporary allocations (Huly QB-916).**
   Success and replay retain the same six JSON fields, numeric types, status and content type.
   The reply owns the request UUID and serializes the object once; database reconciliation,

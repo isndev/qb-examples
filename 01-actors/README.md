@@ -194,6 +194,7 @@ the file's code.
   `init_failed`, `unknown`), `qb::down_reason_name`.
 
 > The guarantee to build on: every watch is answered exactly once, after the watched actor's
-> destructor ran, and nothing arrives after `unwatch()`. Ids are reused, so to watch the
-> replacement of an actor whose answer may still be on its way, unwatch the old one first -- the
-> rule `qb::Supervisor`'s watch mode follows (`04-patterns/02-supervisor.cpp`).
+> destructor ran, and nothing arrives after `unwatch()`. An id names one incarnation: a replacement
+> that takes the same slot gets a new generation, so an answer about the old actor never answers a
+> watch of the new one. `qb::Supervisor`'s watch mode still unwatches the outgoing child first
+> (`04-patterns/02-supervisor.cpp`), so nothing about it arrives afterwards.

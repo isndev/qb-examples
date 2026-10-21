@@ -27,12 +27,12 @@
  * An actor may be killed at any time — by `kill()`, by a `KillEvent`, by SIGINT. Its
  * coroutines do not stop being suspended when that happens: a frame parked on a 30-second
  * timer is still parked and still owns whatever its locals own. `kill()` marks the actor dead
- * and queues it for reaping (`Actor.cpp:731-742`, `VirtualCore.cpp:1260-1262`); the reaper erases
- * it from the core's owned slot (`VirtualCore.cpp:1228-1233`). Without cancellation that is either a
+ * and queues it for reaping (`Actor.cpp:751-763`, `VirtualCore.cpp:1428-1430`); the reaper detaches
+ * it from the core's owned slot before destruction (`VirtualCore.cpp:1396-1402`). Without cancellation that is either a
  * leak — the frame never unwinds — or use-after-free when it later touches the actor.
  *
  * The mechanism is one `qb::io::async::cancellation_token` per actor: its SCOPE. `kill()`
- * cancels it (`Actor.cpp:738-742`), every cancellation-aware awaiter has registered an
+ * cancels it (`Actor.cpp:758-762`), every cancellation-aware awaiter has registered an
  * `on_cancel` hook, each hook re-queues its coroutine, and each coroutine resumes into a
  * thrown `cancelled_error` and UNWINDS NORMALLY. Destructors run. `catch` blocks run. This
  * program watches that happen with a counter rather than asserting it in prose.
@@ -60,7 +60,7 @@
  * Nothing is corrupted by it here, because that body only prints. `ScopedCoroContext`
  * captures `ActorId` by value, not an `Actor const *`: `ctx.time()` reads the current core,
  * and `ctx.push(...)` addresses that saved ID. This does not make an unscoped sleeper safe:
- * its event may be dropped after the actor dies, and a reused ID remains a separate hazard.
+ * its event is dropped after that incarnation dies; the saved ID cannot address a replacement.
  * Use cancellation-aware awaits for work that belongs to the actor's lifetime.
  *
  * Build:

@@ -44,9 +44,9 @@
  * argument and the supervisor also WATCHES each child (`qb::Actor::watch`, the subject of
  * `01-actors/13-death-watch`): whatever ends a child, its `qb::DownEvent` restarts it. A child
  * that does call `stop()` is still restarted once, not twice — the supervisor unwatches a child
- * before it replaces it, so the death of the outgoing child is never taken for the death of its
- * replacement, which most likely reuses its id. Pair the mode with `max_restarts`: a child that
- * always fails would otherwise be restarted forever.
+ * before it replaces it, so no late answer about the outgoing child reaches it, and the replacement
+ * has an id of its own (a reused slot carries a new generation). Pair the mode with
+ * `max_restarts`: a child that always fails would otherwise be restarted forever.
  *
  * The five phases below run one at a time, each on a fresh supervisor created by the Lab with
  * `addRefActor`. A phase that ends on a spawn count lets the core run 20 more passes before it
