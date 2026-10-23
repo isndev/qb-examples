@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**105 programs, 7 tiers, 851 distinct capabilities, 1704 claims.**
+**106 programs, 7 tiers, 857 distinct capabilities, 1713 claims.**
 
 ## 1. By capability
 
@@ -494,6 +494,7 @@ can disagree.
 | `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::Pipe` | `01-actors/11-hot-path.cpp` |
 | `qb::PubSub<PriceTick>` | `04-patterns/01-pubsub.cpp` |
+| `qb::Request` | `07-applications/04-observability/src/main.cpp` |
 | `qb::Request<int>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `qb::RequireEvent` | `04-patterns/09-discovery.cpp` |
 | `qb::SagaScope` | `04-patterns/07-saga.cpp` |
@@ -508,7 +509,7 @@ can disagree.
 | `qb::WorkerPool` | `04-patterns/03-worker-pool.cpp` |
 | `qb::answer` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/07-saga.cpp` |
 | `qb::answer_idempotent` | `04-patterns/08-batching-and-idempotency.cpp` |
-| `qb::ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
+| `qb::ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `07-applications/04-observability/src/main.cpp` |
 | `qb::ask_all` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::ask_any` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::ask_by` | `04-patterns/04-scatter-gather.cpp` |
@@ -680,7 +681,9 @@ can disagree.
 | `qb::http::dual_stack_server<>` | `06-modules/http/13-http3.cpp` |
 | `qb::http::make_dual_stack_server<>` | `06-modules/http/13-http3.cpp` |
 | `qb::http::method` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
+| `qb::http::metrics_handler` | `07-applications/04-observability/src/main.cpp` |
 | `qb::http::parse_set_cookie` | `06-modules/http/14-streaming-and-cookies.cpp` |
+| `qb::http::request_metrics` | `07-applications/04-observability/src/main.cpp` |
 | `qb::http::static_files_middleware<S>` | `06-modules/http/08-static-files.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/http/13-http3.cpp` |
 | `qb::http::status` | `06-modules/http/10-client.cpp`, `06-modules/http/15-http2-and-http3-clients.cpp` |
 | `qb::http::use<AssetServer>::server<AssetSession>` | `06-modules/http/14-streaming-and-cookies.cpp` |
@@ -1079,6 +1082,14 @@ can disagree.
 | `qb::lockfree::spsc::ringbuffer<Sample, 1024>` | `01-actors/03-event-payloads.cpp` |
 | `qb::lockfree::spsc::ringbuffer<Tick, 4096>` | `07-applications/03-market-data-hub/src/main.cpp` |
 
+### `qb::metrics`
+
+| capability | demonstrated by |
+| --- | --- |
+| `qb::metrics::Registry` | `07-applications/04-observability/src/main.cpp` |
+| `qb::metrics::describe` | `07-applications/04-observability/src/main.cpp` |
+| `qb::metrics::source_handle` | `07-applications/04-observability/src/main.cpp` |
+
 ### `qb::pg`
 
 | capability | demonstrated by |
@@ -1139,7 +1150,7 @@ can disagree.
 
 | capability | demonstrated by |
 | --- | --- |
-| `qb::pg::tcp::database` | `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/pgsql/11-copy-and-cancel.cpp`, `07-applications/02-auction-house/src/main.cpp` |
+| `qb::pg::tcp::database` | `06-modules/pgsql/01-connect-and-query.cpp`, `06-modules/pgsql/02-parameters.cpp`, `06-modules/pgsql/03-transactions.cpp`, `06-modules/pgsql/04-types.cpp`, `06-modules/pgsql/05-errors.cpp`, `06-modules/pgsql/06-typed-rows.cpp`, `06-modules/pgsql/07-listen-notify.cpp`, `06-modules/pgsql/08-tls-and-limits.cpp`, `06-modules/pgsql/09-callbacks-and-await.cpp`, `06-modules/pgsql/10-streaming-results.cpp`, `06-modules/pgsql/11-copy-and-cancel.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/04-observability/src/main.cpp` |
 | `qb::pg::tcp::notify_co_consumer` | `06-modules/pgsql/07-listen-notify.cpp` |
 
 ### `qb::pg::tcp::ssl`
@@ -1198,7 +1209,7 @@ can disagree.
 | capability | demonstrated by |
 | --- | --- |
 | `qb::redis::tcp::cb_consumer` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
-| `qb::redis::tcp::client` | `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/redis/15-locks.cpp` |
+| `qb::redis::tcp::client` | `06-modules/redis/01-connect.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/03-coroutines-and-pipelining.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp`, `06-modules/redis/15-locks.cpp`, `07-applications/04-observability/src/main.cpp` |
 | `qb::redis::tcp::co_consumer` | `06-modules/redis/04-pubsub.cpp` |
 | `qb::redis::tcp::pipeline` | `06-modules/redis/11-callbacks-and-consumers.cpp` |
 
@@ -1434,3 +1445,5 @@ can disagree.
   - Work that has to happen BEFORE the engine exists: the schema is created by a coroutine driven with run_sync on the main thread, and only then do the actors start — because an actor that finds no table has nowhere to put the failure.
 - **`07-applications/03-market-data-hub/src/main.cpp`** — 14 capabilities
   - A whole application with NO HTTP and NO SQL: a foreign feed thread bridged by a lock-free ring, sticky fan-out with WorkerPool, per-shard state, batched publication, a binary protocol on qb-io, `send<>` on the hot path, `setLatency(0)` — and a feed-to-publisher-entry latency DISTRIBUTION rather than a headline number.
+- **`07-applications/04-observability/src/main.cpp`** — 9 capabilities
+  - Collect owner-core snapshots into a private Prometheus endpoint without polling client hot paths.

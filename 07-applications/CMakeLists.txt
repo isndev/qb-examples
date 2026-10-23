@@ -43,3 +43,5 @@ qb_status_message("Building qb examples — tier 07-applications")
 add_subdirectory(01-taskmanager)
 add_subdirectory(02-auction-house)
 add_subdirectory(03-market-data-hub)
+
+add_subdirectory(04-observability)

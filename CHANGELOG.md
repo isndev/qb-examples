@@ -11,6 +11,12 @@ plumbing do not qualify.
 
 ### Added
 
+- **Two-core observability application (Huly QB-154).** `07-applications/04-observability`
+  executes PostgreSQL queries and Redis PINGs on its worker core, collects owner-core
+  snapshots through `Registry`, and exposes a separate loopback metrics endpoint.
+  Redis latency is opt-in. A pinned Prometheus/Grafana Compose stack, provisioned
+  dashboard and executable smoke check demonstrate the full collection path.
+
 - **`06-modules/pgsql/07-listen-notify` teaches the reconnect contract (Huly QB-111).** Its fourth rule used to
   measure that a reconnected consumer listens on nothing until the program re-issues LISTEN. With the client's
   reconnection run armed, the server-side drop is now recovered by the client itself: the LISTEN is replayed on the new

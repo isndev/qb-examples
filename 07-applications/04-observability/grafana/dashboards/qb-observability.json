@@ -1,0 +1,436 @@
+{
+  "uid": "qb-observability",
+  "title": "qb owner-core observability",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "tags": [
+    "qb"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Core scrape availability",
+      "description": "One for each responding registry; zero means a deadline was missed.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "qb_scrape_core_up",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Actor events received / second",
+      "description": "Includes scrape traffic.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(qb_core_events_received_total[1m])",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "HTTP requests / second",
+      "description": "Completed requests, by bounded route pattern.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route,status) (rate(qb_http_requests_total[1m]))",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "HTTP errors / second",
+      "description": "Client and server error responses.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(qb_http_requests_total{status=~\"[45]..\"}[1m]))",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "HTTP duration p95",
+      "description": "Histogram estimate, not an exact percentile.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le,route) (rate(qb_http_request_duration_seconds_bucket[1m])))",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "PostgreSQL round trips / second",
+      "description": "Queue round trips, not API calls. Inline parameterized query may count twice.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(qb_pgsql_queries_total[1m])",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "PostgreSQL last sent query duration",
+      "description": "Last measured sent query, not average. Initial zero means unobserved.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "qb_pgsql_last_query_duration_seconds",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Redis commands / second",
+      "description": "Completed commands including refusals. Errors and failed are subsets.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(qb_redis_commands_total[1m])",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Redis PING-family duration p95 (opt-in)",
+      "description": "Absent by default; set QB_REDIS_LATENCY=1. No recorded sum.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(qb_redis_command_duration_seconds_bucket{family=\"connection\"}[1m])))",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Metrics source failures",
+      "description": "Exceptions contained while collecting a source.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "qb_metrics_source_failures_total",
+          "legendFormat": "{{core}}{{route}}{{status}}{{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "PostgreSQL failed round trips / second",
+      "description": "Subset of queries, including queued failures; never add to queries.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(qb_pgsql_errors_total[1m])",
+          "legendFormat": "{{core}} {{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Redis failed commands / second",
+      "description": "Subset of completed commands, including server errors and no answer; never add to commands.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "qb-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(qb_redis_errors_total[1m])",
+          "legendFormat": "{{core}} {{connection}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}
