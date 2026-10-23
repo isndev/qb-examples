@@ -35,10 +35,12 @@
  *
  * ONE THING TO KNOW ABOUT IDS
  * ---------------------------
- * An id is reused once its actor is gone -- the replacement you spawn next is likely to get it.
- * To watch the replacement of an actor whose answer may still be on its way, `unwatch()` the old
- * one first; then the old answer is dropped, and the new watch waits for the new actor. That is
- * what `qb::Supervisor` does in `qb::supervision::watch` mode (`04-patterns/02-supervisor`).
+ * An id names ONE incarnation. The replacement you spawn next may take the dead actor's slot, but
+ * it gets a new generation, so the old id never names it and an answer about the old actor never
+ * answers a watch of the new one. A logical service address (`getServiceId<Tag>()`) is the one id
+ * that follows a replacement: its watch is answered for the instance present when it registered.
+ * `unwatch()` still closes a watch for good, an answer already on its way included: that is what
+ * `qb::Supervisor` does to an outgoing child in `qb::supervision::watch` mode (`04-patterns/02-supervisor`).
  *
  * The five phases run one after the other, each started by the previous answer -- no clock
  * anywhere, so the output reads top to bottom on every run.

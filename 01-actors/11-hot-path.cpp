@@ -48,10 +48,10 @@
  *    `qb::string<N>` (`01-actors/03-event-payloads`). Other owners whose pointers remain valid
  *    after the byte copy can be used in ordinary events. A `qb::EventQOS0` holding an owner is
  *    rejected at every enqueue sink, `getPipe().push` and `allocated_push` included, because
- *    its drop path skips destruction. (`Actor.h:1132-1133`, `Event.h:1215-1220` in
- *    `routing_safe_type_id`, `VirtualCore.h:1325-1328`.)
+ *    its drop path skips destruction. (`Actor.h:1137-1138`, `Event.h:1239-1244` in
+ *    `routing_safe_type_id`, `VirtualCore.h:1255-1258`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
- *    (`Event.h:601`, `:591`) — the same type, not two priorities. Only `EventQOS0` is a
+ *    (`Event.h:598`, `:588`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.
  *
  * THE `allocated_push` ARITHMETIC, WHICH IS EASY TO GET WRONG BY A FACTOR OF TWO
@@ -281,9 +281,8 @@ public:
         // argument. Nothing is sent; this is for handing an event to a function that expects
         // one, or for processing it inline.
         Tick local = build_event<Tick>(_near, 42u);
-        qb::io::cout() << "[builder] build_event made a LOCAL event that was never queued: dest="
-                       << static_cast<std::uint32_t>(local.getDestination())
-                       << " (us), source=" << static_cast<std::uint32_t>(local.getSource()) << ", seq=" << local.seq << "\n";
+        qb::io::cout() << "[builder] build_event made a LOCAL event that was never queued: dest=" << local.getDestination().raw64()
+                       << " (us), source=" << local.getSource().raw64() << ", seq=" << local.seq << "\n";
 
         push<Report>(_reporter, "done", push_same);
         co_return true;

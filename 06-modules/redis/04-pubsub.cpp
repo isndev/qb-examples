@@ -550,7 +550,7 @@ main() {
     qb::Main engine;
 
     auto coordinator_id = engine.addActor<CoordinatorActor>(0);
-    if (coordinator_id == 0) {
+    if (!coordinator_id.is_valid()) {
         qb::io::cerr() << "Failed to create coordinator actor" << std::endl;
         return 1;
     }

@@ -25,7 +25,10 @@ from pathlib import Path
 
 
 TARGET = "qb-example-applications-auction-house"
-SESSION = re.compile(r"\[AuctionManager (\d+)\] HTTP session")
+# Keep the complete actor identity: the first and fourth connections must reach the
+# same incarnation, not merely the same core. 3.2 printed a decimal id; 3.3 prints
+# core.slot@generation (for example 1.1@1).
+SESSION = re.compile(r"\[AuctionManager (\d+(?:\.\d+@\d+)?)\] HTTP session")
 
 
 def binary_from_roster(build_dir):
