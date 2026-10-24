@@ -59,7 +59,7 @@
  * `qb::Event` keeps its routing header in PRIVATE members named `id`, `dest`, `source`,
  * `bucket_size` and `state`. A derived event that declares any of those HIDES the base field —
  * and until 3.0 that compiled clean and silently corrupted routing. It is now a compile error
- * naming the field and the type (`qb/src/qb/core/Event.h:1160-1185`); the line is left below, commented out,
+ * naming the field and the type (`qb/src/qb/core/Event.h:1165-1190`); the line is left below, commented out,
  * because a compile error cannot be demonstrated at runtime.
  *
  * Build:
