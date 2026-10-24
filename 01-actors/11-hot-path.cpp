@@ -48,8 +48,8 @@
  *    `qb::string<N>` (`01-actors/03-event-payloads`). Other owners whose pointers remain valid
  *    after the byte copy can be used in ordinary events. A `qb::EventQOS0` holding an owner is
  *    rejected at every enqueue sink, `getPipe().push` and `allocated_push` included, because
- *    its drop path skips destruction. (`Actor.h:1145-1146`, `Event.h:1255-1260` in
- *    `routing_safe_type_id`, `VirtualCore.h:1255-1258`.)
+ *    its drop path skips destruction. (`Actor.h:1141-1142`, `Event.h:1255-1260` in
+ *    `routing_safe_type_id`, `VirtualCore.h:1256-1259`.)
  * 2. `qb::EventQOS1` and `qb::EventQOS2` are plain `using` aliases OF `qb::Event`
  *    (`Event.h:609`, `:599`) — the same type, not two priorities. Only `EventQOS0` is a
  *    distinct type. Choosing "QOS 1" changes nothing at all.

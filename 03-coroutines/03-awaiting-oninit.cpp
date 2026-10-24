@@ -180,7 +180,7 @@ public:
 
         // ONE CLOCK CHOICE. `Actor::time()` reads a real wall-clock instant on first use,
         // including during the pre-loop `onInit` phase, and caches it for that pass
-        // (`VirtualCore.h:569-581`, `VirtualCore.cpp:1641-1648`). It is suitable for a
+        // (`VirtualCore.h:570-582`, `VirtualCore.cpp:1641-1648`). It is suitable for a
         // timestamp here; use steady_clock for the elapsed startup wait measured below so
         // a wall-clock adjustment cannot change the duration. The first read also fixes the
         // shared sample for every other actor that asks during this pre-loop phase.
