@@ -1,12 +1,12 @@
-# Tier 04 — the eleven shipped interaction patterns
+# Tier 04 — the twelve shipped interaction patterns
 
-`qb/core/patterns/` ships eleven headers. Every one is unit- and benchmark-tested, and until this
-tier existed **not one of them appeared anywhere in the example corpus** — zero `#include` of
+`qb/core/patterns/` ships twelve headers (eleven when this tier was written; `spawn.h` came in 3.4).
+Every one is tested, and until this tier existed **not one of them appeared anywhere in the example corpus** — zero `#include` of
 anything under that directory across 113 files, and `qb::ask`, the primitive six of them are built
 on, had **zero call sites in 55 programs**. Meanwhile three of the corpus's largest programs
 hand-rolled worse versions of three of these patterns.
 
-This tier is that gap, closed. Nine programs, eleven headers, all of it code you do not have to
+This tier is that gap, closed. Ten programs, twelve headers, all of it code you do not have to
 write.
 
 **Prerequisites: tier 01 and tier 03.** Every pattern except `WorkerPool` and `batcher` is an
@@ -26,6 +26,7 @@ The CMake target and the binary are **derived** from each file's path
 | `07-saga.cpp` | `qb-example-patterns-saga` | `saga.h` |
 | `08-batching-and-idempotency.cpp` | `qb-example-patterns-batching-and-idempotency` | `aggregate.h`, `idempotency.h` |
 | `09-discovery.cpp` | `qb-example-patterns-discovery` | `discovery.h` |
+| `10-spawn-on.cpp` | `qb-example-patterns-spawn-on` | `spawn.h` |
 
 ```bash
 cmake --preset release
@@ -83,6 +84,10 @@ however many copies of the request arrive.
 **`09-discovery`** — `co_await qb::require<T>` to find actors by type across cores, `co_await
 qb::ping` to ask one whether it is still alive, and the sharp edge: `is_actor_alive()` is a
 core-local map lookup that will report a live remote actor as gone.
+
+**`10-spawn-on`** — grow a pool while the engine runs: `co_await qb::spawn_on<Worker>(ctx, core, timeout,
+args...)` has that core's `qb::Spawner` build the actor there and answers once it is active. The arguments
+move across (a `std::string`), the actor never does; a core with no spawner answers `unreachable`.
 
 ## What each program replaces
 
