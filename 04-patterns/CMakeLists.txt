@@ -47,7 +47,7 @@
 project(qb_examples_04_patterns
         LANGUAGES CXX
         VERSION ${QB_FRAMEWORK_VERSION}
-        DESCRIPTION "Tier 04 — the eleven shipped interaction patterns"
+        DESCRIPTION "Tier 04 — the twelve shipped interaction patterns"
 )
 
 qb_status_message("Building qb examples — tier 04-patterns")
@@ -61,3 +61,4 @@ qb_example(SOURCE 06-streaming.cpp DEPENDS qb-core)
 qb_example(SOURCE 07-saga.cpp DEPENDS qb-core)
 qb_example(SOURCE 08-batching-and-idempotency.cpp DEPENDS qb-core)
 qb_example(SOURCE 09-discovery.cpp DEPENDS qb-core)
+qb_example(SOURCE 10-spawn-on.cpp DEPENDS qb-core)

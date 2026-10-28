@@ -9,7 +9,15 @@ plumbing do not qualify.
 
 ## [Unreleased]
 
-Nothing yet. Entries land here as they are merged, and move under a version heading when that version is tagged.
+### Added
+
+- **`04-patterns/10-spawn-on` -- an actor created on another core while the engine runs (Huly QB-54).** A
+  coordinator on core 0 grows a pool of four workers at run time, alternately on cores 1 and 2, with `co_await
+  qb::spawn_on<Worker>(ctx, core, timeout, name)`: each core's `qb::Spawner` builds its worker there from a
+  `std::string` moved across, and answers once it is active. The program then asks every worker one job and checks
+  that each answers from the core it was spawned on, with its own name, and measures the caveat: a core the engine
+  does not run answers `unreachable` once the timeout passes. Each verdict line prints only when its measurement
+  holds; the program exits 0 in about half a second.
 
 ## [3.3.0] - 2026-10-26
 
