@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**106 programs, 7 tiers, 857 distinct capabilities, 1713 claims.**
+**107 programs, 7 tiers, 863 distinct capabilities, 1728 claims.**
 
 ## 1. By capability
 
@@ -44,7 +44,7 @@ can disagree.
 | `active_count` | `03-coroutines/07-structured-concurrency.cpp` |
 | `add` | `04-patterns/03-worker-pool.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `addActor` | `05-services/04-shutdown-and-drain/main.cpp`, `05-services/05-sharded-accept/main.cpp` |
-| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `addActor<T>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/09-discovery.cpp`, `04-patterns/10-spawn-on.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `addRefActor<Database>` | `03-coroutines/03-awaiting-oninit.cpp` |
 | `addRefActor<Member>` | `01-actors/08-child-actors.cpp` |
 | `addRefActor<T>` | `01-actors/13-death-watch.cpp`, `04-patterns/02-supervisor.cpp` |
@@ -182,7 +182,7 @@ can disagree.
 | `get` | `06-modules/http/01-hello-server.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/03-controllers.cpp`, `06-modules/http/04-middleware.cpp`, `06-modules/http/07-auth-jwt.cpp`, `06-modules/http/08-static-files.cpp`, `06-modules/http/09-coroutine-handlers.cpp`, `06-modules/http/11-https.cpp`, `06-modules/http/12-http2.cpp`, `06-modules/redis/02-data-types.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/15-locks.cpp`, `06-modules/ws/01-chat-server.cpp` |
 | `get()` | `01-actors/08-child-actors.cpp`, `03-coroutines/03-awaiting-oninit.cpp` |
 | `getCoreStats()` | `01-actors/04-cores-and-placement.cpp` |
-| `getIndex` | `01-actors/03-event-payloads.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/04-ask-request-response.cpp`, `05-services/05-sharded-accept/main.cpp` |
+| `getIndex` | `01-actors/03-event-payloads.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/10-spawn-on.cpp`, `05-services/05-sharded-accept/main.cpp` |
 | `getIndex()` | `01-actors/04-cores-and-placement.cpp`, `04-patterns/01-pubsub.cpp` |
 | `getMessageSize` | `02-io/05-custom-protocol.cpp` |
 | `getPipe` | `01-actors/11-hot-path.cpp` |
@@ -219,7 +219,7 @@ can disagree.
 | `in_transaction` | `06-modules/pgsql/10-streaming-results.cpp` |
 | `incr` | `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp` |
 | `incrby` | `06-modules/redis/02-data-types.cpp` |
-| `index` | `04-patterns/09-discovery.cpp` |
+| `index` | `04-patterns/09-discovery.cpp`, `04-patterns/10-spawn-on.cpp` |
 | `info` | `06-modules/redis/09-reliability.cpp` |
 | `is<Worker>` | `04-patterns/09-discovery.cpp` |
 | `is_active` | `03-coroutines/03-awaiting-oninit.cpp` |
@@ -313,12 +313,12 @@ can disagree.
 | `recv_for` | `03-coroutines/09-channels.cpp` |
 | `reduce` | `03-coroutines/11-async-streams.cpp` |
 | `registerCallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `05-services/05-sharded-accept/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
+| `registerEvent<E>` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/02-supervisor.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `04-patterns/10-spawn-on.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `05-services/05-sharded-accept/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp`, `06-modules/ws/02-chat-client.cpp` |
 | `registerSession` | `05-services/04-shutdown-and-drain/main.cpp` |
 | `release_savepoint` | `06-modules/pgsql/03-transactions.cpp` |
 | `reload_context` | `02-io/13-tls-certificate-renewal.cpp` |
 | `remove` | `04-patterns/03-worker-pool.cpp` |
-| `resolve_ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
+| `resolve_ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/10-spawn-on.cpp` |
 | `resolve_require` | `04-patterns/09-discovery.cpp` |
 | `restarts` | `04-patterns/02-supervisor.cpp` |
 | `result` | `06-modules/redis/02-data-types.cpp`, `06-modules/redis/05-transactions.cpp`, `06-modules/redis/07-scripting.cpp`, `06-modules/redis/08-sorted-sets-and-ttl.cpp`, `06-modules/redis/09-reliability.cpp`, `06-modules/redis/11-callbacks-and-consumers.cpp`, `06-modules/redis/12-cardinality-and-bitmaps.cpp`, `06-modules/redis/13-geospatial.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
@@ -379,7 +379,7 @@ can disagree.
 | `size` | `02-io/11-logging-and-metrics.cpp`, `04-patterns/03-worker-pool.cpp`, `06-modules/pgsql/06-typed-rows.cpp` |
 | `skip` | `03-coroutines/11-async-streams.cpp` |
 | `smembers` | `06-modules/redis/02-data-types.cpp` |
-| `spawn` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
+| `spawn` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `04-patterns/10-spawn-on.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
 | `spawn_cancellable` | `03-coroutines/07-structured-concurrency.cpp` |
 | `spawn_child` | `04-patterns/02-supervisor.cpp` |
 | `srem` | `06-modules/redis/02-data-types.cpp` |
@@ -491,10 +491,11 @@ can disagree.
 | `qb::ICallback` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
 | `qb::KillEvent` | `01-actors/03-event-payloads.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `01-actors/13-death-watch.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/02-supervisor.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
 | `qb::LoopEvent` | `01-actors/01-hello-actor.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/12-lockfree-bridge.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
-| `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
+| `qb::Main` | `01-actors/01-hello-actor.cpp`, `01-actors/02-messaging.cpp`, `01-actors/03-event-payloads.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/07-service-actor.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `01-actors/11-hot-path.cpp`, `01-actors/12-lockfree-bridge.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/01-pubsub.cpp`, `04-patterns/03-worker-pool.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/06-streaming.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/09-discovery.cpp`, `04-patterns/10-spawn-on.cpp`, `05-services/01-tcp-chat/client/main.cpp`, `05-services/01-tcp-chat/server/main.cpp`, `05-services/02-pubsub-broker/client/main.cpp`, `05-services/02-pubsub-broker/server/main.cpp`, `05-services/03-file-pipeline/main.cpp`, `06-modules/http/01-hello-server.cpp`, `06-modules/http/06-validation.cpp`, `07-applications/01-taskmanager/src/main.cpp`, `07-applications/02-auction-house/src/main.cpp`, `07-applications/03-market-data-hub/src/main.cpp` |
 | `qb::Pipe` | `01-actors/11-hot-path.cpp` |
 | `qb::PubSub<PriceTick>` | `04-patterns/01-pubsub.cpp` |
 | `qb::Request` | `07-applications/04-observability/src/main.cpp` |
+| `qb::Request<Answer>` | `04-patterns/10-spawn-on.cpp` |
 | `qb::Request<int>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `qb::RequireEvent` | `04-patterns/09-discovery.cpp` |
 | `qb::SagaScope` | `04-patterns/07-saga.cpp` |
@@ -502,14 +503,16 @@ can disagree.
 | `qb::Service` | `01-actors/07-service-actor.cpp` |
 | `qb::ServiceActor<ConfigTag>` | `01-actors/07-service-actor.cpp` |
 | `qb::SignalEvent` | `01-actors/10-signals-and-shutdown.cpp`, `05-services/04-shutdown-and-drain/main.cpp` |
+| `qb::SpawnRequest` | `04-patterns/10-spawn-on.cpp` |
+| `qb::Spawner` | `04-patterns/10-spawn-on.cpp` |
 | `qb::StreamRequest` | `04-patterns/06-streaming.cpp` |
 | `qb::SupervisedActor` | `04-patterns/02-supervisor.cpp` |
 | `qb::Supervisor` | `04-patterns/02-supervisor.cpp` |
 | `qb::WithData<int>` | `01-actors/03-event-payloads.cpp` |
 | `qb::WorkerPool` | `04-patterns/03-worker-pool.cpp` |
-| `qb::answer` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/07-saga.cpp` |
+| `qb::answer` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/10-spawn-on.cpp` |
 | `qb::answer_idempotent` | `04-patterns/08-batching-and-idempotency.cpp` |
-| `qb::ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `07-applications/04-observability/src/main.cpp` |
+| `qb::ask` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/07-saga.cpp`, `04-patterns/08-batching-and-idempotency.cpp`, `04-patterns/10-spawn-on.cpp`, `07-applications/04-observability/src/main.cpp` |
 | `qb::ask_all` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::ask_any` | `04-patterns/04-scatter-gather.cpp` |
 | `qb::ask_by` | `04-patterns/04-scatter-gather.cpp` |
@@ -539,6 +542,9 @@ can disagree.
 | `qb::retry_policy` | `04-patterns/05-resilience.cpp`, `04-patterns/08-batching-and-idempotency.cpp` |
 | `qb::ring_buffer` | `02-io/11-logging-and-metrics.cpp` |
 | `qb::run_saga` | `04-patterns/07-saga.cpp` |
+| `qb::spawn_on<Worker>` | `04-patterns/10-spawn-on.cpp` |
+| `qb::spawn_result` | `04-patterns/10-spawn-on.cpp` |
+| `qb::spawn_status` | `04-patterns/10-spawn-on.cpp` |
 | `qb::stream<Tail>` | `04-patterns/06-streaming.cpp` |
 | `qb::stream_overflow_error` | `04-patterns/06-streaming.cpp` |
 | `qb::string<32>` | `01-actors/03-event-payloads.cpp` |
@@ -1326,6 +1332,8 @@ can disagree.
   - Two patterns that belong together because retrying is what makes both necessary: `qb::batcher<T>` coalesces many small items into one costly write (on a count OR a time trigger, whichever comes first), and `qb::dedup_map` + `qb::answer_idempotent` make a responder run its side effect at most once per key, however many times the same request arrives.
 - **`04-patterns/09-discovery.cpp`** — 15 capabilities
   - How one actor finds another it was never handed: `co_await qb::require<T>(ctx, w)` discovers every live actor of a type across every core, `co_await qb::ping(ctx, id)` asks one of them whether it is still there — and `is_actor_alive(id)` answers a DIFFERENT, core-local question that will lie to you about a remote actor.
+- **`04-patterns/10-spawn-on.cpp`** — 15 capabilities
+  - How to create an actor on ANOTHER core while the engine runs: `co_await qb::spawn_on<A>(ctx, core, timeout, args...)` asks that core's `qb::Spawner` to build it there, and answers once it is active -- with its id, or with why it is not.
 
 ### `05-services`
 
