@@ -28,8 +28,8 @@
  * `updateTimeout()` for the whole budget. Look at the base's own handler
  * (`qb/src/qb/io/async/io.h:205`):
  *
- *     const ev_tstamp after = _last_activity - event.loop.now() + _timeout;
- *     if (after <= 0.)  Derived.on(event);          // the budget really elapsed
+ *     const ev_tstamp after = _last_activity == 0. ? 0. : _last_activity - ev_clock_now() + _timeout;
+ *     if (after <= 0.)  Derived.on(event);          // the budget really elapsed (0: no activity ever recorded)
  *     else            { _async_event.set(after); _async_event.start(); }   // still busy: wait more
  *
  * So while activity keeps arriving the watcher keeps rescheduling ITSELF and your handler is never
