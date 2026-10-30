@@ -382,7 +382,10 @@ public:
 #else
         if (_wake_write >= 0) {
             char const signal = 1;
-            (void) ::write(_wake_write, &signal, 1);
+            // An interrupted write is written again; EAGAIN means the full pipe already holds a wake for the reader,
+            // and no other error leaves it a wait to leave.
+            while (::write(_wake_write, &signal, 1) < 0 && errno == EINTR) {
+            }
         }
 #endif
         if (_reader.joinable()) {
