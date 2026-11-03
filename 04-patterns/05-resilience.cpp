@@ -7,7 +7,7 @@
  *          hand-written bookkeeping.
  * @demonstrates qb::retry_policy, qb::ask_retry, qb::CircuitBreaker, qb::ask_guarded,
  *               qb::circuit_open_error, qb::rate_limiter, qb::bulkhead, qb::answer, resolve_ask,
- *               qb::io::async::timeout_error, qb::io::async::when_all, spawn, ctx.sleep, ctx.time
+ *               qb::io::async::timeout_error, qb::io::async::when_all, spawn, ctx.sleep, qb::mono_now
  * @prerequisites 04-patterns/04-scatter-gather
  * @expect "[retry] attempt 3 of at most 4 succeeded after"
  * @expect "[breaker] 2 failures tripped it; the 3rd call threw circuit_open_error in "
@@ -42,7 +42,8 @@
  * * Every retry attempt re-sends the request with a FRESH correlation id, so a responder with
  *   a side effect runs it once per attempt. That is what `04-patterns/08` is for.
  * * A `CircuitBreaker` and a `rate_limiter` are plain state machines with no timer of their
- *   own: they are driven by the `VirtualCore` clock you hand them (`ctx.time()`). Hold both by
+ *   own: they are driven by the readings of a monotonic clock you hand them -- `ask_guarded` and
+ *   `acquire(ctx)` pass `qb::mono_now()`'s; drive one by hand with that clock too. Hold both by
  *   `shared_ptr` and capture them BY VALUE into a coroutine, because the coroutine may outlive
  *   the actor that started it.
  *
@@ -191,11 +192,11 @@ public:
             const qb::retry_policy policy{
                 .max_attempts = 4, .backoff = qb::duration{20ms}, .multiplier = 2.0, .max_backoff = qb::duration{200ms}, .jitter = 0.2
             };
-            auto t0 = ctx.time();
+            auto t0 = qb::mono_now();
             Call req;
             req.arg   = 21;
             auto done = co_await qb::ask_retry(ctx, flaky, req, qb::duration{60ms}, policy);
-            qb::io::cout() << "[retry] attempt 3 of at most 4 succeeded after " << ms_since(ctx, t0) << " ms, answer " << done.response
+            qb::io::cout() << "[retry] attempt 3 of at most 4 succeeded after " << ms_since(t0) << " ms, answer " << done.response
                            << " (two timeouts, two backoffs, one line of caller code)\n";
 
             // ---- 2. a circuit breaker in front of a dependency that is down ----------------
@@ -208,11 +209,11 @@ public:
                                    << " state=" << state_name(breaker->state()) << "\n";
                 }
             }
-            t0 = ctx.time();
+            t0 = qb::mono_now();
             try {
                 (void) co_await qb::ask_guarded(ctx, breaker, moody, Call{}, qb::duration{60ms});
             } catch (qb::circuit_open_error const &) {
-                qb::io::cout() << "[breaker] 2 failures tripped it; the 3rd call threw circuit_open_error in " << ms_since(ctx, t0)
+                qb::io::cout() << "[breaker] 2 failures tripped it; the 3rd call threw circuit_open_error in " << ms_since(t0)
                                << " ms instead of waiting for a timeout\n";
             }
             // The dependency recovers; the breaker does not know that and must not be told —
@@ -225,10 +226,10 @@ public:
 
             // ---- 3. a token bucket in front of yourself -----------------------------------
             auto limiter = std::make_shared<qb::rate_limiter>(2.0, qb::duration{25ms});
-            t0           = ctx.time();
+            t0           = qb::mono_now();
             for (int i = 0; i < 6; ++i)
                 co_await limiter->acquire(ctx); // first two immediate, then one per 25 ms
-            qb::io::cout() << "[rate_limiter] 6 acquires, burst 2 then 1 per 25 ms: " << ms_since(ctx, t0)
+            qb::io::cout() << "[rate_limiter] 6 acquires, burst 2 then 1 per 25 ms: " << ms_since(t0)
                            << " ms — throttled, and not one call dropped\n";
 
             // ---- 4. a bulkhead: cap what is in flight, isolate the blast radius ------------
@@ -257,9 +258,9 @@ public:
     }
 
 private:
-    static std::uint64_t
-    ms_since(qb::ScopedCoroContext const &ctx, std::uint64_t t0) {
-        return (ctx.time() - t0) / 1'000'000ull;
+    static std::int64_t
+    ms_since(qb::mono_time t0) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count();
     }
 };
 

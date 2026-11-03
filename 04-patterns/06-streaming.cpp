@@ -8,7 +8,7 @@
  * @demonstrates qb::StreamRequest, qb::ask_stream, qb::stream<Tail>,
  *               yield_answer, qb::end_stream, qb::stream_overflow_error,
  *               qb::io::async::timeout_error, resolve_ask, spawn, registerEvent<E>, push<E>,
- *               qb::Main, ctx.time
+ *               qb::Main, qb::mono_now
  * @prerequisites 04-patterns/04-scatter-gather
  * @expect "[stream] scenario 1: drained "
  * @expect "[stream] scenario 2: one chunk, then timeout_error after"
@@ -174,7 +174,7 @@ public:
             stall.file  = "stuck.log";
             stall.lines = 1;
             stall.mode  = 1;
-            auto t0     = ctx.time();
+            auto t0     = qb::mono_now();
             auto s2     = qb::ask_stream(ctx, tailer, stall, qb::duration{150ms});
             int  n2     = 0;
             try {
@@ -182,7 +182,7 @@ public:
                     ++n2;
                 qb::io::cout() << "[stream] UNREACHABLE: a stream with no end marker ended\n";
             } catch (qb::io::async::timeout_error const &) {
-                qb::io::cout() << "[stream] scenario 2: one chunk, then timeout_error after " << ms_since(ctx, t0)
+                qb::io::cout() << "[stream] scenario 2: one chunk, then timeout_error after " << ms_since(t0)
                                << " ms — the per-chunk timeout is what bounds "
                                   "a stream, not the total\n";
             }
@@ -222,9 +222,9 @@ public:
     }
 
 private:
-    static std::uint64_t
-    ms_since(qb::ScopedCoroContext const &ctx, std::uint64_t t0) {
-        return (ctx.time() - t0) / 1'000'000ull;
+    static std::int64_t // elapsed time is read on the monotonic clock: ctx.time() is a date
+    ms_since(qb::mono_time t0) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count();
     }
 };
 

@@ -8,7 +8,7 @@
  * @demonstrates qb::Request<int>, qb::ask, qb::answer, resolve_ask, qb::ask_all, qb::ask_any,
  *               qb::ask_quorum, qb::deadline, qb::deadline_in, qb::remaining, qb::ask_by,
  *               qb::io::async::timeout_error, spawn, qb::ScopedCoroContext,
- *               ctx.sleep, ctx.time, ctx.push_to<Quote>, registerEvent<E>, qb::Main
+ *               ctx.sleep, qb::mono_now, ctx.push_to<Quote>, registerEvent<E>, qb::Main
  * @prerequisites 03-coroutines/04-ask-request-response, 04-patterns/03-worker-pool
  * @expect "[ask] one request, one reply, one line: BTC ="
  * @expect "[ask_all] 5 venues, unbounded:"
@@ -189,45 +189,46 @@ public:
             qb::io::cout() << "[ask] one request, one reply, one line: BTC = " << one.response << "\n";
 
             // ---- 2. every reply -----------------------------------------------------------
-            auto t0  = ctx.time();
+            auto t0  = qb::mono_now();
             auto all = co_await qb::ask_all(ctx, venues, Quote{.symbol = "BTC"}, 2s);
-            qb::io::cout() << "[ask_all] 5 venues, unbounded: " << all.size() << " quotes in " << ms_since(ctx, t0)
+            qb::io::cout() << "[ask_all] 5 venues, unbounded: " << all.size() << " quotes in " << ms_since(t0)
                            << " ms (as slow as the slowest venue)\n";
 
             // ---- 3. every reply, at most two requests outstanding --------------------------
-            t0          = ctx.time();
+            t0          = qb::mono_now();
             auto capped = co_await qb::ask_all(ctx, venues, Quote{.symbol = "BTC"}, 2s, 2);
-            qb::io::cout() << "[ask_all] 5 venues, max_in_flight=2: " << capped.size() << " quotes in " << ms_since(ctx, t0)
+            qb::io::cout() << "[ask_all] 5 venues, max_in_flight=2: " << capped.size() << " quotes in " << ms_since(t0)
                            << " ms (slower on purpose — a sliding window, never a wave)\n";
 
             // ---- 4. the first reply wins; the losers are torn down -------------------------
-            t0        = ctx.time();
+            t0        = qb::mono_now();
             auto fast = co_await qb::ask_any(ctx, venues, Quote{.symbol = "BTC"}, 2s);
-            qb::io::cout() << "[ask_any] first reply wins: venue " << fast.venue << " in " << ms_since(ctx, t0)
+            qb::io::cout() << "[ask_any] first reply wins: venue " << fast.venue << " in " << ms_since(t0)
                            << " ms; the other 4 asks were reclaimed at once\n";
 
             // ---- 5. the first k replies ---------------------------------------------------
-            t0       = ctx.time();
+            t0       = qb::mono_now();
             auto maj = co_await qb::ask_quorum(ctx, venues, 3, Quote{.symbol = "BTC"}, 2s);
             qb::io::cout() << "[ask_quorum] first 3 of 5, in completion order: venues";
             for (auto const &q : maj)
                 qb::io::cout() << " " << q.venue;
-            qb::io::cout() << " in " << ms_since(ctx, t0) << " ms\n";
+            qb::io::cout() << " in " << ms_since(t0) << " ms\n";
 
             // ---- 6. and when nobody answers -----------------------------------------------
-            t0 = ctx.time();
+            t0 = qb::mono_now();
             try {
                 (void) co_await qb::ask(ctx, dead, Quote{.symbol = "BTC"}, 120ms);
                 qb::io::cout() << "[ask] UNREACHABLE: the dead venue answered\n";
             } catch (qb::io::async::timeout_error const &) {
-                qb::io::cout() << "[ask] a venue that never answers throws timeout_error after " << ms_since(ctx, t0)
+                qb::io::cout() << "[ask] a venue that never answers throws timeout_error after " << ms_since(t0)
                                << " ms — no leaked entry, no dangling timer\n";
             }
 
             // ---- 7. one budget for the whole chain, not one per hop -----------------------
             // A `timeout` is RELATIVE and starts again at every hop, so three hops at 150 ms each
             // may legitimately take 450 ms. A `qb::deadline` is ABSOLUTE: build it once, thread it
-            // through `ask_by`, and each hop gets only what the ones before it left.
+            // through `ask_by`, and each hop gets only what the ones before it left. It is an instant
+            // of the monotonic clock: `qb::deadline_at(qb::mono_now() + 150ms)` is the same one.
             const auto dl = qb::deadline_in(ctx, 150ms);
             (void) co_await qb::ask_by(ctx, venues[0], Quote{.symbol = "BTC"}, dl); // ~60 ms
             qb::io::cout() << "[deadline] one 150 ms budget, threaded through ask_by: hop 1 left " << qb::remaining(dl, ctx).count() / 1'000'000
@@ -241,12 +242,12 @@ public:
             } catch (qb::io::async::timeout_error const &) {
                 qb::io::cout() << "[deadline] hop 3 ran out of budget: the CHAIN is bounded, not each hop\n";
             }
-            t0 = ctx.time();
+            t0 = qb::mono_now();
             try {
                 // Already spent: this throws without sending anything at all.
                 (void) co_await qb::ask_by(ctx, venues[0], Quote{.symbol = "BTC"}, qb::deadline{0});
             } catch (qb::io::async::timeout_error const &) {
-                qb::io::cout() << "[deadline] an already-spent budget fails fast and sends nothing: " << ms_since(ctx, t0) << " ms\n";
+                qb::io::cout() << "[deadline] an already-spent budget fails fast and sends nothing: " << ms_since(t0) << " ms\n";
             }
 
             qb::io::cout() << "=== scatter/gather complete: no correlation map, no reply handler, no timer ===\n";
@@ -264,11 +265,11 @@ public:
     }
 
 private:
-    // `ctx.time()` is the VirtualCore clock, cached once per loop pass — exact enough to compare
-    // across an await, and free (no syscall).
-    static std::uint64_t
-    ms_since(qb::ScopedCoroContext const &ctx, std::uint64_t t0) {
-        return (ctx.time() - t0) / 1'000'000ull;
+    // Elapsed time is read on the monotonic clock: `ctx.time()` is a date, the wall clock's,
+    // which a step of the time of day moves.
+    static std::int64_t
+    ms_since(qb::mono_time t0) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count();
     }
 };
 

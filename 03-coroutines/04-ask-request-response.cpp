@@ -6,7 +6,7 @@
  *          line you cannot leave out, and the two ways to get it wrong that produce a timeout
  *          and no other symptom whatsoever.
  * @demonstrates qb::ask, qb::Request<int>, qb::answer, resolve_ask,
- *               qb::io::async::timeout_error, qb::ScopedCoroContext, ctx.sleep, ctx.time,
+ *               qb::io::async::timeout_error, qb::ScopedCoroContext, ctx.sleep, qb::mono_now,
  *               ctx.push_to<Quote>, spawn, registerEvent<E>, qb::string<8>, getIndex,
  *               qb::ActorId, qb::Main, addActor<T>
  * @prerequisites 03-coroutines/02-actor-coroutines
@@ -177,12 +177,13 @@ public:
         // registerEvent<Quote>(*this);   <-- THE MISSING LINE, and nothing else is wrong here
         auto oracle = _oracle;
         spawn([oracle](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
-            const auto t0 = ctx.time();
+            const auto t0 = qb::mono_now(); // elapsed time is monotonic: ctx.time() is a date
             try {
                 (void) co_await qb::ask(ctx, oracle, Quote{.symbol = "BTC"}, 150ms);
                 qb::io::cout() << "    UNREACHABLE: an unregistered asker got its reply\n";
             } catch (qb::io::async::timeout_error const &) {
-                qb::io::cout() << "[4] MISSING registerEvent<Quote> on the ASKER: timeout_error after " << (ctx.time() - t0) / 1'000'000
+                qb::io::cout() << "[4] MISSING registerEvent<Quote> on the ASKER: timeout_error after "
+                               << std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count()
                                << " ms. The Oracle DID answer; the reply arrived at this actor and was "
                                   "dropped, because nothing routed it to resolve_ask\n";
             }
@@ -238,12 +239,13 @@ public:
             co_await ctx.sleep(250ms);
 
             // ---- 5. the fresh-reply mistake, run ----------------------------------------
-            const auto t0 = ctx.time();
+            const auto t0 = qb::mono_now(); // elapsed time is monotonic: ctx.time() is a date
             try {
                 (void) co_await qb::ask(ctx, fresh, Quote{.symbol = "BTC"}, 150ms);
                 qb::io::cout() << "    UNREACHABLE: a correlation-less reply resolved an ask\n";
             } catch (qb::io::async::timeout_error const &) {
-                qb::io::cout() << "[5] a FRESH reply event loses the correlation id: timeout_error after " << (ctx.time() - t0) / 1'000'000
+                qb::io::cout() << "[5] a FRESH reply event loses the correlation id: timeout_error after "
+                               << std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count()
                                << " ms. Copy the request (`Quote r = q;`) or use qb::answer, which "
                                   "replies the same event\n";
             }
