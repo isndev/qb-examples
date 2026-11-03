@@ -5,7 +5,7 @@
  *          talk back only through the context, and let the framework cancel the frame when the
  *          actor dies — the actor may be destroyed while the coroutine is parked.
  * @demonstrates spawn, qb::ScopedCoroContext, qb::io::async::task<void>,
- *               qb::io::async::task<bool>, qb::io::async::sleep, ctx.time, registerEvent<E>,
+ *               qb::io::async::task<bool>, qb::io::async::sleep, qb::mono_now, registerEvent<E>,
  *               qb::KillEvent, broadcast<qb::KillEvent>, kill(), qb::Main, addActor<T>
  * @prerequisites 03-coroutines/01-first-coroutine
  * @expect "=== QB Actor + Coroutine Example ==="
@@ -131,15 +131,15 @@ public:
     // Synchronous event handler - this is where we receive requests
     void
     on(StartProcessing &req) {
-        auto start_time = time();
+        auto start_time = qb::mono_now(); // elapsed time is monotonic: time() is a date
 
         qb::io::cout() << "[Actor " << id() << "] Received request " << req.request_id << " with data: " << req.data << "\n";
 
         // ⚠️ CRITICAL: Capture by VALUE only!
-        int         req_id = req.request_id;
-        std::string data   = req.data.c_str();
-        uint64_t    start  = start_time;
-        qb::ActorId who    = req.requester;
+        int           req_id = req.request_id;
+        std::string   data   = req.data.c_str();
+        qb::mono_time start  = start_time;
+        qb::ActorId   who    = req.requester;
 
         // Launch async coroutine scoped to this actor's lifetime
         spawn([req_id, data, start, who](qb::ScopedCoroContext ctx) -> qb::io::async::task<void> {
@@ -149,7 +149,7 @@ public:
             // Perform async I/O
             std::string result = co_await AsyncService::process_data(data);
 
-            uint64_t elapsed = ctx.time() - start;
+            auto elapsed = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(qb::mono_now() - start).count());
 
             // Return result via event (only way to communicate back)
             ctx.template push<ProcessingComplete>(req_id, result, elapsed, who);

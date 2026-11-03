@@ -216,10 +216,11 @@ public:
             auto bad_id  = stalled.id();
             this->watch(bad_id);
 
-            const auto t0 = ctx.time();
+            const auto t0 = qb::mono_now(); // elapsed time is monotonic: ctx.time() is a date
             const bool ok = co_await stalled.ready_async(ctx, 300ms);
             qb::io::cout() << "\n[deadline] ready_async on a stalled child gave up and returned " << (ok ? "true" : "false") << " after "
-                           << (ctx.time() - t0) / 1'000'000 << " ms — that is OUR patience, not the engine's\n";
+                           << std::chrono::duration_cast<std::chrono::milliseconds>(qb::mono_now() - t0).count()
+                           << " ms — that is OUR patience, not the engine's\n";
 
             // Now wait past the engine's own activation deadline (lowered to 800 ms in main).
             co_await ctx.sleep(700ms);

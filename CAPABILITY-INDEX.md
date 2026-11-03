@@ -17,7 +17,7 @@ the build derives those from the path and writes the authoritative mapping to
 `<build>/examples/example-roster.txt`, and a name typed in a second place is a name that
 can disagree.
 
-**107 programs, 7 tiers, 863 distinct capabilities, 1728 claims.**
+**107 programs, 7 tiers, 862 distinct capabilities, 1728 claims.**
 
 ## 1. By capability
 
@@ -128,7 +128,6 @@ can disagree.
 | `ctx.push_to<Compare>` | `04-patterns/09-discovery.cpp` |
 | `ctx.push_to<Quote>` | `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp` |
 | `ctx.sleep` | `01-actors/02-messaging.cpp`, `01-actors/04-cores-and-placement.cpp`, `01-actors/05-lifecycle.cpp`, `01-actors/06-doing-things-later.cpp`, `01-actors/08-child-actors.cpp`, `01-actors/09-state-machine.cpp`, `01-actors/10-signals-and-shutdown.cpp`, `03-coroutines/03-awaiting-oninit.cpp`, `03-coroutines/04-ask-request-response.cpp`, `03-coroutines/06-cancellation.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `05-services/03-file-pipeline/main.cpp`, `05-services/04-shutdown-and-drain/main.cpp`, `06-modules/redis/04-pubsub.cpp`, `06-modules/redis/06-streams.cpp`, `06-modules/redis/10-cache-actor.cpp` |
-| `ctx.time` | `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp` |
 | `ctx.token` | `03-coroutines/06-cancellation.cpp` |
 | `ctx.until_cancelled` | `03-coroutines/06-cancellation.cpp` |
 | `current_count` | `03-coroutines/12-sync-primitives.cpp` |
@@ -532,7 +531,7 @@ can disagree.
 | `qb::end_stream` | `04-patterns/06-streaming.cpp` |
 | `qb::generate_random_uuid` | `02-io/10-crypto-and-compression.cpp` |
 | `qb::json` | `02-io/06-framing-toolbox.cpp`, `06-modules/http/02-routing.cpp`, `06-modules/http/05-rest-api-json.cpp`, `06-modules/redis/14-acl-and-topology.cpp` |
-| `qb::mono_now` | `02-io/08-timeouts-and-watchers.cpp` |
+| `qb::mono_now` | `02-io/08-timeouts-and-watchers.cpp`, `03-coroutines/02-actor-coroutines.cpp`, `03-coroutines/04-ask-request-response.cpp`, `04-patterns/04-scatter-gather.cpp`, `04-patterns/05-resilience.cpp`, `04-patterns/06-streaming.cpp` |
 | `qb::no_default_events` | `01-actors/11-hot-path.cpp` |
 | `qb::ping` | `04-patterns/09-discovery.cpp` |
 | `qb::rate_limiter` | `04-patterns/05-resilience.cpp` |
