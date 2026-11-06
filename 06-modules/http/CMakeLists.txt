@@ -36,6 +36,7 @@
 #     13-http3.cpp               ->  qb-example-modules-http-http3
 #     14-streaming-and-cookies.cpp -> qb-example-modules-http-streaming-and-cookies
 #     15-http2-and-http3-clients.cpp -> qb-example-modules-http-http2-and-http3-clients
+#     16-sse.cpp -> qb-example-modules-http-sse
 #
 # 15 closes the one gap this group had: qb::http2::Client and qb::http3::Client were documented and
 # had ZERO occurrences anywhere in the corpus — 12 and 13 are pure SERVER programs, and the only
@@ -93,6 +94,7 @@ qb_example(SOURCE 13-http3.cpp DEPENDS qbm-http TARGET_VAR _tgt_http3
         AVAILABLE ${_qbm_http3_available} REQUIRES http3)
 qb_example(SOURCE 14-streaming-and-cookies.cpp DEPENDS qbm-http)
 qb_example(SOURCE 15-http2-and-http3-clients.cpp DEPENDS qbm-http REQUIRES ssl TARGET_VAR _tgt_h2h3_clients)
+qb_example(SOURCE 16-sse.cpp DEPENDS qbm-http)
 
 # Four examples read assets at runtime: the static site (08), the HTTP/2 site (12), and the
 # self-signed dev TLS certificate under resources/ssl (11, 12, and the TLS-only HTTP/3

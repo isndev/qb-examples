@@ -11,7 +11,7 @@ cmake --preset release
 cmake --build --preset release --target qb-example-modules-http-hello-server
 ```
 
-Three of the fourteen declare `REQUIRES ssl` (`07-auth-jwt`, `11-https`, `12-http2`) and are **not
+Three of the sixteen declare `REQUIRES ssl` (`07-auth-jwt`, `11-https`, `12-http2`) and are **not
 created at all** in an SSL-off build. `13-http3` is deliberately not gated that way — "nghttp3 is
 present" is not something the `REQUIRES` vocabulary (`ssl` / `quic` / `compression`) can express, so
 it guards itself with `#ifdef QBM_HTTP_HAS_HTTP3`.
@@ -341,7 +341,7 @@ The `resources` directory contains static assets used by some examples.
   ever holds chunk headers. `Chunk` + `add_chunk` is the other half: it appends the chunk-encoded BYTES
   yourself. Doing both encodes twice.
 * **One measured trap, and it is the reason the body below is assigned PLAIN**: the one-shot verbs
-  (`1.1/http.h:1401-1405`) and `qb::http1::Client` (`1.1/client.cpp:125-127`) COMPRESS the body themselves
+  (`1.1/http.h:1415-1419`) and `qb::http1::Client` (`1.1/client.cpp:125-127`) COMPRESS the body themselves
   when `Content-Encoding` is set. Calling `compress()` as well encodes twice — measured, 9000 bytes →
   108 gzip → 109 on the wire, and the peer's single `uncompress()` hands back 108 bytes of gzip that
   look like a corrupt payload. There is no diagnostic.
@@ -380,3 +380,25 @@ The `resources` directory contains static assets used by some examples.
 * **Gated**: `REQUIRES ssl`, for the same reason `12-http2` is. The HTTP/3 third guards itself with
   `#ifdef QBM_HTTP_HAS_HTTP3` and states which branch it took.
 * **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-http2-and-http3-clients`
+
+---
+
+### 16. Server-Sent Events (`16-sse.cpp`) — **new**
+
+* **Purpose**: the `text/event-stream` route (Huly QB-86), the first consumer of the response stream
+  that is not a file: events written as they happen, a heartbeat, and a client that resumes with
+  `Last-Event-ID`. One handler, the same on HTTP/1.1 (chunked), HTTP/2 and HTTP/3 (DATA frames).
+* **API**: `ctx->begin_sse(qb::http::sse::Options{...})` sets the head of an event stream and begins the
+  context's `ResponseStream`; `qb::http::sse::Event{name, data, id, retry}`; `send()` with the stream's
+  verdict, `co_await send_async()` from a coroutine handler, `comment()` (the heartbeat form),
+  `heartbeat(interval)` on a timer that dies with the stream, `events_sent()`, `end()`;
+  `qb::http::sse::last_event_id(request)`.
+* **The three things the handler owns**: the pieces (each `send` is on the wire now), the end (`end()`
+  completes the context; `ctx->complete()` is ignored while the stream is open; a dropped handle aborts
+  the response), and the connection's life (a silent stream ends at the session's inactivity timeout:
+  the heartbeat is what keeps it).
+* **The client here is the one-shot `qb::http::GET`**, which hands the body over whole when the stream
+  ends: enough to show the format and the resumption at `Last-Event-ID: 3 -> 4`. A client that reads
+  events as they arrive is a browser's `EventSource`, or `curl -N` against the URL the program prints.
+* **Run**: `./build/presets/release/examples/06-modules/http/qb-example-modules-http-sse` (it serves on
+  port 18085 until Ctrl+C; a second instance refuses the port).
