@@ -129,7 +129,7 @@ jobs:
                 -DCMAKE_CXX_COMPILER="clang++-${LLVM_VERSION}" \
                 -DQB_EXAMPLES_CI_QB_DIR="$PWD/qb" \
                 -DQB_EXAMPLES_CI_QBM_DIR="$PWD/qbm" \
-                -DQB_EXAMPLES_CI_EXAMPLES_DIR="$PWD/examples"
+                -DQB_EXAMPLES_CI_EXAMPLES_DIR="$PWD/examples" 2>&1 | tee configure.log
 
       - name: Build the corpus
         run: |
@@ -155,11 +155,15 @@ jobs:
             exit 1
           fi
           # Comment lines start with '#'; `gated|` rows name a missing capability, not a
-          # binary. ubuntu-latest ships OpenSSL but not the ngtcp2 crypto helper, so QUIC
-          # resolves to backend 'none'. That gates both the direct QUIC example and the
-          # HTTP/3 server whose resolved capability also needs QUIC + nghttp3: measured
-          # here as 97 built + 2 gated. The floor stays 99 TOTAL, and both allowed rows
-          # must match name, source AND capability exactly.
+          # binary. Two rows may be gated on this lane, and only these two: the direct QUIC
+          # example (gated when qb has no QUIC transport: no ngtcp2 crypto helper for the
+          # host's OpenSSL) and the HTTP/3 server (gated without QUIC + libnghttp3). WHICH
+          # of them must be gated is read from the capabilities the configure step printed,
+          # never written down: ubuntu-latest moved from 24.04 (no crypto helper: both
+          # gated, 106 built + 2) to 26.04 (the helper packaged: QUIC built, HTTP/3 still
+          # gated, 107 built + 1) between two runs of 2026-11-13, and a constant read the
+          # new host as a lost program. The floor stays 99 TOTAL, and each gated row must
+          # match name, source AND capability exactly.
           built="$(grep -c '^built|' "${roster}")"
           gated="$(grep -c '^gated|' "${roster}" || true)"
           echo "roster: ${built} built, ${gated} gated"
@@ -182,8 +186,35 @@ jobs:
             printf '%s\n' "${unexpected}"
             exit 1
           fi
-          if [ "${gated}" -ne 2 ] || ! grep -Fxq "${expected_quic}" "${roster}" || ! grep -Fxq "${expected_http3}" "${roster}"; then
-            echo "::error::hosted lane expected exactly the QUIC and HTTP/3 gated rows (measured 97 built + 2 gated)"
+          # The configure step's own capability lines decide which rows must be gated: each
+          # must appear exactly once with a value this step knows, or nothing is guessed.
+          quic_lines="$(grep -E '\[qb\] +QUIC/libngtcp2: ' configure.log || true)"
+          http3_lines="$(grep -E '\[qb\] HTTP/3 support (enabled|disabled)' configure.log || true)"
+          if [ "$(printf '%s' "${quic_lines}" | grep -c .)" -ne 1 ] || [ "$(printf '%s' "${http3_lines}" | grep -c .)" -ne 1 ]; then
+            echo "::error::configure.log must state QUIC/libngtcp2 and HTTP/3 support once each; refusing to guess the gated rows"
+            printf '%s\n' "${quic_lines}" "${http3_lines}"
+            exit 1
+          fi
+          case "${quic_lines}" in
+            *'QUIC/libngtcp2: TRUE') quic_gated=0 ;;
+            *'QUIC/libngtcp2: FALSE') quic_gated=1 ;;
+            *) echo "::error::unrecognised QUIC capability line: ${quic_lines}"; exit 1 ;;
+          esac
+          case "${http3_lines}" in
+            *'HTTP/3 support enabled'*) http3_gated=0 ;;
+            *) http3_gated=1 ;;
+          esac
+          echo "capabilities: QUIC gated=${quic_gated}, HTTP/3 gated=${http3_gated}"
+          for pair in "${quic_gated}:${expected_quic}" "${http3_gated}:${expected_http3}"; do
+            want="${pair%%:*}" row="${pair#*:}"
+            if grep -Fxq "${row}" "${roster}"; then have=1; else have=0; fi
+            if [ "${have}" -ne "${want}" ]; then
+              echo "::error::${row}: in the roster ${have}, by the configured capabilities ${want}"
+              exit 1
+            fi
+          done
+          if [ "${gated}" -ne "$((quic_gated + http3_gated))" ]; then
+            echo "::error::${gated} gated rows; the configured capabilities allow exactly $((quic_gated + http3_gated))"
             exit 1
           fi
           missing=0
